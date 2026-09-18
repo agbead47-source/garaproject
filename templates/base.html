@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page_title|default('To-do Trade') }} · To-do Trade</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="layout">
+
+    <aside class="sidebar">
+      <div class="logo">To-do Trade</div>
+      <nav class="menu">
+        <a class="menu-item {% if active_menu == 'analyze' %}active{% endif %}" href="{{ url_for('upload') }}">
+          <span class="menu-icon">📄</span><span>개발요청서 분석</span>
+        </a>
+        <a class="menu-item {% if active_menu == 'regulation' %}active{% endif %}" href="{{ url_for('regulation') }}">
+          <span class="menu-icon">🌍</span><span>국가별 규제 검색</span><span class="badge-beta">가안</span>
+        </a>
+        <a class="menu-item {% if active_menu == 'trends' %}active{% endif %}" href="{{ url_for('trends') }}">
+          <span class="menu-icon">📈</span><span>오늘의 트렌드</span><span class="badge-beta">가안</span>
+        </a>
+        <a class="menu-item {% if active_menu == 'sample' %}active{% endif %}" href="{{ url_for('sample') }}">
+          <span class="menu-icon">🧪</span><span>AI 샘플 미리보기</span><span class="badge-beta">가안</span>
+        </a>
+        <a class="menu-item {% if active_menu == 'customers' %}active{% endif %}" href="{{ url_for('customers') }}">
+          <span class="menu-icon">🗂</span><span>고객사 관리</span><span class="badge-beta">가안</span>
+        </a>
+        <a class="menu-item {% if active_menu == 'history' %}active{% endif %}" href="{{ url_for('history') }}">
+          <span class="menu-icon">🕘</span><span>처리 이력</span>
+        </a>
+      </nav>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <h1 class="page-title">{{ page_title|default('개발요청서 분석') }}</h1>
+        <div class="user-area">
+          <span class="user-name">{{ current_user }}</span>
+          <a class="logout" href="{{ url_for('logout') }}">로그아웃</a>
+        </div>
+      </header>
+
+      {% if active_step %}
+      <div class="stepper">
+        {% set steps = [(1, '업로드'), (2, '분석 결과'), (3, '변환·번역')] %}
+        {% for num, label in steps %}
+          <div class="step {% if num == active_step %}current{% elif num < active_step %}done{% endif %}">
+            <span class="step-num">{% if num < active_step %}✓{% else %}{{ num }}{% endif %}</span>
+            <span class="step-label">{{ label }}</span>
+          </div>
+          {% if not loop.last %}
+          <span class="step-line {% if num < active_step %}done{% endif %}"></span>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <main class="content">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

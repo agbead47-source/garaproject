@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% macro doc_body(doc) -%}
+<div class="doc-head">
+  <h2 class="doc-title">{{ doc.title }}</h2>
+  <div class="doc-meta">{{ doc.customer }}{% if doc.file_name %} · {{ doc.file_name }}{% endif %}</div>
+</div>
+
+{% for section in doc.sections %}
+<section class="doc-section">
+  <h3 class="doc-heading">{{ section.heading }}</h3>
+  <dl class="doc-rows">
+    {% for row in section.rows %}
+    <div class="doc-row {{ row.flag }}">
+      <dt class="doc-label">
+        {{ row.label }}
+        {% if row.flag == 'check' %}<span class="flag-badge check">확인 필요</span>{% endif %}
+        {% if row.flag == 'missing' %}<span class="flag-badge missing">누락</span>{% endif %}
+      </dt>
+      <dd class="doc-value">
+        {{ row.value }}
+        {% if row.source %}
+        <div class="doc-source" hidden>원문: {{ row.source }}</div>
+        {% endif %}
+      </dd>
+    </div>
+    {% endfor %}
+  </dl>
+</section>
+{% endfor %}
+{%- endmacro %}
+
+{% block content %}
+<div class="convert-bar">
+  <div class="tabs" role="tablist">
+    <button type="button" class="tab {% if tab != 'factory' %}active{% endif %}" data-tab="lab">🧪 연구소용</button>
+    <button type="button" class="tab {% if tab == 'factory' %}active{% endif %}" data-tab="factory">🏭 공장용</button>
+  </div>
+
+  <div class="convert-tools">
+    <label class="toggle">
+      <input type="checkbox" id="source-toggle"> 원문 대비 보기
+    </label>
+    <select class="select select-inline" id="lang-select">
+      {% for l in languages %}
+      <option value="{{ l.code }}" {% if l.code == lang %}selected{% endif %}>{{ l.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<section class="card doc-card" id="panel-lab" {% if tab == 'factory' %}hidden{% endif %}>
+  {{ doc_body(lab_doc) }}
+</section>
+
+<section class="card doc-card" id="panel-factory" {% if tab != 'factory' %}hidden{% endif %}>
+  {{ doc_body(factory_doc) }}
+</section>
+
+<div class="bottom-actions">
+  <a class="btn" href="{{ url_for('result') }}">이전</a>
+  <div class="action-group">
+    <button type="button" class="btn" id="copy-btn">📋 복사하기</button>
+    <button type="button" class="btn" id="pdf-btn">⬇️ PDF 다운로드</button>
+    <button type="button" class="btn btn-primary" id="send-btn">✉️ 담당자에게 전달</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="send-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="send-modal-title">
+    <div class="modal-head">
+      <h3 class="modal-title" id="send-modal-title">담당자에게 전달</h3>
+      <button type="button" class="modal-close" id="modal-close" aria-label="닫기">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-desc">전달할 수신자를 선택하세요.</p>
+      <label class="recipient">
+        <input type="checkbox" name="recipient" value="연구소 김연구" checked>
+        <span class="recipient-icon">🧪</span>
+        <span>
+          <span class="recipient-name">김연구</span>
+          <span class="recipient-team">연구소</span>
+        </span>
+      </label>
+      <label class="recipient">
+        <input type="checkbox" name="recipient" value="공장 박생산" checked>
+        <span class="recipient-icon">🏭</span>
+        <span>
+          <span class="recipient-name">박생산</span>
+          <span class="recipient-team">공장</span>
+        </span>
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" id="modal-cancel">취소</button>
+      <button type="button" class="btn btn-primary" id="modal-send">전달하기</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var tabs = document.querySelectorAll('.tab');
+  var panels = {
+    lab: document.getElementById('panel-lab'),
+    factory: document.getElementById('panel-factory')
+  };
+  var langSelect = document.getElementById('lang-select');
+  var sourceToggle = document.getElementById('source-toggle');
+
+  function currentTab() {
+    var active = document.querySelector('.tab.active');
+    return active ? active.dataset.tab : 'lab';
+  }
+
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      tabs.forEach(function (t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      Object.keys(panels).forEach(function (key) {
+        panels[key].hidden = (key !== tab.dataset.tab);
+      });
+    });
+  });
+
+  // 언어 전환: 선택한 언어의 더미 텍스트로 다시 그린다 (탭 유지)
+  langSelect.addEventListener('change', function () {
+    window.location.href = '?lang=' + langSelect.value + '&tab=' + currentTab();
+  });
+
+  // 원문 대비 보기
+  sourceToggle.addEventListener('change', function () {
+    document.querySelectorAll('.doc-source').forEach(function (el) {
+      el.hidden = !sourceToggle.checked;
+    });
+  });
+
+  /* ------------------------------------------------------------------
+   * 하단 액션: 복사 / PDF / 전달
+   * ---------------------------------------------------------------- */
+
+  // 현재 탭의 문서를 평문으로 만든다
+  function documentText() {
+    var panel = panels[currentTab()];
+    var lines = [panel.querySelector('.doc-title').textContent.trim()];
+    lines.push(panel.querySelector('.doc-meta').textContent.trim(), '');
+
+    panel.querySelectorAll('.doc-section').forEach(function (section) {
+      lines.push('[' + section.querySelector('.doc-heading').textContent.trim() + ']');
+      section.querySelectorAll('.doc-row').forEach(function (row) {
+        var label = row.querySelector('.doc-label').childNodes[0].textContent.trim();
+        var value = row.querySelector('.doc-value').childNodes[0].textContent.trim();
+        lines.push('- ' + label + ': ' + value);
+      });
+      lines.push('');
+    });
+
+    return lines.join('\n').trim();
+  }
+
+  function fallbackCopy(text) {
+    var area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(area);
+    return ok;
+  }
+
+  document.getElementById('copy-btn').addEventListener('click', function () {
+    var text = documentText();
+    var label = currentTab() === 'factory' ? '공장용' : '연구소용';
+
+    function done(ok) {
+      if (ok) {
+        showToast('📋 ' + label + ' 문서를 클립보드에 복사했습니다.');
+      } else {
+        showToast('복사에 실패했습니다. 직접 선택해 복사해 주세요.', 'error');
+      }
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); },
+                                              function () { done(fallbackCopy(text)); });
+    } else {
+      done(fallbackCopy(text));
+    }
+  });
+
+  document.getElementById('pdf-btn').addEventListener('click', function () {
+    showToast('⬇️ PDF 다운로드는 가안에서는 지원하지 않습니다.', 'warn');
+    // TODO: 실제 연동 (PDF 생성)
+  });
+
+  // 전달 모달
+  var modal = document.getElementById('send-modal');
+
+  function openModal() { modal.hidden = false; }
+  function closeModal() { modal.hidden = true; }
+
+  document.getElementById('send-btn').addEventListener('click', openModal);
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+
+  modal.addEventListener('click', function (e) {
+    if (e.target === modal) { closeModal(); }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !modal.hidden) { closeModal(); }
+  });
+
+  document.getElementById('modal-send').addEventListener('click', function () {
+    var picked = [];
+    modal.querySelectorAll('input[name="recipient"]:checked').forEach(function (input) {
+      picked.push(input.value);
+    });
+
+    if (!picked.length) {
+      showToast('수신자를 한 명 이상 선택해 주세요.', 'warn');
+      return;
+    }
+
+    closeModal();
+    // TODO: 실제 연동 (메일/메신저 전달)
+    showToast('✉️ ' + picked.join(', ') + ' 님에게 전달 완료되었습니다.');
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="result-head">
+  <div>
+    <span class="result-file">📄 {{ analysis.file_name }}</span>
+    <span class="result-meta">{{ analysis.customer }} ({{ analysis.customer_country }})</span>
+  </div>
+  {% if options.targets %}
+  <div class="result-targets">
+    전달 대상:
+    {% for t in options.targets %}<span class="pill">{{ t }}</span>{% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<section class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-label">문서 언어 감지</div>
+    <div class="summary-value">{{ analysis.detected_language }}</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">추출 항목 수</div>
+    <div class="summary-value">{{ analysis.item_count }}</div>
+  </div>
+  <div class="summary-card warn">
+    <div class="summary-label">확인 필요 항목</div>
+    <div class="summary-value text-orange">{{ analysis.check_count }}</div>
+  </div>
+  <div class="summary-card danger">
+    <div class="summary-label">규제 주의 성분</div>
+    <div class="summary-value text-red">{{ analysis.regulation_count }}</div>
+  </div>
+</section>
+
+<div class="result-grid">
+  <section class="card">
+    <h2 class="card-title">원문 미리보기</h2>
+    <p class="card-desc">오른쪽 표의 행을 클릭하면 해당 문장이 강조됩니다.</p>
+    <div id="source-box" class="source-box">{{ analysis.source_text }}</div>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">추출 항목 <span class="count-chip">{{ analysis.item_count }}</span></h2>
+    <p class="card-desc">추출 값은 클릭해서 바로 수정할 수 있습니다. (가안에서는 화면에서만 반영)</p>
+    <table class="item-table">
+      <thead>
+        <tr>
+          <th class="col-label">항목</th>
+          <th>추출 값</th>
+          <th class="col-conf">신뢰도</th>
+          <th class="col-status">상태</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in analysis['items'] %}
+        <tr class="item-row" data-key="{{ item.key }}" data-source="{{ item.source }}">
+          <td class="col-label">
+            {{ item.label }}
+            {% if item.note %}<span class="note-mark" title="{{ item.note }}">ⓘ</span>{% endif %}
+          </td>
+          <td>
+            <span class="item-value {% if not item.value %}empty{% endif %}"
+                  data-value="{{ item.value }}">{{ item.value or '— 값 없음' }}</span>
+          </td>
+          <td class="col-conf">
+            {% if item.confidence %}
+            <div class="conf">
+              <div class="conf-bar"><span class="conf-fill {{ status_meta[item.status].css }}"
+                    style="width: {{ item.confidence }}%"></span></div>
+              <span class="conf-num">{{ item.confidence }}%</span>
+            </div>
+            {% else %}
+            <span class="text-gray">—</span>
+            {% endif %}
+          </td>
+          <td class="col-status">
+            <span class="status-badge {{ status_meta[item.status].css }}">{{ status_meta[item.status].label }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<section class="reg-box">
+  <div class="reg-head">⚠️ 규제 체크 미리보기</div>
+  <ul class="reg-list">
+    {% for note in analysis.regulation_notes %}
+    <li>
+      <span class="reg-ingredient">{{ note.ingredient }}</span>
+      <span class="reg-message">{{ note.message }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <button type="button" class="btn btn-disabled" disabled
+          title="다른 팀원 파트 연동 예정">규제 검색으로 이동</button>
+</section>
+
+<div class="bottom-actions">
+  <a class="btn" href="{{ url_for('upload') }}">이전</a>
+  <a class="btn btn-primary" href="{{ url_for('convert') }}">내부 전달 문서 만들기 →</a>
+</div>
+{% endblock %}

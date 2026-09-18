@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a class="back-link" href="{{ url_for('customers') }}">‹ 고객사 목록</a>
+
+<section class="card profile-card">
+  <div class="profile-head">
+    <span class="profile-flag">{{ c.flag }}</span>
+    <div class="profile-title">
+      <div class="profile-name">
+        {{ c.name }}
+        <span class="grade-badge {{ grade_meta[c.grade].css }}">{{ grade_meta[c.grade].label }}</span>
+      </div>
+      <div class="profile-place">{{ c.city }} · {{ c.country }} · 거래 시작 {{ c.since }}</div>
+    </div>
+    <div class="action-group">
+      <button type="button" class="btn js-mail">✉️ 메일 쓰기</button>
+      <a class="btn btn-primary" href="{{ url_for('upload') }}">📄 개발요청서 분석</a>
+    </div>
+  </div>
+
+  <div class="profile-grid">
+    <div class="profile-block">
+      <div class="profile-block-title">담당 바이어</div>
+      <div class="info-row"><span class="info-label">이름</span><span class="info-value">{{ c.buyer.name }} · {{ c.buyer.title }}</span></div>
+      <div class="info-row"><span class="info-label">이메일</span><span class="info-value mono">{{ c.buyer.email }}</span></div>
+      <div class="info-row"><span class="info-label">전화</span><span class="info-value mono">{{ c.buyer.phone }}</span></div>
+      <div class="info-row"><span class="info-label">시차</span><span class="info-value">{{ c.buyer.timezone }}</span></div>
+      <div class="info-row"><span class="info-label">사용 언어</span><span class="info-value">{{ c.buyer.language }}</span></div>
+    </div>
+
+    <div class="profile-block">
+      <div class="profile-block-title">거래 현황</div>
+      <div class="info-row"><span class="info-label">누적 발주</span><span class="info-value">{{ c.stats.orders }}건 · {{ c.stats.amount }}</span></div>
+      <div class="info-row"><span class="info-label">진행 중</span><span class="info-value">{{ c.stats.active }}건</span></div>
+      <div class="info-row"><span class="info-label">평균 회신</span><span class="info-value">{{ c.stats.avg_reply }}</span></div>
+      <div class="info-row"><span class="info-label">소통 채널</span><span class="info-value">{{ c.channel }}</span></div>
+      <div class="info-row"><span class="info-label">사내 담당</span><span class="info-value">{{ c.manager }}</span></div>
+    </div>
+
+    <div class="profile-block">
+      <div class="profile-block-title">특징 태그</div>
+      <div class="cust-tags wrap">
+        {% for t in c.tags %}<span class="pill soft">{{ t }}</span>{% endfor %}
+      </div>
+      <div class="profile-block-title spaced">최근 연락</div>
+      <div class="profile-last">{{ c.last_contact }} · {{ c.emails[0].subject }}</div>
+    </div>
+  </div>
+</section>
+
+<div class="convert-bar">
+  <div class="tabs">
+    {% set tabs = [('requests', '📌 바이어 요청사항'), ('emails', '✉️ 이메일'), ('projects', '📦 진행 건'), ('notes', '📝 내부 메모')] %}
+    {% for key, label in tabs %}
+    <a class="tab {% if tab == key %}active{% endif %}"
+       href="{{ url_for('customer_detail', customer_id=c.id, tab=key) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if tab == 'requests' %}
+<section class="card">
+  <h2 class="card-title">바이어 요청사항 <span class="count-chip">{{ c.requests|length }}</span></h2>
+  <p class="card-desc">이메일과 개발요청서에서 반복적으로 나온 요구를 정리한 내용입니다. 새 요청서를 분석할 때 자동으로 대조됩니다.</p>
+
+  {% for r in c.requests %}
+  <div class="req-row {{ r.priority }}">
+    <span class="req-icon">{{ request_meta[r.type].icon }}</span>
+    <div class="req-body">
+      <div class="req-head">
+        <span class="req-title">{{ r.title }}</span>
+        <span class="status-badge {{ priority_meta[r.priority].css }}">{{ priority_meta[r.priority].label }}</span>
+        <span class="req-type">{{ request_meta[r.type].label }}</span>
+      </div>
+      <p class="req-detail">{{ r.detail }}</p>
+      <div class="req-source">출처 · {{ r.source }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+{% elif tab == 'emails' %}
+<section class="card">
+  <h2 class="card-title">이메일 <span class="count-chip">{{ c.emails|length }}</span></h2>
+  <p class="card-desc">고객사와 주고받은 메일입니다. 제목을 클릭하면 본문이 열립니다.</p>
+
+  {% for m in c.emails %}
+  <div class="mail-row" data-index="{{ loop.index }}">
+    <div class="mail-head">
+      <span class="mail-dir {{ m.direction }}">{{ '받음' if m.direction == 'in' else '보냄' }}</span>
+      <span class="mail-subject">{{ m.subject }}</span>
+      <span class="mail-status {% if m.status == '확인 필요' %}warn{% endif %}">{{ m.status }}</span>
+      <span class="mail-date">{{ m.date }}</span>
+    </div>
+    <div class="mail-sub">
+      <span class="mail-sender">{{ m.sender }}</span>
+      <span class="mail-summary">{{ m.summary }}</span>
+    </div>
+    {% if m.attachments %}
+    <div class="mail-files">
+      {% for f in m.attachments %}<span class="file-tag">📎 {{ f }}</span>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="mail-body" id="mail-{{ loop.index }}" hidden>{{ m.body }}</div>
+  </div>
+  {% endfor %}
+</section>
+
+{% elif tab == 'projects' %}
+<section class="card">
+  <h2 class="card-title">진행 건 <span class="count-chip">{{ c.projects|length }}</span></h2>
+  <p class="card-desc">이 고객사와 진행 중이거나 완료된 개발 건입니다.</p>
+
+  <table class="item-table">
+    <thead>
+      <tr><th>제품</th><th class="col-stage">단계</th><th class="col-due">일정</th><th class="col-status">상태</th></tr>
+    </thead>
+    <tbody>
+      {% for p in c.projects %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td class="col-stage">{{ p.stage }}</td>
+        <td class="col-due">{{ p.due }}</td>
+        <td class="col-status">
+          <span class="status-badge {{ status_meta[p.status].css }}">{{ status_meta[p.status].label }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% else %}
+<section class="card">
+  <h2 class="card-title">내부 메모 <span class="count-chip">{{ c.notes|length }}</span></h2>
+  <p class="card-desc">담당자끼리 공유하는 메모입니다. 고객사에는 보이지 않습니다.</p>
+
+  <div class="note-form">
+    <input class="input" type="text" id="note-input" placeholder="메모를 입력하세요 (가안에서는 저장되지 않습니다)">
+    <button type="button" class="btn btn-primary js-note">추가</button>
+  </div>
+
+  <div class="note-list" id="note-list">
+    {% for n in c.notes %}
+    <div class="note-item">
+      <div class="note-head">
+        <span class="note-author">{{ n.author }}</span>
+        <span class="note-date">{{ n.date }}</span>
+      </div>
+      <div class="note-text">{{ n.text }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('.mail-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      var body = document.getElementById('mail-' + row.dataset.index);
+      if (!body) { return; }
+      var open = !body.hidden;
+      body.hidden = open;
+      row.classList.toggle('open', !open);
+    });
+  });
+
+  var mailBtn = document.querySelector('.js-mail');
+  if (mailBtn) {
+    mailBtn.addEventListener('click', function () {
+      // TODO: 실제 연동 (메일 작성 화면 연결)
+      window.showToast('메일 작성은 가안에서 지원하지 않습니다.', 'warn');
+    });
+  }
+
+  var noteBtn = document.querySelector('.js-note');
+  if (noteBtn) {
+    noteBtn.addEventListener('click', function () {
+      var input = document.getElementById('note-input');
+      var text = input.value.trim();
+      if (!text) { window.showToast('메모 내용을 입력하세요.', 'warn'); return; }
+
+      // 화면에서만 추가한다 (새로고침하면 사라진다)
+      var item = document.createElement('div');
+      item.className = 'note-item';
+      item.innerHTML =
+        '<div class="note-head"><span class="note-author">{{ current_user }}</span>' +
+        '<span class="note-date">방금</span></div><div class="note-text"></div>';
+      item.querySelector('.note-text').textContent = text;
+      document.getElementById('note-list').prepend(item);
+
+      input.value = '';
+      window.showToast('메모를 추가했습니다. (가안이라 저장되지는 않습니다)');
+    });
+  }
+})();
+</script>
+{% endblock %}

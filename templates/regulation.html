@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form class="card filter-bar" method="get" action="{{ url_for('regulation') }}">
+  <div class="filter-field grow">
+    <label class="field-label" for="q">성분 검색</label>
+    <input class="input" type="text" name="q" id="q" value="{{ selected.q }}"
+           placeholder="성분명 또는 INCI 명으로 검색 (예: 레티놀, Retinol)">
+  </div>
+
+  <div class="filter-field">
+    <label class="field-label" for="country">판매 국가</label>
+    <select class="select select-inline" name="country" id="country">
+      <option value="all" {% if selected.country == 'all' %}selected{% endif %}>전체 국가</option>
+      {% for c in countries %}
+      <option value="{{ c.code }}" {% if selected.country == c.code %}selected{% endif %}>{{ c.flag }} {{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-field">
+    <label class="field-label" for="status">판정</label>
+    <select class="select select-inline" name="status" id="status">
+      <option value="all" {% if selected.status == 'all' %}selected{% endif %}>전체 판정</option>
+      {% for key, meta in status_meta.items() %}
+      <option value="{{ key }}" {% if selected.status == key %}selected{% endif %}>{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-actions">
+    <button type="submit" class="btn btn-primary">검색</button>
+    <a class="btn" href="{{ url_for('regulation') }}">초기화</a>
+  </div>
+</form>
+
+<div class="summary-grid summary-grid-3">
+  <div class="summary-card">
+    <div class="summary-label">검색 결과</div>
+    <div class="summary-value">{{ counts.total }}건</div>
+  </div>
+  <div class="summary-card {% if counts.warn %}warn{% endif %}">
+    <div class="summary-label">주의 필요</div>
+    <div class="summary-value {% if counts.warn %}text-orange{% endif %}">{{ counts.warn }}건</div>
+  </div>
+  <div class="summary-card {% if counts.ban %}danger{% endif %}">
+    <div class="summary-label">사용 불가</div>
+    <div class="summary-value {% if counts.ban %}text-red{% endif %}">{{ counts.ban }}건</div>
+  </div>
+</div>
+
+<div class="reg-grid">
+  <section class="card">
+    <h2 class="card-title">성분별 규제 판정 <span class="count-chip">{{ rows|length }}</span></h2>
+    <p class="card-desc">
+      현재 분석 중인 개발요청서(Glowtree Beauty · 비타민C 세럼)의 요청 농도를 기준으로 대조한 결과입니다.
+      행을 클릭하면 근거 규정과 메모를 볼 수 있습니다.
+    </p>
+
+    <table class="item-table reg-table">
+      <thead>
+        <tr>
+          <th class="col-country">국가</th>
+          <th>성분</th>
+          <th class="col-req">요청 농도</th>
+          <th class="col-limit">허용 기준</th>
+          <th class="col-status">판정</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr class="reg-row" data-key="{{ row.key }}">
+          <td class="col-country">{{ row.country_flag }} {{ row.country_name }}</td>
+          <td>
+            <div class="reg-name">{{ row.name }}</div>
+            <div class="reg-inci">{{ row.inci }}</div>
+          </td>
+          <td class="col-req">{{ row.requested }}</td>
+          <td class="col-limit">{{ row.limit }}</td>
+          <td class="col-status">
+            <span class="status-badge {{ status_meta[row.status].css }}">{{ status_meta[row.status].label }}</span>
+          </td>
+        </tr>
+        <tr class="reg-detail-row" id="detail-{{ row.key }}" hidden>
+          <td colspan="5">
+            <div class="reg-detail">
+              <div class="reg-detail-item">
+                <span class="reg-detail-label">근거 규정</span>
+                <span>{{ row.rule }}</span>
+              </div>
+              <div class="reg-detail-item">
+                <span class="reg-detail-label">성분 분류</span>
+                <span>{{ row.category }}</span>
+              </div>
+              <div class="reg-detail-item">
+                <span class="reg-detail-label">최신 개정</span>
+                <span>{{ row.updated }}</span>
+              </div>
+              {% if row.note %}
+              <p class="reg-detail-note">{{ row.note }}</p>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="empty-row" colspan="5">조건에 맞는 규제 정보가 없습니다.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <aside class="reg-side">
+    {% if country_detail %}
+    <section class="card">
+      <h2 class="card-title">{{ country_detail.flag }} {{ country_detail.name }} 등록 절차</h2>
+      <p class="card-desc">{{ country_detail.authority }}</p>
+
+      <div class="info-row">
+        <span class="info-label">제도</span>
+        <span class="info-value">{{ country_detail.scheme }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">소요 기간</span>
+        <span class="info-value">{{ country_detail.period }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">라벨 요구</span>
+        <span class="info-value">{{ country_detail.label }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">필요 서류</span>
+        <span class="info-value">
+          {% for doc in country_detail.documents %}<span class="pill soft">{{ doc }}</span>{% endfor %}
+        </span>
+      </div>
+
+      <div class="reg-box compact">
+        <div class="reg-head">⚠️ 주의</div>
+        <p class="reg-message">{{ country_detail.caution }}</p>
+      </div>
+    </section>
+    {% else %}
+    <section class="card">
+      <h2 class="card-title">국가별 등록 개요</h2>
+      <p class="card-desc">국가를 선택하면 등록 절차와 필요 서류를 볼 수 있습니다.</p>
+      {% for c in countries %}
+      <a class="country-row" href="{{ url_for('regulation', country=c.code, q=selected.q, status=selected.status) }}">
+        <span class="country-flag">{{ c.flag }}</span>
+        <span>
+          <span class="country-name">{{ c.name }}</span>
+          <span class="country-authority">{{ c.authority }}</span>
+        </span>
+        <span class="country-arrow">›</span>
+      </a>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <section class="card">
+      <h2 class="card-title">분석 결과와 연동</h2>
+      <p class="card-desc">개발요청서에서 발견된 규제 주의 성분입니다.</p>
+      <div class="link-card">
+        <div class="link-card-main">Retinol 0.5% · EU 기준 초과 가능성</div>
+        <div class="link-card-sub">Glowtree_Beauty_Development_Request.pdf</div>
+      </div>
+      <a class="btn btn-ghost full" href="{{ url_for('result') }}">분석 결과로 돌아가기</a>
+    </section>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('.reg-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      var detail = document.getElementById('detail-' + row.dataset.key);
+      if (!detail) { return; }
+      var open = !detail.hidden;
+      detail.hidden = open;
+      row.classList.toggle('open', !open);
+    });
+  });
+})();
+</script>
+{% endblock %}

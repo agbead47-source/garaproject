@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if not ready %}
+<form id="sample-form" class="sample-upload" method="post" action="{{ url_for('sample') }}">
+  <input type="hidden" name="file_name" id="file-name-field">
+
+  <section class="card">
+    <h2 class="card-title">개발요청서로 샘플 미리 보기</h2>
+    <p class="card-desc">
+      요청서를 올리면 AI가 요구 조건을 읽어 사내 처방 DB와 대조하고, 만들 수 있는 샘플 후보를 제안합니다.
+      가안에서는 어떤 파일을 올려도 같은 더미 결과가 나옵니다.
+    </p>
+
+    <div id="dropzone" class="dropzone" tabindex="0">
+      <div class="dropzone-icon">🧪</div>
+      <div class="dropzone-main">개발요청서를 끌어다 놓거나 <span class="link-like">클릭해서 선택</span>하세요</div>
+      <div class="dropzone-sub">PDF, DOCX, XLSX, JPG/PNG 지원 · 1개 파일</div>
+      <input type="file" id="file-input" class="hidden-input"
+             accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png">
+    </div>
+
+    <div id="file-chip" class="file-chip" hidden>
+      <span class="file-chip-icon">📎</span>
+      <span id="file-chip-name" class="file-chip-name"></span>
+      <span id="file-chip-size" class="file-chip-size"></span>
+      <button type="button" id="file-remove" class="file-chip-remove" aria-label="파일 삭제">✕</button>
+    </div>
+
+    <div class="sample-row">
+      <button type="submit" class="btn btn-primary">✨ AI 샘플 생성</button>
+      <span class="sample-hint">파일 없이 눌러도 샘플 요청서로 체험할 수 있습니다.</span>
+    </div>
+  </section>
+
+  <section class="card how-card">
+    <h2 class="card-title">AI가 만들어 주는 것</h2>
+    <div class="how-row"><span class="how-icon">1</span>
+      <div><div class="how-title">요청 조건 해석</div>
+      <div class="how-desc">제형, 성분, 클레임, 단가, 납기를 항목으로 뽑아냅니다.</div></div>
+    </div>
+    <div class="how-row"><span class="how-icon">2</span>
+      <div><div class="how-title">사내 처방 DB 매칭</div>
+      <div class="how-desc">비슷한 양산 이력이 있는 처방을 찾아 매칭률을 계산합니다.</div></div>
+    </div>
+    <div class="how-row"><span class="how-icon">3</span>
+      <div><div class="how-title">샘플 후보 제안</div>
+      <div class="how-desc">기본안·규제 대응안·원가 절감안으로 나누어 3가지를 제시합니다.</div></div>
+    </div>
+    <div class="how-row"><span class="how-icon">4</span>
+      <div><div class="how-title">예상 원가·리스크 계산</div>
+      <div class="how-desc">개당 원가, 안정성 리스크, 규제 주의사항을 함께 보여줍니다.</div></div>
+    </div>
+  </section>
+</form>
+
+<div id="loading" class="loading-overlay" hidden>
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <div id="loading-text" class="loading-text">요청 조건을 읽는 중…</div>
+    <div class="loading-sub">가안에서는 실제 생성 없이 더미 결과를 보여줍니다.</div>
+  </div>
+</div>
+
+{% else %}
+
+<section class="card result-summary">
+  <div class="result-head">
+    <div>
+      <span class="result-file">📄 {{ result.file_name }}</span>
+      <span class="result-meta">{{ result.customer }} · {{ result.product }} · {{ result.volume }}</span>
+    </div>
+    <a class="btn" href="{{ url_for('sample') }}">다른 요청서로 다시 만들기</a>
+  </div>
+  <p class="card-desc no-margin">{{ result.summary }}</p>
+  <div class="ai-meta">
+    <span class="ai-chip">읽어낸 항목 {{ result.read_items }}개</span>
+    <span class="ai-chip">대조한 사내 처방 {{ result.matched_formulas }}건</span>
+    <span class="ai-chip">목표 단가 {{ result.target_price }}</span>
+    <span class="ai-chip">MOQ {{ result.moq }}</span>
+  </div>
+</section>
+
+<h2 class="section-title">샘플 후보 {{ result.candidates|length }}종</h2>
+<div class="cand-grid">
+  {% for c in result.candidates %}
+  <a class="cand-card {% if c.id == picked.id %}selected{% endif %}"
+     href="{{ url_for('sample', ready='1', pick=c.id) }}">
+    <div class="cand-head">
+      <span class="cand-id">샘플 {{ c.id }}</span>
+      {% if c.recommended %}<span class="cand-rec">추천</span>{% endif %}
+      <span class="cand-match">매칭 {{ c.match }}%</span>
+    </div>
+    <div class="cand-name">{{ c.name }}</div>
+    <p class="cand-concept">{{ c.concept }}</p>
+    <div class="cand-foot">
+      <span class="cand-cost">{{ c.cost }}</span>
+      <span class="status-badge {{ risk_meta[c.risk].css }}">{{ risk_meta[c.risk].label }}</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="sample-grid">
+  <section class="card">
+    <div class="doc-head">
+      <h2 class="doc-title">샘플 {{ picked.id }} · {{ picked.name }}</h2>
+      <div class="doc-meta">{{ picked.concept }}</div>
+    </div>
+
+    <div class="doc-section">
+      <h3 class="doc-heading">제형 정보</h3>
+      <div class="spec-grid">
+        <div class="spec-item"><span class="spec-label">베이스</span><span class="spec-value">{{ picked.base }}</span></div>
+        <div class="spec-item"><span class="spec-label">텍스처</span><span class="spec-value">{{ picked.texture }}</span></div>
+        <div class="spec-item"><span class="spec-label">마무리감</span><span class="spec-value">{{ picked.finish }}</span></div>
+        <div class="spec-item"><span class="spec-label">pH 범위</span><span class="spec-value">{{ picked.ph }}</span></div>
+        <div class="spec-item"><span class="spec-label">예상 원가</span><span class="spec-value">{{ picked.cost }}</span></div>
+        <div class="spec-item"><span class="spec-label">샘플 일정</span><span class="spec-value">{{ picked.lead_time }}</span></div>
+      </div>
+      <p class="spec-note">{{ picked.margin }}</p>
+    </div>
+
+    <div class="doc-section">
+      <h3 class="doc-heading">주요 활성 성분</h3>
+      <table class="item-table">
+        <thead>
+          <tr><th>성분</th><th class="col-pct">함량</th><th class="col-role">역할</th></tr>
+        </thead>
+        <tbody>
+          {% for a in picked.actives %}
+          <tr>
+            <td>{{ a.name }}</td>
+            <td class="col-pct">{{ a.percent }}</td>
+            <td class="col-role">{{ a.role }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="doc-section">
+      <h3 class="doc-heading">예상 처방표 <span class="count-chip">가안</span></h3>
+      <table class="item-table formula-table">
+        <thead>
+          <tr><th class="col-phase">상</th><th>원료명</th><th class="col-pct">함량(%)</th><th class="col-role">역할</th></tr>
+        </thead>
+        <tbody>
+          {% for f in result.formula %}
+          <tr>
+            <td class="col-phase">{{ f.phase }}</td>
+            <td>{{ f.name }}</td>
+            <td class="col-pct">{{ f.percent }}</td>
+            <td class="col-role">{{ f.role }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="spec-note">실제 처방은 연구소 검토 후 확정됩니다. 위 수치는 참고용 더미 값입니다.</p>
+    </div>
+  </section>
+
+  <aside class="sample-side">
+    <section class="card">
+      <h2 class="card-title">예상 사용감</h2>
+      <p class="card-desc">유사 처방의 관능 평가 데이터를 기반으로 추정한 값입니다.</p>
+      {% for s in picked.sensory %}
+      <div class="sensory-row">
+        <span class="sensory-label">{{ s.label }}</span>
+        <span class="conf-bar"><span class="conf-fill sensory" style="width: {{ s.score }}%"></span></span>
+        <span class="conf-num">{{ s.score }}</span>
+      </div>
+      {% endfor %}
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">확인 필요 사항</h2>
+      <div class="reg-box compact">
+        <div class="reg-head">⚠️ {{ risk_meta[picked.risk].label }}</div>
+        <p class="reg-message">{{ picked.risk_note }}</p>
+      </div>
+      <ul class="caution-list">
+        {% for c in picked.cautions %}
+        <li>{{ c }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">유사 양산 사례</h2>
+      <p class="card-desc">사내 처방 DB에서 찾은 비슷한 건입니다.</p>
+      {% for s in picked.similar %}
+      <div class="case-row">
+        <div class="case-head">
+          <span class="case-product">{{ s.product }}</span>
+          <span class="case-year">{{ s.year }}</span>
+        </div>
+        <div class="case-customer">{{ s.customer }}</div>
+        <div class="case-note">{{ s.note }}</div>
+      </div>
+      {% endfor %}
+    </section>
+
+    <div class="action-group stacked">
+      <button type="button" class="btn btn-primary full js-request">🧪 연구소에 샘플 의뢰</button>
+      <button type="button" class="btn full js-download">⬇️ 처방표 다운로드</button>
+    </div>
+  </aside>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('sample-form');
+
+  if (form) {
+    var dropzone = document.getElementById('dropzone');
+    var fileInput = document.getElementById('file-input');
+    var chip = document.getElementById('file-chip');
+    var chipName = document.getElementById('file-chip-name');
+    var chipSize = document.getElementById('file-chip-size');
+    var removeBtn = document.getElementById('file-remove');
+    var nameField = document.getElementById('file-name-field');
+    var overlay = document.getElementById('loading');
+    var loadingText = document.getElementById('loading-text');
+
+    function formatSize(bytes) {
+      if (bytes < 1024) { return bytes + ' B'; }
+      if (bytes < 1024 * 1024) { return (bytes / 1024).toFixed(1) + ' KB'; }
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    // 파일명과 용량만 표시한다 (내용은 서버로 보내지 않는다)
+    function showFile(file) {
+      chipName.textContent = file.name;
+      chipSize.textContent = formatSize(file.size);
+      nameField.value = file.name;
+      chip.hidden = false;
+      dropzone.classList.add('has-file');
+    }
+
+    dropzone.addEventListener('click', function () { fileInput.click(); });
+    dropzone.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+    });
+
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files.length) { showFile(fileInput.files[0]); }
+    });
+
+    ['dragenter', 'dragover'].forEach(function (type) {
+      dropzone.addEventListener(type, function (e) {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(function (type) {
+      dropzone.addEventListener(type, function (e) {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+      });
+    });
+
+    dropzone.addEventListener('drop', function (e) {
+      if (e.dataTransfer.files.length) { showFile(e.dataTransfer.files[0]); }
+    });
+
+    removeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      fileInput.value = '';
+      nameField.value = '';
+      chip.hidden = true;
+      dropzone.classList.remove('has-file');
+    });
+
+    window.addEventListener('pageshow', function () { overlay.hidden = true; });
+
+    // 로딩 연출 (setTimeout 으로 문구만 바꾼다)
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      overlay.hidden = false;
+      loadingText.textContent = '요청 조건을 읽는 중…';
+      setTimeout(function () { loadingText.textContent = '사내 처방 DB와 대조하는 중…'; }, 900);
+      setTimeout(function () { loadingText.textContent = '샘플 후보를 만드는 중…'; }, 1800);
+      setTimeout(function () { form.submit(); }, 2600);
+    });
+  }
+
+  var requestBtn = document.querySelector('.js-request');
+  if (requestBtn) {
+    requestBtn.addEventListener('click', function () {
+      // TODO: 실제 연동 (연구소 샘플 의뢰 전송)
+      window.showToast('연구소 김연구 님에게 샘플 의뢰를 전달했습니다.');
+    });
+  }
+
+  var downloadBtn = document.querySelector('.js-download');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', function () {
+      window.showToast('가안에서는 지원하지 않습니다.', 'warn');
+    });
+  }
+})();
+</script>
+{% endblock %}

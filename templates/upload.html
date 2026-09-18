@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form id="upload-form" class="upload-grid" method="post" action="{{ url_for('analyze') }}">
+  <input type="hidden" name="file_name" id="file-name-field">
+  <input type="hidden" name="is_sample" id="is-sample-field" value="0">
+
+  <section class="card">
+    <h2 class="card-title">개발요청서 업로드</h2>
+    <p class="card-desc">발주업체에서 받은 개발요청서를 올려 주세요. 파일은 이 가안에서 분석에 사용되지 않습니다.</p>
+
+    <div id="dropzone" class="dropzone" tabindex="0">
+      <div class="dropzone-icon">📄</div>
+      <div class="dropzone-main">파일을 여기로 끌어다 놓거나 <span class="link-like">클릭해서 선택</span>하세요</div>
+      <div class="dropzone-sub">PDF, DOCX, XLSX, JPG/PNG 지원 · 1개 파일</div>
+      <input type="file" id="file-input" class="hidden-input"
+             accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png">
+    </div>
+
+    <div id="file-chip" class="file-chip" hidden>
+      <span class="file-chip-icon">📎</span>
+      <span id="file-chip-name" class="file-chip-name"></span>
+      <span id="file-chip-size" class="file-chip-size"></span>
+      <button type="button" id="file-remove" class="file-chip-remove" aria-label="파일 삭제">✕</button>
+    </div>
+
+    <div class="sample-row">
+      <button type="button" id="sample-btn" class="btn btn-ghost">✨ 샘플 개발요청서로 체험하기</button>
+      <span class="sample-hint">파일 없이 바로 결과 화면을 볼 수 있습니다.</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">분석 옵션</h2>
+
+    <div class="field">
+      <label class="field-label" for="customer">고객사</label>
+      <select class="select" name="customer" id="customer">
+        {% for c in customers %}
+        <option value="{{ c.name }}">{{ c.name }} ({{ c.country }})</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field">
+      <span class="field-label">전달 대상</span>
+      <div class="check-row">
+        <label class="check"><input type="checkbox" name="targets" value="연구소" checked> 🧪 연구소</label>
+        <label class="check"><input type="checkbox" name="targets" value="공장" checked> 🏭 공장</label>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="lang">출력 언어</label>
+      <select class="select" name="lang" id="lang">
+        {% for l in languages %}
+        <option value="{{ l.code }}">{{ l.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="action-row">
+      <button type="submit" id="analyze-btn" class="btn btn-primary">분석 시작</button>
+    </div>
+  </section>
+</form>
+
+<div id="loading" class="loading-overlay" hidden>
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <div id="loading-text" class="loading-text">문서를 읽는 중…</div>
+    <div class="loading-sub">가안에서는 실제 분석 없이 더미 결과를 보여줍니다.</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('upload-form');
+  var dropzone = document.getElementById('dropzone');
+  var fileInput = document.getElementById('file-input');
+  var chip = document.getElementById('file-chip');
+  var chipName = document.getElementById('file-chip-name');
+  var chipSize = document.getElementById('file-chip-size');
+  var removeBtn = document.getElementById('file-remove');
+  var nameField = document.getElementById('file-name-field');
+  var sampleField = document.getElementById('is-sample-field');
+  var sampleBtn = document.getElementById('sample-btn');
+  var overlay = document.getElementById('loading');
+  var loadingText = document.getElementById('loading-text');
+
+  function formatSize(bytes) {
+    if (bytes < 1024) { return bytes + ' B'; }
+    if (bytes < 1024 * 1024) { return (bytes / 1024).toFixed(1) + ' KB'; }
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  // 파일명과 용량만 표시한다 (내용은 서버로 보내지 않는다)
+  function showFile(file) {
+    chipName.textContent = file.name;
+    chipSize.textContent = formatSize(file.size);
+    nameField.value = file.name;
+    chip.hidden = false;
+    dropzone.classList.add('has-file');
+  }
+
+  function clearFile() {
+    fileInput.value = '';
+    nameField.value = '';
+    chip.hidden = true;
+    dropzone.classList.remove('has-file');
+  }
+
+  dropzone.addEventListener('click', function () { fileInput.click(); });
+  dropzone.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+  });
+
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files.length) { showFile(fileInput.files[0]); }
+  });
+
+  ['dragenter', 'dragover'].forEach(function (type) {
+    dropzone.addEventListener(type, function (e) {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+  });
+
+  ['dragleave', 'drop'].forEach(function (type) {
+    dropzone.addEventListener(type, function (e) {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+    });
+  });
+
+  dropzone.addEventListener('drop', function (e) {
+    if (e.dataTransfer.files.length) { showFile(e.dataTransfer.files[0]); }
+  });
+
+  removeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    clearFile();
+  });
+
+  // 뒤로가기(bfcache)로 돌아왔을 때 로딩 화면이 남아 있지 않게 한다
+  window.addEventListener('pageshow', function () {
+    overlay.hidden = true;
+  });
+
+  // 로딩 연출 (setTimeout 으로 문구만 바꾼다)
+  function runLoading() {
+    overlay.hidden = false;
+    loadingText.textContent = '문서를 읽는 중…';
+    setTimeout(function () { loadingText.textContent = '항목 추출 중…'; }, 1000);
+    setTimeout(function () { form.submit(); }, 2000);
+  }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    runLoading();
+  });
+
+  sampleBtn.addEventListener('click', function () {
+    sampleField.value = '1';
+    nameField.value = 'Glowtree_Beauty_Development_Request.pdf';
+    runLoading();
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="convert-bar">
+  <div class="tabs">
+    {% for cat in categories %}
+    <a class="tab {% if selected_category == cat.value %}active{% endif %}"
+       href="{{ url_for('trends', category=cat.value) }}">{{ cat.label }}</a>
+    {% endfor %}
+  </div>
+  <div class="trend-meta">
+    <span class="trend-date">기준일 {{ data.date }}</span>
+    <span class="trend-source">{{ data.source }}</span>
+  </div>
+</div>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-label">급상승 키워드</div>
+    <div class="summary-value">{{ data.rising_count }}건</div>
+  </div>
+  <div class="summary-card warn">
+    <div class="summary-label">신규 진입</div>
+    <div class="summary-value text-orange">{{ data.new_count }}건</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">관심 국가</div>
+    <div class="summary-value">{{ data.hot_market }}</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">분석 게시물</div>
+    <div class="summary-value">{{ data.post_count }}</div>
+  </div>
+</div>
+
+<div class="trend-grid">
+  <section class="card">
+    <h2 class="card-title">키워드 랭킹 <span class="count-chip">{{ data.keywords|length }}</span></h2>
+    <p class="card-desc">최근 7일 언급량 기준. 순위 변동은 전주 대비입니다.</p>
+
+    <table class="item-table trend-table">
+      <thead>
+        <tr>
+          <th class="col-rank">순위</th>
+          <th>키워드</th>
+          <th class="col-volume">언급량</th>
+          <th class="col-growth">증감률</th>
+          <th class="col-action"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in data.keywords %}
+        <tr class="trend-row">
+          <td class="col-rank">
+            <span class="rank-num">{{ row.rank }}</span>
+            <span class="rank-move {{ row.move }}">{{ row.move_label }}</span>
+          </td>
+          <td>
+            <div class="trend-keyword">{{ row.keyword }}</div>
+            <div class="trend-en">{{ row.en }} · {{ row.category_label }}</div>
+            <div class="trend-note">{{ row.note }}</div>
+            <div class="trend-markets">
+              {% for m in row.markets %}<span class="pill soft">{{ m }}</span>{% endfor %}
+            </div>
+          </td>
+          <td class="col-volume">
+            <div class="conf">
+              <span class="conf-bar"><span class="conf-fill trend" style="width: {{ row.ratio }}%"></span></span>
+            </div>
+            <div class="trend-volume-num">{{ '{:,}'.format(row.volume) }}</div>
+          </td>
+          <td class="col-growth">
+            <span class="growth {% if row.growth > 0 %}up{% elif row.growth < 0 %}down{% endif %}">
+              {% if row.growth > 0 %}+{% endif %}{{ row.growth }}%
+            </span>
+          </td>
+          <td class="col-action">
+            <button type="button" class="btn btn-mini js-brief" data-keyword="{{ row.keyword }}">요청서 초안</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="empty-row" colspan="5">해당 카테고리의 트렌드가 없습니다.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <aside class="trend-side">
+    <section class="card">
+      <h2 class="card-title">성분 트렌드</h2>
+      <p class="card-desc">문의·언급량 기준 증감률입니다.</p>
+      {% for ing in data.ingredients %}
+      <div class="ing-row">
+        <span class="ing-name">{{ ing.name }}</span>
+        <span class="growth {{ ing.signal }}">
+          {% if ing.growth > 0 %}+{% endif %}{{ ing.growth }}%
+        </span>
+        <span class="ing-note">{{ ing.note }}</span>
+      </div>
+      {% endfor %}
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">국가별 관심 카테고리</h2>
+      <p class="card-desc">고객사가 있는 시장 중심으로 정리했습니다.</p>
+      {% for m in data.markets %}
+      <div class="market-row">
+        <span class="market-flag">{{ m.flag }}</span>
+        <div class="market-body">
+          <div class="market-head">
+            <span class="market-country">{{ m.country }}</span>
+            <span class="growth up">+{{ m.growth }}%</span>
+          </div>
+          <div class="market-top">{{ m.top }}</div>
+          <div class="market-note">{{ m.note }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">시장 소식</h2>
+      <p class="card-desc">경쟁사·규제·원료 관련 더미 뉴스입니다.</p>
+      {% for n in data.news %}
+      <div class="news-row">
+        <div class="news-head">
+          <span class="news-tag {{ n.css }}">{{ n.tag }}</span>
+          <span class="news-date">{{ n.date }}</span>
+        </div>
+        <div class="news-title">{{ n.title }}</div>
+        <div class="news-summary">{{ n.summary }}</div>
+      </div>
+      {% endfor %}
+    </section>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('.js-brief').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      // TODO: 실제 연동 (트렌드 키워드로 개발요청서 초안 생성)
+      window.showToast('"' + btn.dataset.keyword + '" 요청서 초안은 가안에서 지원하지 않습니다.', 'warn');
+    });
+  });
+})();
+</script>
+{% endblock %}

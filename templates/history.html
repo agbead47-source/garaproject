@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form class="card filter-bar" method="get" action="{{ url_for('history') }}">
+  <div class="filter-field">
+    <label class="field-label" for="period">기간</label>
+    <select class="select select-inline" name="period" id="period">
+      {% for p in periods %}
+      <option value="{{ p.value }}" {% if selected.period == p.value %}selected{% endif %}>{{ p.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-field">
+    <label class="field-label" for="customer">고객사</label>
+    <select class="select select-inline" name="customer" id="customer">
+      <option value="all" {% if selected.customer == 'all' %}selected{% endif %}>전체 고객사</option>
+      {% for c in customers %}
+      <option value="{{ c.name }}" {% if selected.customer == c.name %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-field">
+    <label class="field-label" for="status">상태</label>
+    <select class="select select-inline" name="status" id="status">
+      <option value="all" {% if selected.status == 'all' %}selected{% endif %}>전체 상태</option>
+      {% for key, meta in status_meta.items() %}
+      <option value="{{ key }}" {% if selected.status == key %}selected{% endif %}>{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-actions">
+    <button type="submit" class="btn btn-primary">조회</button>
+    <a class="btn" href="{{ url_for('history') }}">초기화</a>
+  </div>
+</form>
+
+<section class="card">
+  <h2 class="card-title">처리 이력 <span class="count-chip">{{ rows|length }} / {{ total }}</span></h2>
+  <p class="card-desc">행을 클릭하면 해당 건의 분석 결과를 볼 수 있습니다.</p>
+
+  <table class="item-table history-table">
+    <thead>
+      <tr>
+        <th class="col-date">접수일</th>
+        <th class="col-customer">고객사</th>
+        <th>문서명</th>
+        <th class="col-lang">원문 언어</th>
+        <th class="col-target">전달 대상</th>
+        <th class="col-status">상태</th>
+        <th class="col-manager">담당자</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr class="history-row" data-href="{{ url_for('result') }}">
+        <td class="col-date">{{ row.date }}</td>
+        <td class="col-customer">{{ row.customer }}</td>
+        <td class="file-cell">📄 {{ row.file_name }}</td>
+        <td class="col-lang">{{ row.source_lang }}</td>
+        <td class="col-target">
+          {% for t in row.targets %}<span class="pill">{{ t }}</span>{% endfor %}
+        </td>
+        <td class="col-status">
+          <span class="status-badge {{ status_meta[row.status].css }}">{{ status_meta[row.status].label }}</span>
+        </td>
+        <td class="col-manager">{{ row.manager }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td class="empty-row" colspan="7">조건에 맞는 처리 이력이 없습니다.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('.history-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      window.location.href = row.dataset.href;
+    });
+  });
+})();
+</script>
+{% endblock %}

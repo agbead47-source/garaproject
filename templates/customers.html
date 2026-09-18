@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form class="card filter-bar" method="get" action="{{ url_for('customers') }}">
+  <div class="filter-field grow">
+    <label class="field-label" for="q">고객사 검색</label>
+    <input class="input" type="text" name="q" id="q" value="{{ selected.q }}"
+           placeholder="회사명, 바이어명, 국가로 검색">
+  </div>
+
+  <div class="filter-field">
+    <label class="field-label" for="grade">등급</label>
+    <select class="select select-inline" name="grade" id="grade">
+      <option value="all" {% if selected.grade == 'all' %}selected{% endif %}>전체 등급</option>
+      {% for key, meta in grade_meta.items() %}
+      <option value="{{ key }}" {% if selected.grade == key %}selected{% endif %}>{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-actions">
+    <button type="submit" class="btn btn-primary">검색</button>
+    <a class="btn" href="{{ url_for('customers') }}">초기화</a>
+  </div>
+</form>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-label">등록 고객사</div>
+    <div class="summary-value">{{ summary.total }}곳</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">VIP 고객사</div>
+    <div class="summary-value">{{ summary.vip }}곳</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">진행 중인 건</div>
+    <div class="summary-value">{{ summary.active }}건</div>
+  </div>
+  <div class="summary-card warn">
+    <div class="summary-label">확인 필요 메일</div>
+    <div class="summary-value text-orange">{{ summary.unread }}건</div>
+  </div>
+</div>
+
+<div class="cust-grid">
+  {% for c in rows %}
+  <a class="card cust-card" href="{{ url_for('customer_detail', customer_id=c.id) }}">
+    <div class="cust-head">
+      <span class="cust-flag">{{ c.flag }}</span>
+      <div class="cust-title">
+        <div class="cust-name">{{ c.name }}</div>
+        <div class="cust-place">{{ c.city }} · {{ c.country }}</div>
+      </div>
+      <span class="grade-badge {{ grade_meta[c.grade].css }}">{{ grade_meta[c.grade].label }}</span>
+    </div>
+
+    <div class="cust-buyer">
+      <span class="cust-buyer-name">{{ c.buyer.name }}</span>
+      <span class="cust-buyer-title">{{ c.buyer.title }}</span>
+      <div class="cust-buyer-mail">✉️ {{ c.buyer.email }}</div>
+    </div>
+
+    <div class="cust-tags">
+      {% for t in c.tags %}<span class="pill soft">{{ t }}</span>{% endfor %}
+    </div>
+
+    <div class="cust-stats">
+      <div class="cust-stat"><span class="cust-stat-num">{{ c.stats.orders }}</span><span class="cust-stat-label">누적 발주</span></div>
+      <div class="cust-stat"><span class="cust-stat-num">{{ c.stats.active }}</span><span class="cust-stat-label">진행 중</span></div>
+      <div class="cust-stat"><span class="cust-stat-num">{{ c.requests|length }}</span><span class="cust-stat-label">요청사항</span></div>
+      <div class="cust-stat"><span class="cust-stat-num">{{ c.stats.avg_reply }}</span><span class="cust-stat-label">평균 회신</span></div>
+    </div>
+
+    <div class="cust-foot">
+      <span>담당 {{ c.manager }}</span>
+      <span>최근 연락 {{ c.last_contact }}</span>
+    </div>
+  </a>
+  {% else %}
+  <div class="card empty-card">조건에 맞는 고객사가 없습니다.</div>
+  {% endfor %}
+</div>
+{% endblock %}
