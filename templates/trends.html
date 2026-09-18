@@ -1,6 +1,135 @@
 {% extends "base.html" %}
 
 {% block content %}
+<!-- ============ 성분 관심도 (실데이터) ============ -->
+<section class="card live-head-card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        성분 관심도 <span class="data-badge live">실시간</span>
+      </h2>
+      <p class="card-desc no-margin">
+        {{ trend_live.source.name }} · {{ trend_live.source.project }} ·
+        최근 {{ trend_live.window_days }}일 · 수집일 {{ trend_live.updated_at or '—' }}
+      </p>
+    </div>
+    <a class="btn btn-mini" href="{{ url_for('trends', category=selected_category, refresh='1') }}">새로고침</a>
+  </div>
+
+  <p class="live-caveat">
+    위키백과 문서 조회수를 <strong>관심도 대리 지표</strong>로 씁니다. 판매량이 아니며,
+    성분명이 다의어이거나 화장품 외 뉴스가 터지면 왜곡될 수 있습니다.
+    {% if trend_live.missing %}<span class="text-orange">· 아직 수집되지 않은 성분 {{ trend_live.missing }}건</span>{% endif %}
+  </p>
+
+  <div class="summary-grid summary-grid-3 tight">
+    <div class="summary-card">
+      <div class="summary-label">수집 성분</div>
+      <div class="summary-value">{{ trend_live.collected }}/{{ trend_live.total }}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">최다 상승</div>
+      <div class="summary-value text-green">
+        {% if trend_live.rising %}+{{ '%.1f'|format(trend_live.rising[0].growth) }}%{% else %}—{% endif %}
+      </div>
+      <div class="summary-sub">{{ trend_live.rising[0].name if trend_live.rising else '' }}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">최다 하락</div>
+      <div class="summary-value text-red">
+        {% if trend_live.falling %}{{ '%.1f'|format(trend_live.falling[0].growth) }}%{% else %}—{% endif %}
+      </div>
+      <div class="summary-sub">{{ trend_live.falling[0].name if trend_live.falling else '' }}</div>
+    </div>
+  </div>
+
+  <table class="item-table live-table">
+    <thead>
+      <tr>
+        <th class="col-rank2">순위</th>
+        <th>성분</th>
+        <th class="col-cat">카테고리</th>
+        <th class="col-spark">최근 14일</th>
+        <th class="col-avg">일평균</th>
+        <th class="col-growth2">증감</th>
+        <th class="col-eu">EU 규제</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in trend_live.rows %}
+      <tr class="{% if row.status == 'pending' %}row-pending{% endif %}">
+        <td class="col-rank2">{{ row.rank or '—' }}</td>
+        <td>
+          <div class="trend-keyword">{{ row.name }}</div>
+          <div class="trend-en">{{ row.inci }}</div>
+        </td>
+        <td class="col-cat"><span class="pill soft">{{ row.category }}</span></td>
+        <td class="col-spark">
+          {% if row.spark_points %}
+          <svg class="spark" viewBox="0 0 96 26" preserveAspectRatio="none" aria-hidden="true">
+            <polyline points="{{ row.spark_points }}"
+                      class="spark-line {% if row.growth > 0 %}up{% elif row.growth < 0 %}down{% endif %}"/>
+          </svg>
+          {% else %}<span class="text-gray">—</span>{% endif %}
+        </td>
+        <td class="col-avg">
+          {% if row.status == 'pending' %}<span class="text-gray">미수집</span>
+          {% else %}{{ '{:,.0f}'.format(row.recent_avg) }}{% endif %}
+        </td>
+        <td class="col-growth2">
+          {% if row.status != 'pending' %}
+          <span class="growth {% if row.growth > 1 %}up{% elif row.growth < -1 %}down{% else %}flat{% endif %}">
+            {% if row.growth > 0 %}+{% endif %}{{ '%.1f'|format(row.growth) }}%
+          </span>
+          {% endif %}
+        </td>
+        <td class="col-eu">
+          {% if row.eu %}
+          <span class="status-badge {% if row.eu.level == 'ok' %}confirmed{% elif row.eu.level == 'warn' %}check{% else %}danger{% endif %}">{{ row.eu.label }}</span>
+          <div class="eu-detail">{{ row.eu.detail }}</div>
+          {% else %}<span class="text-gray">규제 DB 없음</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="live-split">
+    <div>
+      <h3 class="sub-title">카테고리별 관심도</h3>
+      {% for b in trend_live.categories %}
+      <div class="cat-row">
+        <span class="cat-name">{{ b.category }}</span>
+        <span class="cat-bar"><span class="cat-fill" style="width: {{ '%.1f'|format(b.ratio) }}%"></span></span>
+        <span class="growth {% if b.growth > 1 %}up{% elif b.growth < -1 %}down{% else %}flat{% endif %}">
+          {% if b.growth > 0 %}+{% endif %}{{ '%.1f'|format(b.growth) }}%
+        </span>
+        <span class="cat-note">{{ b.count }}종 · 대표 {{ b.top_name }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div>
+      <h3 class="sub-title">규제가 걸린 성분 {{ trend_live.regulated|length }}종</h3>
+      <p class="card-desc">관심도가 높아도 배합 한도가 있는 성분입니다.</p>
+      {% for r in trend_live.regulated %}
+      <div class="cat-row reg-line">
+        <span class="cat-name">{{ r.name }}</span>
+        <span class="status-badge {% if r.eu.level == 'warn' %}check{% else %}danger{% endif %}">{{ r.eu.label }}</span>
+        <span class="cat-note">{{ r.eu.detail }}</span>
+      </div>
+      {% else %}
+      <p class="card-desc no-margin">규제에 걸린 성분이 없습니다.</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<h2 class="section-title">SNS·커머스 키워드 <span class="data-badge">더미</span></h2>
+<p class="card-desc">
+  인스타·틱톡·커머스 언급량은 무료 공개 API가 없어 더미로 둡니다.
+  (연동하려면 유료 소셜 리스닝 서비스가 필요합니다)
+</p>
+
 <div class="convert-bar">
   <div class="tabs">
     {% for cat in categories %}
@@ -89,15 +218,28 @@
 
   <aside class="trend-side">
     <section class="card">
-      <h2 class="card-title">성분 트렌드</h2>
-      <p class="card-desc">문의·언급량 기준 증감률입니다.</p>
-      {% for ing in data.ingredients %}
-      <div class="ing-row">
-        <span class="ing-name">{{ ing.name }}</span>
-        <span class="growth {{ ing.signal }}">
-          {% if ing.growth > 0 %}+{% endif %}{{ ing.growth }}%
+      <h2 class="card-title">상승·하락 <span class="data-badge live">실시간</span></h2>
+      <p class="card-desc">직전 7일 대비 관심도 변화입니다.</p>
+      {% for ing in trend_live.rising %}
+      <div class="rise-row">
+        <span class="rise-rank">{{ loop.index }}</span>
+        <span class="rise-body">
+          <span class="rise-name">{{ ing.name }}</span>
+          <span class="rise-inci">{{ ing.inci }}</span>
         </span>
-        <span class="ing-note">{{ ing.note }}</span>
+        <span class="growth up">+{{ '%.1f'|format(ing.growth) }}%</span>
+      </div>
+      {% else %}
+      <p class="card-desc no-margin">아직 수집된 데이터가 없습니다.</p>
+      {% endfor %}
+      {% for ing in trend_live.falling %}
+      <div class="rise-row">
+        <span class="rise-rank down">▼</span>
+        <span class="rise-body">
+          <span class="rise-name">{{ ing.name }}</span>
+          <span class="rise-inci">{{ ing.inci }}</span>
+        </span>
+        <span class="growth down">{{ '%.1f'|format(ing.growth) }}%</span>
       </div>
       {% endfor %}
     </section>
@@ -144,7 +286,7 @@
   document.querySelectorAll('.js-brief').forEach(function (btn) {
     btn.addEventListener('click', function () {
       // TODO: 실제 연동 (트렌드 키워드로 개발요청서 초안 생성)
-      window.showToast('"' + btn.dataset.keyword + '" 요청서 초안은 가안에서 지원하지 않습니다.', 'warn');
+      window.showToast('"' + btn.dataset.keyword + '"는 더미 키워드입니다. 위쪽 성분 관심도 표에서 요청서 초안을 만들어 보세요.', 'warn');
     });
   });
 })();

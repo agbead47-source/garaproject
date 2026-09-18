@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "prospecting/_bar.html" %}
+
+<div class="pros-toolbar">
+  <div class="tabs small">
+    {% for key, label in [('today','오늘'), ('overdue','기한 지남'), ('open','예정'), ('done','완료')] %}
+    <a class="tab {% if view == key %}active{% endif %}"
+       href="{{ url_for('prospecting.followups', view=key) }}">{{ label }} ({{ counts[key] }})</a>
+    {% endfor %}
+  </div>
+  <div class="pros-toolbar-right">
+    <span class="tz-note">기준 시간대 {{ timezone_label }} · 오늘 {{ today }}</span>
+  </div>
+</div>
+
+<section class="card">
+  <h2 class="card-title">후속 업무 <span class="count-chip">{{ rows|length }}</span></h2>
+  <p class="card-desc">
+    연락 기록에 남긴 다음 할 일입니다. 완료·일정 변경은 DB에 저장됩니다.
+    상담했다고 수주로 처리하지 않습니다.
+  </p>
+
+  <table class="item-table">
+    <thead>
+      <tr>
+        <th class="col-amount">예정일</th>
+        <th>기업</th>
+        <th>할 일</th>
+        <th class="col-btype">담당</th>
+        <th class="col-stage">단계</th>
+        <th class="col-evidence">처리</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr class="{% if row.overdue %}overdue-row{% endif %}">
+        <td class="col-amount">
+          <span class="{% if row.overdue %}text-red{% endif %}">{{ row.due_date }}</span>
+          {% if row.overdue %}<div class="pros-sub text-red">기한 지남</div>{% endif %}
+        </td>
+        <td>
+          <a class="pros-name" href="{{ url_for('prospecting.prospect_detail', prospect_id=row.prospect_id, tab='contacts') }}">{{ row.company_name }}</a>
+        </td>
+        <td>{{ row.task }}</td>
+        <td class="col-btype">{{ row.owner or '—' }}</td>
+        <td class="col-stage">
+          <span class="stage-badge s-{{ row.stage }}">{{ M.STAGE_LABELS.get(row.stage, row.stage) }}</span>
+        </td>
+        <td class="col-evidence">
+          {% if row.status == 'open' %}
+          <div class="followup-actions">
+            <form method="post" action="{{ url_for('prospecting.followup_done', followup_id=row.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="next" value="{{ url_for('prospecting.followups', view=view) }}">
+              <button class="btn btn-mini" type="submit">완료</button>
+            </form>
+            <form method="post" action="{{ url_for('prospecting.followup_reschedule', followup_id=row.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="next" value="{{ url_for('prospecting.followups', view=view) }}">
+              <input class="input date-mini" type="date" name="due_date" value="{{ row.due_date }}">
+              <button class="btn btn-mini" type="submit">변경</button>
+            </form>
+          </div>
+          {% else %}
+          <span class="status-badge confirmed">완료 {{ (row.completed_at or '')[:10] }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td class="empty-row" colspan="6">해당하는 후속 업무가 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

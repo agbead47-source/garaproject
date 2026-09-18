@@ -1,0 +1,527 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "prospecting/_bar.html" %}
+
+<a class="back-link" href="{{ url_for('prospecting.prospect_list') }}">← 후보 목록</a>
+
+<section class="card profile-card">
+  <div class="profile-head">
+    <div class="profile-title">
+      <div class="profile-name">
+        {{ p.company_name }}
+        <span class="stage-badge s-{{ p.stage }}">{{ M.STAGE_LABELS.get(p.stage, p.stage) }}</span>
+        {% if p.data_mode == 'demo' %}<span class="data-badge">데모</span>{% endif %}
+      </div>
+      <div class="profile-place">
+        {{ p.brand_name or '브랜드명 미확인' }} ·
+        {% if p.official_url %}<a class="link-like" href="{{ p.official_url }}" target="_blank" rel="noopener noreferrer">{{ p.canonical_domain }}</a>
+        {% else %}도메인 미확인{% endif %}
+      </div>
+    </div>
+    <div class="action-group">
+      <a class="btn" href="{{ url_for('prospecting.proposal', prospect_id=p.id, mode=fit_mode) }}">제안 초안</a>
+      <a class="btn" href="{{ url_for('compose', account=p.company_name, country=p.sales_country or p.headquarters_country or '', kind='prospect', src='prospect') }}">개발요청서 작성</a>
+      <a class="btn" href="{{ url_for('schedule.new', account=p.company_name, country=p.sales_country or p.headquarters_country or '', kind='prospect', prospect_id=p.id, origin='prospect') }}">일정 등록</a>
+      <form method="post" action="{{ url_for('prospecting.prospect_delete', prospect_id=p.id) }}"
+            onsubmit="return confirm('이 후보와 관련 기록을 모두 삭제합니다. 계속할까요?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">삭제</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<div class="tabs">
+  {% for key, label in [('overview','기업 개요'), ('products','제품 목록'), ('fit','적합도'),
+                        ('opportunity','제안 기회'), ('contacts','연락 이력')] %}
+  <a class="tab {% if tab == key %}active{% endif %}"
+     href="{{ url_for('prospecting.prospect_detail', prospect_id=p.id, tab=key, mode=fit_mode) }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+{# ================= 기업 개요 ================= #}
+{% if tab == 'overview' %}
+<div class="pros-grid">
+  <section class="card">
+    <h2 class="card-title">기업 정보</h2>
+    <form method="post" action="{{ url_for('prospecting.prospect_edit', prospect_id=p.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="compose-fields">
+        <div class="field">
+          <label class="field-label" for="e-company">회사명</label>
+          <input class="input" type="text" name="company_name" id="e-company" value="{{ p.company_name }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-brand">브랜드명</label>
+          <input class="input" type="text" name="brand_name" id="e-brand" value="{{ p.brand_name or '' }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-url">공식 사이트</label>
+          <input class="input" type="url" name="official_url" id="e-url" value="{{ p.official_url or '' }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-contact">공개 사업 문의 경로</label>
+          <input class="input" type="url" name="contact_url" id="e-contact" value="{{ p.contact_url or '' }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-hq">소재국</label>
+          <input class="input" type="text" name="headquarters_country" id="e-hq" value="{{ p.headquarters_country or '' }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-market">판매국</label>
+          <input class="input" type="text" name="sales_country" id="e-market" value="{{ p.sales_country or '' }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-type">기업 유형</label>
+          <select class="select" name="business_type" id="e-type">
+            {% for t in M.BUSINESS_TYPES %}
+            <option value="{{ t.value }}" {% if p.business_type == t.value %}selected{% endif %}>{{ t.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-channel">발굴 경로</label>
+          <input class="input" type="text" name="source_channel" id="e-channel" value="{{ p.source_channel or '' }}">
+        </div>
+        <div class="field wide">
+          <label class="field-label" for="e-notes">메모</label>
+          <textarea class="input textarea" name="notes" id="e-notes" rows="2">{{ p.notes or '' }}</textarea>
+        </div>
+      </div>
+      <div class="action-row"><button class="btn btn-primary" type="submit">저장</button></div>
+    </form>
+  </section>
+
+  <aside class="pros-side">
+    <section class="card">
+      <h2 class="card-title">수집 범위</h2>
+      <div class="info-row">
+        <span class="info-label">최종 확인일</span>
+        <span class="info-value">{{ p.updated_at[:10] }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">수집 실행</span>
+        <span class="info-value">{{ runs|length }}회</span>
+      </div>
+      {% if runs %}
+      {% for r in runs[:4] %}
+      <div class="run-row {{ r.status }}">
+        <span class="run-status">{{ r.status }}</span>
+        <span class="run-time">{{ (r.finished_at or r.started_at)[:16] }}</span>
+        <span class="run-note">{{ r.error_summary or ('제품 %d건'|format(r.record_count)) }}</span>
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="card-desc no-margin">아직 수집을 실행하지 않았습니다.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">고객사 연결</h2>
+      <p class="card-desc">
+        이름이 비슷하다고 자동으로 합치지 않습니다. 같은 회사임을 확인한 뒤 연결하세요.
+      </p>
+      <form method="post" action="{{ url_for('prospecting.link_customer', prospect_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label class="field-label" for="cust">고객사 ID</label>
+          <input class="input" type="text" name="customer_id" id="cust" value="{{ p.customer_id or '' }}"
+                 placeholder="예: glowtree">
+        </div>
+        <button class="btn full" type="submit">고객사로 연결</button>
+      </form>
+      <h3 class="sub-title spaced-top">이어지는 화면</h3>
+      <a class="btn full" href="{{ url_for('regulation', country_hint=p.sales_country or p.headquarters_country or '') }}">국가별 규제 검색</a>
+      <a class="btn full spaced-btn" href="{{ url_for('pricing', customer=p.company_name) }}">영업단가 계산</a>
+      <p class="field-hint">
+        규제·단가 화면은 넘겨준 회사명·국가만 채웁니다. 나머지 값은 그 화면의 기본값입니다.
+      </p>
+      {% if duplicates|length > 1 %}
+      <p class="field-hint text-orange">
+        같은 도메인의 후보가 {{ duplicates|length }}건 있습니다. 중복 여부를 확인하세요.
+      </p>
+      {% endif %}
+    </section>
+  </aside>
+</div>
+
+{# ================= 제품 목록 ================= #}
+{% elif tab == 'products' %}
+<section class="card">
+  <h2 class="card-title">공식 페이지 수집</h2>
+  <p class="card-desc">
+    robots.txt 를 확인해 허용된 경로만 가져옵니다. 접근이 막히면
+    <strong>우회하지 않고 실패로 기록</strong>하며, 기존 수집 결과는 그대로 둡니다.
+  </p>
+  <form method="post" action="{{ url_for('prospecting.collect', prospect_id=p.id) }}" class="collect-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input class="input" type="url" name="url" value="{{ p.official_url or '' }}"
+           placeholder="https://example.com/collections/all">
+    <button class="btn btn-primary" type="submit">수집 실행</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2 class="card-title">
+    제품 <span class="count-chip">{{ products|length }}</span>
+  </h2>
+  {% if summary %}
+  <p class="card-desc">
+    제품군 {{ summary.category_list|join(', ') }} ·
+    가격 미확인 {{ summary.missing_price }}건 · 용량 미확인 {{ summary.missing_size }}건.
+    <strong>수집 범위 밖의 제품은 알 수 없습니다.</strong> 확인되지 않은 제품군을
+    "판매하지 않는다"고 해석하지 마세요.
+  </p>
+  {% endif %}
+  <table class="item-table">
+    <thead>
+      <tr>
+        <th>제품명</th>
+        <th class="col-btype">유형</th>
+        <th class="col-amount">용량</th>
+        <th class="col-amount">판매가</th>
+        <th class="col-evidence">출처</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in products %}
+      <tr>
+        <td>{{ item.product_name }}</td>
+        <td class="col-btype">{{ M.CATEGORY_LABELS.get(item.product_category, item.product_category or '미확인') }}</td>
+        <td class="col-amount">
+          {% if item.size_value %}{{ item.size_value|round(0)|int }}{{ item.size_unit }}
+          {% else %}<span class="text-gray">미확인</span>{% endif %}
+        </td>
+        <td class="col-amount">
+          {% if item.retail_price and item.currency %}{{ item.currency }} {{ '%.2f'|format(item.retail_price) }}
+          {% elif item.retail_price %}{{ '%.2f'|format(item.retail_price) }} <span class="text-orange">통화 미확인</span>
+          {% else %}<span class="text-gray">미확인</span>{% endif %}
+        </td>
+        <td class="col-evidence">
+          {% if item.source_url %}<a class="link-like" href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">원본</a>{% endif %}
+          <div class="pros-sub">{{ (item.collected_at or '')[:10] }}</div>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td class="empty-row" colspan="5">수집된 제품이 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="field-hint">소매 판매가는 관찰값입니다. 제조 견적가나 공급단가로 쓰지 않습니다.</p>
+</section>
+
+{% if ingredients %}
+<section class="card">
+  <h2 class="card-title">관찰된 표시 성분</h2>
+  <div class="ai-facts">
+    {% for row in ingredients[:20] %}
+    <span class="ai-fact"><b>{{ row.count }}</b> {{ row.inci_name }}</span>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{# ================= 적합도 ================= #}
+{% elif tab == 'fit' %}
+<div class="tabs small">
+  {% for m in M.MODES %}
+  <a class="tab {% if fit_mode == m.value %}active{% endif %}"
+     href="{{ url_for('prospecting.prospect_detail', prospect_id=p.id, tab='fit', mode=m.value) }}">{{ m.label }} 기준</a>
+  {% endfor %}
+</div>
+
+<div class="pros-grid">
+  <section class="card">
+    <h2 class="card-title">기준별 판정</h2>
+    <p class="card-desc">
+      규칙 버전 {{ score.rule_version }} · 가중치는 팀이 설정한 가설이며 수정 가능합니다.
+    </p>
+    <table class="item-table">
+      <thead>
+        <tr><th>기준</th><th class="col-amount">가중치</th><th class="col-btype">판정</th><th>근거</th></tr>
+      </thead>
+      <tbody>
+        {% for c in checks %}
+        <tr class="check-{{ c.outcome }}">
+          <td>
+            <div class="check-label">{{ c.label }}</div>
+            <div class="pros-sub">{{ c.hint }}</div>
+          </td>
+          <td class="col-amount">{{ c.weight }}</td>
+          <td class="col-btype">
+            <span class="status-badge {% if c.outcome == 'match' %}confirmed{% elif c.outcome == 'mismatch' %}danger{% else %}missing{% endif %}">
+              {% if c.outcome == 'match' %}일치{% elif c.outcome == 'mismatch' %}불일치{% else %}미확인{% endif %}
+            </span>
+          </td>
+          <td class="check-evidence">{{ c.evidence }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <aside class="pros-side">
+    <section class="card {% if score.blocking %}score-blocked{% endif %}">
+      <h2 class="card-title">점수</h2>
+      {% if score.fit_score is none %}
+      <div class="score-big text-gray">정보 부족</div>
+      <p class="card-desc">확인된 기준이 없어 점수를 낼 수 없습니다.</p>
+      {% else %}
+      <div class="score-big">{{ '%.0f'|format(score.fit_score) }}<span class="score-unit">점</span></div>
+      <div class="score-sub">정보 확인율 {{ '%.0f'|format(score.coverage) }}%
+        {% if score.insufficient %}<span class="status-badge check">정보 부족</span>{% endif %}
+      </div>
+      {% endif %}
+
+      <div class="info-row">
+        <span class="info-label">확인 가중치</span>
+        <span class="info-value">{{ score.confirmed_weight }} / {{ score.total_weight }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">일치 가중치</span>
+        <span class="info-value">{{ score.matched_weight }}</span>
+      </div>
+
+      {% if score.blocking %}
+      <div class="reg-box compact">
+        <div class="reg-head">⚠️ 필수조건 불일치</div>
+        <p class="reg-message">{{ score.blocking_labels|join(', ') }} — 총점과 별개로 확인이 필요합니다.</p>
+      </div>
+      {% endif %}
+
+      <p class="field-hint">
+        내부 규칙에 따른 참고값입니다. 수주 확률이나 구매 의향이 아닙니다.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">고객이 밝힌 조건</h2>
+      <p class="card-desc">상담·메일에서 확인한 값만 넣으세요. 추정값은 넣지 않습니다.</p>
+      {% for r in requirements %}
+      <div class="req-line">
+        <span class="req-field">{{ r.field_name }}</span>
+        <span class="req-value">{{ r.value }} {{ r.unit or '' }}</span>
+        <span class="status-badge {% if r.verification_status == 'verified' %}confirmed{% else %}missing{% endif %}">
+          {{ '확인됨' if r.verification_status == 'verified' else '미확인' }}
+        </span>
+        <form method="post" action="{{ url_for('prospecting.delete_requirement', prospect_id=p.id, req_id=r.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="row-del" type="submit" aria-label="삭제">✕</button>
+        </form>
+      </div>
+      {% else %}
+      <p class="card-desc no-margin">등록된 조건이 없습니다. 전 항목이 미확인으로 처리됩니다.</p>
+      {% endfor %}
+
+      <form method="post" action="{{ url_for('prospecting.add_requirement', prospect_id=p.id) }}" class="req-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <select class="select" name="field_name">
+          <option value="product_category">product_category (제품군)</option>
+          <option value="order_quantity">order_quantity (주문량)</option>
+          <option value="spec">spec (확정 사양 · OEM)</option>
+          <option value="development_request">development_request (개발 요구 · ODM)</option>
+          <option value="certification">certification (요구 인증)</option>
+          <option value="lead_time">lead_time (요구 납기)</option>
+        </select>
+        <input class="input" type="text" name="value" placeholder="예: 5,000 units" required>
+        <select class="select" name="verification_status">
+          <option value="verified">확인됨</option>
+          <option value="unverified">미확인</option>
+        </select>
+        <button class="btn btn-mini" type="submit">추가</button>
+      </form>
+    </section>
+  </aside>
+</div>
+
+{# ================= 제안 기회 ================= #}
+{% elif tab == 'opportunity' %}
+<div class="pros-grid">
+  <section class="card">
+    <h2 class="card-title">관찰된 사실</h2>
+    <p class="card-desc">수집 범위 안에서 확인한 내용입니다.</p>
+    <ul class="ai-list">
+      {% if summary.product_count %}
+      <li>공식 사이트에서 제품 {{ summary.product_count }}건 수집,
+          확인된 제품군: {{ summary.category_list|join(', ') }}</li>
+      {% else %}
+      <li>아직 수집된 제품 정보가 없습니다.</li>
+      {% endif %}
+      {% for c in checks if c.outcome == 'match' %}
+      <li>{{ c.label }}: {{ c.evidence }}</li>
+      {% endfor %}
+    </ul>
+
+    <h3 class="sub-title">미확인 사항</h3>
+    <ul class="ai-list">
+      {% for c in checks if c.outcome == 'unknown' %}
+      <li>{{ c.label }} — {{ c.evidence }}</li>
+      {% else %}
+      <li>미확인 기준이 없습니다.</li>
+      {% endfor %}
+    </ul>
+    <p class="field-hint">
+      확인되지 않은 제품군을 "판매하지 않는다"고 쓰지 않습니다. 전체 라인업을 본 것이 아닙니다.
+    </p>
+  </section>
+
+  <aside class="pros-side">
+    <section class="card">
+      <h2 class="card-title">제안 가설</h2>
+      <p class="card-desc">사실이 아니라 가설입니다. 상담에서 확인해야 합니다.</p>
+      {% for h in hypotheses %}
+      <a class="rise-row" href="{{ url_for('prospecting.proposal', prospect_id=p.id, mode=fit_mode, hypothesis=h.value) }}">
+        <span class="rise-body">
+          <span class="rise-name">{{ h.ko }}</span>
+          <span class="rise-inci">{{ h.ko_desc }}</span>
+        </span>
+        <span class="country-arrow">›</span>
+      </a>
+      {% endfor %}
+    </section>
+
+    {% if saved_proposals %}
+    <section class="card">
+      <h2 class="card-title">저장된 초안</h2>
+      {% for d in saved_proposals %}
+      <div class="req-line">
+        <span class="req-field">{{ d.mode|upper }} · {{ d.language }}</span>
+        <span class="req-value">{{ d.subject[:38] }}</span>
+        <span class="status-badge {% if d.review_status == 'reviewed' %}confirmed{% else %}missing{% endif %}">
+          {{ '검토 완료' if d.review_status == 'reviewed' else '검토 전' }}
+        </span>
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </aside>
+</div>
+
+{# ================= 연락 이력 ================= #}
+{% else %}
+<div class="pros-grid">
+  <section class="card">
+    <h2 class="card-title">연락 이력 <span class="count-chip">{{ interactions|length }}</span></h2>
+    {% for row in interactions %}
+    <div class="int-row">
+      <div class="int-head">
+        <span class="mail-dir {{ 'in' if row.direction == 'in' else 'out' }}">
+          {{ '받음' if row.direction == 'in' else '보냄' }}
+        </span>
+        <span class="int-channel">{{ row.channel }}</span>
+        <span class="int-date">{{ row.occurred_at }}</span>
+        <span class="int-owner">{{ row.owner or '' }}</span>
+      </div>
+      <div class="int-summary">{{ row.summary }}</div>
+      {% if row.outcome %}<div class="int-outcome">결과: {{ row.outcome }}</div>{% endif %}
+    </div>
+    {% else %}
+    <p class="card-desc no-margin">기록된 연락이 없습니다.</p>
+    {% endfor %}
+
+    <h3 class="sub-title">연락 기록 추가</h3>
+    <form method="post" action="{{ url_for('prospecting.add_interaction', prospect_id=p.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="compose-fields">
+        <div class="field">
+          <label class="field-label" for="i-date">연락일</label>
+          <input class="input" type="date" name="occurred_at" id="i-date" value="{{ today }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="i-channel">수단</label>
+          <select class="select" name="channel" id="i-channel">
+            {% for c in M.CHANNELS %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="i-dir">방향</label>
+          <select class="select" name="direction" id="i-dir">
+            <option value="out">보냄</option>
+            <option value="in">받음</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="i-owner">담당자</label>
+          <input class="input" type="text" name="owner" id="i-owner" value="{{ p.owner or '' }}">
+        </div>
+        <div class="field wide">
+          <label class="field-label" for="i-summary">요약</label>
+          <input class="input" type="text" name="summary" id="i-summary" required>
+        </div>
+        <div class="field">
+          <label class="field-label" for="i-outcome">결과</label>
+          <input class="input" type="text" name="outcome" id="i-outcome" placeholder="회신 / 무응답 / 상담 완료">
+        </div>
+        <div class="field">
+          <label class="field-label" for="i-due">다음 할 일 예정일</label>
+          <input class="input" type="date" name="due_date" id="i-due">
+        </div>
+        <div class="field wide">
+          <label class="field-label" for="i-task">다음 할 일</label>
+          <input class="input" type="text" name="task" id="i-task" placeholder="예: 샘플 일정 회신">
+        </div>
+      </div>
+      <div class="action-row"><button class="btn btn-primary" type="submit">저장</button></div>
+    </form>
+  </section>
+
+  <aside class="pros-side">
+    <section class="card">
+      <h2 class="card-title">영업 단계</h2>
+      <form method="post" action="{{ url_for('prospecting.prospect_stage', prospect_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label class="field-label" for="s-stage">단계 변경</label>
+          <select class="select" name="stage" id="s-stage">
+            {% for s in M.ALL_STAGES %}
+            <option value="{{ s.value }}" {% if p.stage == s.value %}selected{% endif %}>{{ s.label }}</option>
+            {% endfor %}
+          </select>
+          <p class="field-hint">이전 단계로 되돌릴 수 있습니다. 변경 이력이 남습니다.</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="s-reason">사유 (보류·종료는 필수 기재 권장)</label>
+          <input class="input" type="text" name="reason" id="s-reason">
+        </div>
+        <div class="field">
+          <label class="field-label" for="s-review">재검토일</label>
+          <input class="input" type="date" name="review_date" id="s-review" value="{{ p.review_date or '' }}">
+        </div>
+        <button class="btn full" type="submit">단계 변경</button>
+      </form>
+
+      <h3 class="sub-title">변경 이력</h3>
+      {% for e in stage_events[:8] %}
+      <div class="stage-line">
+        <span class="stage-when">{{ e.changed_at[:10] }}</span>
+        <span>{{ M.STAGE_LABELS.get(e.from_stage, e.from_stage or '—') }} → <b>{{ M.STAGE_LABELS.get(e.to_stage, e.to_stage) }}</b></span>
+        {% if e.reason %}<span class="pros-sub">{{ e.reason }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">후속 업무</h2>
+      {% for f in followups %}
+      <div class="req-line">
+        <span class="req-field {% if f.status == 'open' and f.due_date < today %}text-red{% endif %}">{{ f.due_date }}</span>
+        <span class="req-value">{{ f.task }}</span>
+        {% if f.status == 'open' %}
+        <form method="post" action="{{ url_for('prospecting.followup_done', followup_id=f.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="next" value="{{ url_for('prospecting.prospect_detail', prospect_id=p.id, tab='contacts') }}">
+          <button class="btn btn-mini" type="submit">완료</button>
+        </form>
+        {% else %}
+        <span class="status-badge confirmed">완료</span>
+        {% endif %}
+      </div>
+      {% else %}
+      <p class="card-desc no-margin">예정된 할 일이 없습니다.</p>
+      {% endfor %}
+    </section>
+  </aside>
+</div>
+{% endif %}
+{% endblock %}

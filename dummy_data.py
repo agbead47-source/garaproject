@@ -3,7 +3,12 @@
 
 실제 OCR/LLM/번역 연동 없이 화면만 확인하기 위한 가짜 데이터.
 나중에 실제 로직으로 교체하기 쉽도록 전부 함수로 감싸 두었다.
+
+예외: 국가별 규제 검색의 EU 판정은 reg_store 를 통해 실제 법령 데이터를 쓴다.
+(regdata/sync_eu.py 로 수집. DB가 없으면 자동으로 더미로 돌아간다.)
 """
+
+import reg_store
 
 # ---------------------------------------------------------------------------
 # 고객사 / 출력 언어
@@ -54,11 +59,13 @@ Our first launch market is the United States, and we plan to expand to the EU af
 2. Texture and Sensory
 The texture should be light and watery, absorbing quickly without any sticky finish.
 The formula must be fragrance-free.
+For the overall sensory target, please benchmark Dewy Lab "Glow Drop Serum" (US, 2025) - we like its slip and matte finish.
 Package color and label design will be shared later.
 
 3. Key Ingredients
-Please include Vitamin C (Ascorbyl Glucoside), Niacinamide and Hyaluronic Acid as the core actives.
+Please include Ascorbyl Glucoside at 2.0%, Niacinamide at 5.0% and Sodium Hyaluronate at 1.0% as the core actives.
 We also want Retinol at 0.5% for the night-care claim.
+Please use Phenoxyethanol at 0.8% as the preservative system.
 
 4. Free-from Requirements
 The formula must be free from Parabens, Sulfates, Mineral oil and Synthetic fragrance.
@@ -66,17 +73,119 @@ The formula must be free from Parabens, Sulfates, Mineral oil and Synthetic frag
 5. Claims and Certification
 We hope to use Vegan and Cruelty-free claims on the outer box.
 
-6. Commercial Terms
+6. Packaging Supply
+The glass dropper bottle and the outer box will be supplied by us, so please quote filling and secondary packaging only.
+
+7. Commercial Terms
 MOQ is 5,000 units for the first order.
 Our target unit price is 2.8 per piece.
+Payment will follow our standard terms as usual.
 Please send the first sample within 4 weeks, and mass production shipment is expected in January 2027.
+
+8. Documents
+Please prepare CoA, MSDS and a non-animal testing statement together with the first shipment.
 
 Thank you,
 Emily Park / Product Director, Glowtree Beauty
 """
 
 # ---------------------------------------------------------------------------
-# 추출 항목 14개
+# 요청 성분 (행 단위)
+#   "핵심 성분" 한 칸에 문자열로 뭉쳐 두면 규제 판정에 넘길 수 없다.
+#   성분명 / INCI / 함량 을 따로 들고 있어야 reg_store 로 국가별 판정을 걸 수 있다.
+#   TODO: 실제 연동 (LLM 성분·함량 추출)
+# ---------------------------------------------------------------------------
+
+_CORE_ACTIVES_SOURCE = (
+    "Please include Ascorbyl Glucoside at 2.0%, Niacinamide at 5.0% "
+    "and Sodium Hyaluronate at 1.0% as the core actives."
+)
+
+_REQUEST_INGREDIENTS = [
+    {
+        "name": "비타민C 유도체",
+        "inci": "Ascorbyl Glucoside",
+        "amount": "2.0%",
+        "role": "브라이트닝",
+        "source": _CORE_ACTIVES_SOURCE,
+    },
+    {
+        "name": "나이아신아마이드",
+        "inci": "Niacinamide",
+        "amount": "5.0%",
+        "role": "브라이트닝·장벽",
+        "source": _CORE_ACTIVES_SOURCE,
+    },
+    {
+        "name": "히알루론산",
+        "inci": "Sodium Hyaluronate",
+        "amount": "1.0%",
+        "role": "보습",
+        "source": _CORE_ACTIVES_SOURCE,
+    },
+    {
+        "name": "레티놀",
+        "inci": "Retinol",
+        "amount": "0.5%",
+        "role": "나이트케어",
+        "source": "We also want Retinol at 0.5% for the night-care claim.",
+    },
+    {
+        "name": "페녹시에탄올",
+        "inci": "Phenoxyethanol",
+        "amount": "0.8%",
+        "role": "방부",
+        "source": "Please use Phenoxyethanol at 0.8% as the preservative system.",
+    },
+]
+
+# 실데이터가 없을 때 쓰는 규제 판정 (가안 더미)
+_FALLBACK_VERDICTS = {
+    "Retinol": {
+        "status": "ban",
+        "limit": "리브온 0.3% 이하",
+        "rule": "Regulation (EU) 2024/996",
+        "note": "요청 0.5%는 EU 기준 초과 가능성 — 규제 데이터를 수집하면 실제 기준으로 판정합니다.",
+    },
+}
+
+
+def analyze_ingredients():
+    """요청 성분에 EU 판정을 붙여 돌려준다.
+
+    regdata/regulation.db 가 있으면 실제 법령으로 판정하고,
+    없으면 더미 판정으로 돌아간다.
+    """
+    live = reg_store.is_available()
+    rows = []
+
+    for ing in _REQUEST_INGREDIENTS:
+        verdict = reg_store.judge(ing["name"], ing["inci"], None, ing["amount"])
+        if verdict is None:
+            verdict = dict(_FALLBACK_VERDICTS.get(ing["inci"], {
+                "status": "ok",
+                "limit": "-",
+                "rule": "-",
+                "note": "규제 데이터가 아직 수집되지 않았습니다.",
+            }))
+            verdict.setdefault("annex", "")
+
+        row = dict(ing)
+        row.update({
+            "status": verdict["status"],
+            "limit": verdict["limit"],
+            "rule": verdict["rule"],
+            "note": verdict["note"],
+            "annex": verdict.get("annex", ""),
+            "live": live,
+        })
+        rows.append(row)
+
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# 추출 항목 19개
 #   status: confirmed(확인됨) / check(확인 필요) / missing(누락)
 # ---------------------------------------------------------------------------
 
@@ -156,11 +265,20 @@ _EXTRACTED_ITEMS = [
     {
         "key": "key_ingredients",
         "label": "핵심 성분",
-        "value": "Vitamin C(Ascorbyl Glucoside), Niacinamide, Hyaluronic Acid, Retinol 0.5%",
-        "confidence": 74,
+        "value": "Ascorbyl Glucoside 2.0%, Niacinamide 5.0%, Sodium Hyaluronate 1.0%, Retinol 0.5%, Phenoxyethanol 0.8%",
+        "confidence": 88,
         "status": "check",
-        "source": "We also want Retinol at 0.5% for the night-care claim.",
-        "note": "Retinol 0.5% — 판매 국가별 농도 기준 확인 필요",
+        "source": _CORE_ACTIVES_SOURCE,
+        "note": "성분별 판정은 아래 '성분별 규제 판정' 표를 확인하세요.",
+    },
+    {
+        "key": "benchmark",
+        "label": "벤치마크 제품",
+        "value": 'Dewy Lab "Glow Drop Serum" (미국, 2025) — 슬립감·매트 마무리',
+        "confidence": 91,
+        "status": "confirmed",
+        "source": 'For the overall sensory target, please benchmark Dewy Lab "Glow Drop Serum" (US, 2025) - we like its slip and matte finish.',
+        "note": "",
     },
     {
         "key": "free_from",
@@ -207,6 +325,42 @@ _EXTRACTED_ITEMS = [
         "source": "Package color and label design will be shared later.",
         "note": "원문에 '추후 전달'로만 적혀 있어 값 없음",
     },
+    {
+        "key": "container_supply",
+        "label": "용기 사급/자급",
+        "value": "사급 — 유리 스포이드 병·단상자를 고객사가 지급",
+        "confidence": 95,
+        "status": "confirmed",
+        "source": "The glass dropper bottle and the outer box will be supplied by us, so please quote filling and secondary packaging only.",
+        "note": "견적 범위가 충전·2차 포장으로 한정됩니다.",
+    },
+    {
+        "key": "trade_terms",
+        "label": "거래조건",
+        "value": "결제 조건 '기존과 동일' / 통화·Incoterms 미기재",
+        "confidence": 42,
+        "status": "check",
+        "source": "Payment will follow our standard terms as usual.",
+        "note": "통화(USD 추정), Incoterms(FOB/CIF), 결제 조건을 문서로 확정해야 합니다.",
+    },
+    {
+        "key": "documents",
+        "label": "필요 서류",
+        "value": "CoA, MSDS, 비동물실험 확인서 (초도 선적 시)",
+        "confidence": 87,
+        "status": "check",
+        "source": "Please prepare CoA, MSDS and a non-animal testing statement together with the first shipment.",
+        "note": "EU 확장 시 CPSR·PIF, 국가별 Free Sale Certificate가 추가로 필요합니다.",
+    },
+    {
+        "key": "responsible_person",
+        "label": "책임자 지정",
+        "value": "",
+        "confidence": 0,
+        "status": "missing",
+        "source": "",
+        "note": "EU 역내 책임자(RP)와 미국 MoCRA 책임자 지정 여부가 원문에 없습니다. 미지정 시 판매 불가.",
+    },
 ]
 
 # 상태 뱃지 (템플릿에서 사용)
@@ -216,22 +370,17 @@ STATUS_META = {
     "missing": {"label": "누락", "css": "missing"},
 }
 
-# 규제 체크 미리보기
-_REGULATION_NOTES = [
-    {
-        "level": "warning",
-        "ingredient": "Retinol 0.5%",
-        "message": "Retinol 요청 농도가 EU 기준 초과 가능성 — 국가별 규제 검색에서 확인 필요",
-    },
-]
-
-
 def analyze_document(file=None):
     """업로드된 문서를 분석한 '척' 하고 더미 결과를 돌려준다.
+
+    항목 추출은 더미지만, 성분별 규제 판정은 reg_store 의 실데이터를 쓴다.
 
     TODO: 실제 연동 (OCR + LLM 항목 추출)
     """
     items = [dict(item) for item in _EXTRACTED_ITEMS]
+    ingredients = analyze_ingredients()
+    flagged = [i for i in ingredients if i["status"] in ("warn", "ban")]
+
     return {
         "file_name": file or "Glowtree_Beauty_Development_Request.pdf",
         "customer": "Glowtree Beauty",
@@ -242,8 +391,12 @@ def analyze_document(file=None):
         "item_count": len(items),
         "check_count": sum(1 for i in items if i["status"] == "check"),
         "missing_count": sum(1 for i in items if i["status"] == "missing"),
-        "regulation_notes": [dict(n) for n in _REGULATION_NOTES],
-        "regulation_count": len(_REGULATION_NOTES),
+        "ingredients": ingredients,
+        "ingredient_count": len(ingredients),
+        "regulation_notes": flagged,
+        "regulation_count": len(flagged),
+        "regulation_live": reg_store.is_available(),
+        "regulation_source": get_reg_source(),
     }
 
 
@@ -254,8 +407,8 @@ def analyze_document(file=None):
 # ---------------------------------------------------------------------------
 
 _LAB_STRUCTURE = [
-    {"key": "overview", "rows": ["product_name", "product_type", "target_country"]},
-    {"key": "sensory", "rows": ["texture", "fragrance", "color"]},
+    {"key": "overview", "rows": ["product_name", "product_type", "target_country", "background"]},
+    {"key": "sensory", "rows": ["texture", "fragrance", "color", "benchmark"]},
     {"key": "ingredients", "rows": ["key_ingredients", "free_from"]},
     {"key": "claims", "rows": ["claims"]},
     {"key": "tests", "rows": ["test_stability", "test_irritation"]},
@@ -263,10 +416,11 @@ _LAB_STRUCTURE = [
 ]
 
 _FACTORY_STRUCTURE = [
-    {"key": "spec", "rows": ["product_name", "volume", "container", "accessory"]},
-    {"key": "commercial", "rows": ["moq", "target_price"]},
+    {"key": "spec", "rows": ["product_name", "volume", "container", "accessory", "container_supply"]},
+    {"key": "commercial", "rows": ["moq", "target_price", "trade_terms"]},
     {"key": "delivery", "rows": ["sample_due", "mass_shipment", "shipping_terms"]},
     {"key": "packaging", "rows": ["package_design", "label"]},
+    {"key": "documents", "rows": ["documents", "responsible_person"]},
 ]
 
 _DOC_TITLES = {
@@ -296,6 +450,7 @@ _SECTION_HEADINGS = {
         "commercial": "수량·단가",
         "delivery": "납기·선적",
         "packaging": "포장·라벨 요구사항",
+        "documents": "서류·책임자",
     },
     "en": {
         "overview": "Product Overview",
@@ -308,6 +463,7 @@ _SECTION_HEADINGS = {
         "commercial": "Quantity & Price",
         "delivery": "Lead Time & Shipping",
         "packaging": "Packaging & Label",
+        "documents": "Documents & Responsible Person",
     },
     "zh": {
         "overview": "产品概要",
@@ -320,6 +476,7 @@ _SECTION_HEADINGS = {
         "commercial": "数量·单价",
         "delivery": "交期·出货",
         "packaging": "包装·标签",
+        "documents": "文件·责任人",
     },
     "vi": {
         "overview": "Tổng quan sản phẩm",
@@ -332,6 +489,7 @@ _SECTION_HEADINGS = {
         "commercial": "Số lượng · đơn giá",
         "delivery": "Thời hạn · giao hàng",
         "packaging": "Đóng gói · nhãn",
+        "documents": "Hồ sơ · Người chịu trách nhiệm",
     },
 }
 
@@ -340,6 +498,7 @@ _FIELD_LABELS = {
         "product_name": "제품명",
         "product_type": "제품 유형",
         "target_country": "타깃 국가",
+        "background": "요청·기획 배경",
         "texture": "텍스처",
         "fragrance": "향",
         "color": "색상",
@@ -359,11 +518,17 @@ _FIELD_LABELS = {
         "shipping_terms": "선적 조건",
         "package_design": "패키지 디자인",
         "label": "라벨 요구사항",
+        "benchmark": "벤치마크 제품",
+        "container_supply": "용기 사급/자급",
+        "trade_terms": "거래조건",
+        "documents": "필요 서류",
+        "responsible_person": "책임자 지정",
     },
     "en": {
         "product_name": "Product Name",
         "product_type": "Product Type",
         "target_country": "Target Market",
+        "background": "Background",
         "texture": "Texture",
         "fragrance": "Fragrance",
         "color": "Color",
@@ -383,6 +548,11 @@ _FIELD_LABELS = {
         "shipping_terms": "Shipping Terms",
         "package_design": "Package Design",
         "label": "Label Requirements",
+        "benchmark": "Benchmark Product",
+        "container_supply": "Packaging Supply",
+        "trade_terms": "Trade Terms",
+        "documents": "Required Documents",
+        "responsible_person": "Responsible Person",
     },
     "zh": {
         "product_name": "产品名称",
@@ -421,15 +591,16 @@ _FIELD_VALUES = {
         "product_name": "비타민C 브라이트닝 세럼 (Vitamin C Brightening Serum)",
         "product_type": "리브온 페이셜 세럼",
         "target_country": "미국 우선 출시, 이후 EU 확장 예정",
+        "background": "고객사 2027년 봄 라인 신제품 요청",
         "texture": "가볍고 워터리한 제형, 빠른 흡수 / 끈적임 없을 것",
         "fragrance": "무향 (fragrance-free)",
         "color": "미정 — 고객사가 추후 전달 예정",
-        "key_ingredients": "Vitamin C (Ascorbyl Glucoside), Niacinamide, Hyaluronic Acid, Retinol 0.5%",
+        "key_ingredients": "Ascorbyl Glucoside 2.0%, Niacinamide 5.0%, Sodium Hyaluronate 1.0%, Retinol 0.5%, Phenoxyethanol 0.8%",
         "free_from": "Parabens, Sulfates, Mineral oil, Synthetic fragrance",
         "claims": "Vegan, Cruelty-free (외박스 표기 희망)",
         "test_stability": "가속 안정성 시험 요청 (45도 4주 기준)",
         "test_irritation": "인체적용 피부자극 시험 결과 요청",
-        "regulation_note": "Retinol 0.5% — EU 확장 시 농도 기준 초과 가능성, 규제 확인 필요",
+        "regulation_note": "Retinol 0.5% — EU Annex III No.376 기준(바디로션 0.05% / 그 외 리브온 0.3%) 초과. EU 확장 시 배합 변경 필요",
         "volume": "30ml",
         "container": "유리 스포이드 병 (30ml)",
         "accessory": "스포이드 캡, 외박스 — 사양 협의 필요",
@@ -440,20 +611,26 @@ _FIELD_VALUES = {
         "shipping_terms": "미정 (FOB/CIF 미기재) — 확인 필요",
         "package_design": "미정 — 색상·라벨 디자인 추후 전달 예정",
         "label": "Vegan / Cruelty-free 표기, 미국 라벨 규정 준수",
+        "benchmark": "Dewy Lab \"Glow Drop Serum\" (미국, 2025) — 슬립감과 매트한 마무리를 기준으로 삼을 것",
+        "container_supply": "사급 — 유리 스포이드 병·단상자는 고객사 지급, 견적 범위는 충전·2차 포장",
+        "trade_terms": "결제 조건 '기존과 동일' 표기 / 통화·Incoterms 미기재 — 확정 필요",
+        "documents": "CoA, MSDS, 비동물실험 확인서 (초도 선적 동봉) / EU 확장 시 CPSR·PIF 추가",
+        "responsible_person": "미지정 — EU 역내 책임자(RP), 미국 MoCRA 책임자 확인 필요",
     },
     "en": {
         "product_name": "Vitamin C Brightening Serum",
         "product_type": "Leave-on facial serum",
         "target_country": "United States first, EU expansion planned",
+        "background": "Customer request for the 2027 spring line",
         "texture": "Light watery texture, fast absorbing, no sticky finish",
         "fragrance": "Fragrance-free",
         "color": "TBD - to be shared by the customer later",
-        "key_ingredients": "Vitamin C (Ascorbyl Glucoside), Niacinamide, Hyaluronic Acid, Retinol 0.5%",
+        "key_ingredients": "Ascorbyl Glucoside 2.0%, Niacinamide 5.0%, Sodium Hyaluronate 1.0%, Retinol 0.5%, Phenoxyethanol 0.8%",
         "free_from": "Parabens, Sulfates, Mineral oil, Synthetic fragrance",
         "claims": "Vegan, Cruelty-free (to be printed on the outer box)",
         "test_stability": "Accelerated stability test requested (45C, 4 weeks)",
         "test_irritation": "Human skin irritation test report requested",
-        "regulation_note": "Retinol 0.5% - may exceed EU limits on expansion; regulatory check required",
+        "regulation_note": "Retinol 0.5% - exceeds EU Annex III No.376 limit (0.05% body lotion / 0.3% other leave-on); reformulation needed for EU",
         "volume": "30ml",
         "container": "Glass dropper bottle (30ml)",
         "accessory": "Dropper cap, outer box - specification to be confirmed",
@@ -464,6 +641,11 @@ _FIELD_VALUES = {
         "shipping_terms": "TBD (FOB/CIF not stated) - confirmation required",
         "package_design": "TBD - color and label design to be shared later",
         "label": "Vegan / Cruelty-free marking, US labeling rules to be followed",
+        "benchmark": "Dewy Lab \"Glow Drop Serum\" (US, 2025) - match its slip and matte finish",
+        "container_supply": "Customer-supplied - glass dropper bottle and outer box; quote covers filling and secondary packaging only",
+        "trade_terms": "Payment stated as 'standard terms' / currency and Incoterms not specified - to be confirmed",
+        "documents": "CoA, MSDS, non-animal testing statement with first shipment / CPSR and PIF required for EU",
+        "responsible_person": "Not assigned - EU Responsible Person and US MoCRA responsible person to be confirmed",
     },
     "zh": {
         "product_name": "维生素C亮白精华",
@@ -471,7 +653,7 @@ _FIELD_VALUES = {
         "target_country": "优先美国市场，之后扩展至欧盟",
         "texture": "轻盈水感质地，吸收快，不黏腻",
         "fragrance": "无香 (fragrance-free)",
-        "key_ingredients": "Vitamin C (Ascorbyl Glucoside), Niacinamide, Hyaluronic Acid, Retinol 0.5%",
+        "key_ingredients": "Ascorbyl Glucoside 2.0%, Niacinamide 5.0%, Sodium Hyaluronate 1.0%, Retinol 0.5%, Phenoxyethanol 0.8%",
         "free_from": "Parabens, Sulfates, Mineral oil, Synthetic fragrance",
         "volume": "30ml",
         "moq": "5,000 支（首单）",
@@ -482,7 +664,7 @@ _FIELD_VALUES = {
         "target_country": "Ưu tiên thị trường Mỹ, sau đó mở rộng sang EU",
         "texture": "Kết cấu mỏng nhẹ, thấm nhanh, không nhờn dính",
         "fragrance": "Không hương liệu (fragrance-free)",
-        "key_ingredients": "Vitamin C (Ascorbyl Glucoside), Niacinamide, Hyaluronic Acid, Retinol 0.5%",
+        "key_ingredients": "Ascorbyl Glucoside 2.0%, Niacinamide 5.0%, Sodium Hyaluronate 1.0%, Retinol 0.5%, Phenoxyethanol 0.8%",
         "free_from": "Parabens, Sulfates, Mineral oil, Synthetic fragrance",
         "volume": "30ml",
         "moq": "5.000 sản phẩm (đơn đầu tiên)",
@@ -497,7 +679,12 @@ _FIELD_SOURCES = {
     "texture": "The texture should be light and watery, absorbing quickly without any sticky finish.",
     "fragrance": "The formula must be fragrance-free.",
     "color": "Package color and label design will be shared later.",
-    "key_ingredients": "Please include Vitamin C (Ascorbyl Glucoside), Niacinamide and Hyaluronic Acid as the core actives. We also want Retinol at 0.5% for the night-care claim.",
+    "key_ingredients": _CORE_ACTIVES_SOURCE + " We also want Retinol at 0.5% for the night-care claim.",
+    "benchmark": 'For the overall sensory target, please benchmark Dewy Lab "Glow Drop Serum" (US, 2025) - we like its slip and matte finish.',
+    "container_supply": "The glass dropper bottle and the outer box will be supplied by us, so please quote filling and secondary packaging only.",
+    "trade_terms": "Payment will follow our standard terms as usual.",
+    "documents": "Please prepare CoA, MSDS and a non-animal testing statement together with the first shipment.",
+    "responsible_person": "(원문에 명시 없음 — 지정 필요)",
     "free_from": "The formula must be free from Parabens, Sulfates, Mineral oil and Synthetic fragrance.",
     "claims": "We hope to use Vegan and Cruelty-free claims on the outer box.",
     "test_stability": "(원문에 명시 없음 — 사내 기본 시험 항목)",
@@ -521,9 +708,12 @@ _FIELD_FLAGS = {
     "regulation_note": "check",
     "target_price": "check",
     "shipping_terms": "check",
+    "trade_terms": "check",
+    "documents": "check",
     "color": "missing",
     "accessory": "missing",
     "package_design": "missing",
+    "responsible_person": "missing",
 }
 
 
@@ -536,20 +726,27 @@ def _pick(table, lang, key):
     return key
 
 
-def _build_document(structure, doc_kind, result, lang):
+def _build_document(structure, doc_kind, result, lang, overrides=None):
+    """문서 한 벌을 만든다.
+
+    overrides 가 있으면(영업이 직접 작성한 요청서) 그 값을 우선 쓴다.
+    직접 쓴 문장은 번역 사전에 없으므로 언어와 무관하게 그대로 싣는다.
+    """
     lang = lang if lang in {row["code"] for row in LANGUAGES} else "ko"
+    overrides = overrides or {}
     sections = []
     for block in structure:
-        rows = [
-            {
+        rows = []
+        for row_key in block["rows"]:
+            written = (overrides.get(row_key) or "").strip()
+            rows.append({
                 "key": row_key,
                 "label": _pick(_FIELD_LABELS, lang, row_key),
-                "value": _pick(_FIELD_VALUES, lang, row_key),
-                "source": _FIELD_SOURCES.get(row_key, ""),
-                "flag": _FIELD_FLAGS.get(row_key, ""),
-            }
-            for row_key in block["rows"]
-        ]
+                "value": written or _pick(_FIELD_VALUES, lang, row_key),
+                "source": "(영업 담당자 직접 작성)" if written else _FIELD_SOURCES.get(row_key, ""),
+                "flag": "" if written else _FIELD_FLAGS.get(row_key, ""),
+                "written": bool(written),
+            })
         sections.append(
             {
                 "key": block["key"],
@@ -564,26 +761,28 @@ def _build_document(structure, doc_kind, result, lang):
         "kind": doc_kind,
         "lang": lang,
         "title": titles.get(lang) or titles["en"],
-        "customer": result.get("customer", "Glowtree Beauty"),
+        "customer": overrides.get("_requester") or result.get("customer", "Glowtree Beauty"),
+        "origin": overrides.get("_origin", ""),
+        "background": overrides.get("background", ""),
         "file_name": result.get("file_name", ""),
         "sections": sections,
     }
 
 
-def convert_for_lab(result, lang="ko"):
+def convert_for_lab(result, lang="ko", overrides=None):
     """분석 결과를 연구소용 문서로 변환한 척 한다.
 
     TODO: 실제 연동 (LLM 문서 변환 + 번역)
     """
-    return _build_document(_LAB_STRUCTURE, "lab", result, lang)
+    return _build_document(_LAB_STRUCTURE, "lab", result, lang, overrides)
 
 
-def convert_for_factory(result, lang="ko"):
+def convert_for_factory(result, lang="ko", overrides=None):
     """분석 결과를 공장용 문서로 변환한 척 한다.
 
     TODO: 실제 연동 (LLM 문서 변환 + 번역)
     """
-    return _build_document(_FACTORY_STRUCTURE, "factory", result, lang)
+    return _build_document(_FACTORY_STRUCTURE, "factory", result, lang, overrides)
 
 
 # ---------------------------------------------------------------------------
@@ -938,24 +1137,39 @@ def get_reg_country(code):
 
 
 def search_regulations(country="all", keyword="", status="all"):
-    """국가 / 성분명 / 상태로 규제 더미를 검색한다.
+    """국가 / 성분명 / 상태로 규제를 검색한다.
 
-    TODO: 실제 연동 (규제 DB 또는 공공 API 조회)
+    EU는 regdata/regulation.db 가 있으면 실제 법령(Regulation (EC) No 1223/2009
+    통합본)으로 판정하고, 나머지 국가는 아직 더미다.
+
+    TODO: 실제 연동 (한국 MFDS 오픈API, 일본 e-Gov 법령API, 중국·베트남 수기 테이블)
     """
     keyword = (keyword or "").strip().lower()
     codes = [country] if country != "all" else [row["code"] for row in _REG_COUNTRIES]
+    eu_live = reg_store.is_available()
+    eu_version = (reg_store.get_meta() or {}).get("version_date", "") if eu_live else ""
 
     rows = []
     for item in _REG_INGREDIENTS:
         haystack = " ".join([item["name"], item["inci"], item["category"]]).lower()
         if keyword and keyword not in haystack:
             continue
+
         for code in codes:
-            rule = item["rules"].get(code)
+            if code == "eu" and eu_live:
+                rule = reg_store.judge(
+                    item["name"], item["inci"], item.get("cas"), item["requested"]
+                )
+                live = True
+            else:
+                rule = item["rules"].get(code)
+                live = False
+
             if not rule:
                 continue
             if status != "all" and rule["status"] != status:
                 continue
+
             country_row = get_reg_country(code) or {}
             rows.append(
                 {
@@ -964,7 +1178,7 @@ def search_regulations(country="all", keyword="", status="all"):
                     "inci": item["inci"],
                     "category": item["category"],
                     "requested": item["requested"],
-                    "updated": item["updated"],
+                    "updated": eu_version if live else item["updated"],
                     "country_code": code,
                     "country_name": country_row.get("name", code),
                     "country_flag": country_row.get("flag", ""),
@@ -972,10 +1186,76 @@ def search_regulations(country="all", keyword="", status="all"):
                     "limit": rule["limit"],
                     "rule": rule["rule"],
                     "note": rule["note"],
+                    "live": live,
+                    "annex": rule.get("annex", ""),
                 }
             )
 
     return rows
+
+
+def get_reg_source():
+    """규제 데이터 출처 정보. (실데이터가 없으면 None)"""
+    meta = reg_store.get_meta()
+    if not meta:
+        return None
+    return {
+        "name": meta.get("source", ""),
+        "celex": meta.get("celex", ""),
+        "version_date": meta.get("version_date", ""),
+        "fetched_at": (meta.get("fetched_at", "") or "")[:10],
+        "count": meta.get("substance_count", "0"),
+        "url": meta.get("source_url", ""),
+    }
+
+
+# 성분표(샘플데이터) 업로드 - 파싱 결과 더미
+REG_SAMPLE_FILE = "Glowtree_VitaminC_Serum_성분표.xlsx"
+
+# INCI 사전에서 찾지 못해 사람이 확인해야 하는 행 (실제 파싱에서도 자주 생긴다)
+_REG_UNMATCHED = [
+    {
+        "name": "Glowtree Complex GT-7",
+        "raw": "GT-7 Brightening Complex 3.0%",
+        "note": "자사 혼합 원료 — 구성 성분 명세가 있어야 국가별 판정이 가능합니다.",
+    },
+    {
+        "name": "Natural Fruit Extract Blend",
+        "raw": "Fruit Extract Blend 0.5%",
+        "note": "INCI 명이 없어 성분을 특정하지 못했습니다. 원료사 사양서를 확인해 주세요.",
+    },
+]
+
+
+def analyze_ingredient_file(file_name=None):
+    """업로드한 성분표(샘플데이터)를 읽어 규제 대조 대상 성분을 뽑아낸 결과.
+
+    TODO: 실제 연동 (XLSX/CSV 성분표 파싱 + INCI 사전 매칭)
+    가안에서는 어떤 파일을 올려도 같은 더미 결과를 돌려준다.
+    """
+    ingredients = [
+        {
+            "key": item["key"],
+            "name": item["name"],
+            "inci": item["inci"],
+            "category": item["category"],
+            "requested": item["requested"],
+        }
+        for item in _REG_INGREDIENTS
+    ]
+
+    unmatched = [dict(row) for row in _REG_UNMATCHED]
+
+    return {
+        "file_name": file_name or REG_SAMPLE_FILE,
+        "is_sample": not file_name,
+        "customer": "Glowtree Beauty (미국)",
+        "product": "비타민C 브라이트닝 세럼 · 30ml",
+        "rows_read": len(ingredients) + len(unmatched),
+        "matched": len(ingredients),
+        "unmatched": unmatched,
+        "ingredients": ingredients,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1604,4 +1884,430 @@ def get_customer_summary():
             for mail in row["emails"]
             if mail["status"] == "확인 필요"
         ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# 영업단가 계산 (UI 가안)
+#   해외영업 실무 흐름을 그대로 따른다.
+#     구매팀이 만든 원가표를 받아 → 선적 조건별 물류비·보험료를 얹고
+#     → 영업마진을 붙여 → 환율로 USD 단가를 뽑는다.
+#   계산 자체는 화면(JS)에서 실시간으로 하고, 여기서는 기본값만 내려준다.
+# ---------------------------------------------------------------------------
+
+# 구매팀에게 받는 원가표 (파일을 올리면 인식한 척 한다)
+_COST_SHEET = {
+    "file_name": "Glowtree_VitaminC_Serum_원가산출서.xlsx",
+    "issued_by": "구매팀 이원가",
+    "issued_at": "2026-09-15",
+    "product": "비타민C 브라이트닝 세럼 30ml",
+    "quantity": 5000,
+    "currency": "KRW",
+    "lines": [
+        {"key": "bulk", "label": "내용물 (벌크)", "amount": 980,
+         "note": "30ml × 비중 1.02 × 32,000원/kg"},
+        {"key": "parts", "label": "용기·부자재", "amount": 0,
+         "note": "사급 — 요청서 기준 고객사 지급"},
+        {"key": "processing", "label": "임가공 (충전·포장)", "amount": 350,
+         "note": "충전 + 2차 포장"},
+        {"key": "overhead", "label": "부대비 (시험·인증)", "amount": 240,
+         "note": "총 1,200,000원 ÷ 5,000개"},
+    ],
+    # 원가표에서 읽었지만 계산에 바로 못 쓰는 행 (실제 파싱에서도 늘 생긴다)
+    "unmatched": [
+        {"label": "환차손 충당 (별도 협의)", "note": "금액이 비어 있어 계산에서 제외했습니다."},
+        {"label": "금형비 (1회성)", "note": "초도 1회 비용이라 개당 배분 여부를 확인해야 합니다."},
+    ],
+}
+
+# 선적 조건 - 뒤로 갈수록 판매자가 부담하는 범위가 넓어진다
+INCOTERM_ORDER = ["EXW", "FCA", "FOB", "CFR", "CIF"]
+
+INCOTERMS = [
+    {"code": "EXW", "label": "EXW · 공장 인도", "desc": "공장 출고까지만 부담합니다."},
+    {"code": "FCA", "label": "FCA · 운송인 인도", "desc": "내륙 운송과 수출 통관까지 부담합니다."},
+    {"code": "FOB", "label": "FOB · 본선 인도", "desc": "선적항 본선에 올릴 때까지 부담합니다."},
+    {"code": "CFR", "label": "CFR · 운임 포함", "desc": "도착항까지의 해상 운임을 포함합니다."},
+    {"code": "CIF", "label": "CIF · 운임·보험 포함", "desc": "해상 운임에 적하보험까지 포함합니다."},
+]
+
+# 물류비 - from 에 적힌 조건부터 판매가에 포함된다 (총액, 원)
+_LOGISTICS = [
+    {"key": "inland", "label": "내륙 운송 (공장 → 부산항)", "total": 380000, "from": "FCA"},
+    {"key": "customs", "label": "수출 통관·서류", "total": 120000, "from": "FCA"},
+    {"key": "thc", "label": "THC·터미널 핸들링", "total": 210000, "from": "FOB"},
+    {"key": "freight", "label": "해상 운임 (부산 → LA)", "total": 1050000, "from": "CFR"},
+]
+
+# 적하보험 - CIF 에서만 붙는다. 보험금액 = CFR 금액 × 부보율, 보험료 = 보험금액 × 요율
+INSURANCE = {"rate": 0.12, "coverage": 110}
+
+# 마진 계산 방식
+MARGIN_MODES = [
+    {"value": "margin", "label": "판매가 대비 (Margin)", "hint": "판매가 = 원가 ÷ (1 − 마진율)"},
+    {"value": "markup", "label": "원가 대비 (Markup)", "hint": "판매가 = 원가 × (1 + 마크업율)"},
+]
+
+# 환율 변동 시나리오 (%)
+FX_STEPS = [-10, -5, 0, 5, 10]
+
+
+def parse_cost_sheet(file_name=None):
+    """구매팀 원가표를 읽어낸 결과.
+
+    TODO: 실제 연동 (XLSX/CSV 원가표 파싱 + 계정과목 매핑)
+    가안에서는 어떤 파일을 올려도 같은 더미 결과를 돌려준다.
+    """
+    sheet = {key: value for key, value in _COST_SHEET.items()
+             if key not in ("lines", "unmatched")}
+    sheet["file_name"] = file_name or _COST_SHEET["file_name"]
+    sheet["is_sample"] = not file_name
+    sheet["lines"] = [dict(row) for row in _COST_SHEET["lines"]]
+    sheet["unmatched"] = [dict(row) for row in _COST_SHEET["unmatched"]]
+    sheet["total"] = sum(row["amount"] for row in sheet["lines"])
+    return sheet
+
+
+def get_pricing_defaults(file_name=None, handoff=None):
+    """영업단가 계산 화면의 기본값.
+
+    handoff 로 고객사·제품명을 넘기면 그 값으로 바꾼다
+    (일정관리·신규 바이어 발굴에서 이어질 때). 원가 자체는 바뀌지 않는다.
+
+    TODO: 실제 연동 (구매팀 원가 시스템, 포워더 운임표, 실시간 환율)
+    """
+    handoff = handoff or {}
+    customer = (handoff.get("customer") or "").strip()
+    product = (handoff.get("product") or "").strip()
+
+    return {
+        "customer": customer or "Glowtree Beauty",
+        "handoff_product": product or None,
+        "handoff": bool(customer or product),
+        "source_doc": "Glowtree_Beauty_Development_Request.pdf",
+        "cost_sheet": parse_cost_sheet(file_name),
+        "target_price_usd": 2.8,
+        "fx": 1385,
+        "fx_date": "2026-09-18",
+        "margin": 25,
+        "margin_mode": "margin",
+        "selected_incoterm": "CIF",
+        "logistics": [dict(row) for row in _LOGISTICS],
+        "insurance": dict(INSURANCE),
+        "incoterms": [dict(row) for row in INCOTERMS],
+        "incoterm_order": list(INCOTERM_ORDER),
+        "margin_modes": [dict(row) for row in MARGIN_MODES],
+        "fx_steps": list(FX_STEPS),
+    }
+
+# ---------------------------------------------------------------------------
+# 개발요청서 직접 작성 (해외영업 -> 사내 개발팀)
+#   고객사 요청이 늘 파일로 오는 건 아니라서(메일·전화·미팅),
+#   담당자가 사내 양식에 직접 적어 연구소·공장으로 넘기는 경로를 둔다.
+#   필드 key 는 내부 전달 문서(_FIELD_VALUES)와 같게 맞춰 그대로 변환된다.
+# ---------------------------------------------------------------------------
+
+# 요청이 어디서 시작됐는지. 고객사 요청만 있는 게 아니라
+# 영업이 트렌드·시장조사를 보고 스스로 발의하는 경우도 많다.
+REQUEST_ORIGINS = [
+    {"value": "customer", "label": "고객사 요청",
+     "desc": "받은 요청을 사내 양식으로 정리합니다.", "needs": "customer"},
+    {"value": "inhouse", "label": "자사 기획",
+     "desc": "트렌드·시장조사를 보고 영업이 직접 발의합니다.", "needs": "none"},
+    {"value": "prospect", "label": "신규 고객 제안",
+     "desc": "아직 거래가 없는 곳에 먼저 제안합니다.", "needs": "customer_new"},
+]
+
+# 고객사 자리에 넣을 표기 (고객사가 없는 경우)
+ORIGIN_LABELS = {
+    "inhouse": "자사 기획 (해외영업팀)",
+    "prospect": "신규 제안 (고객사 미정)",
+}
+
+
+COMPOSE_SECTIONS = [
+    {
+        "key": "basic", "title": "기본 정보", "icon": "📌",
+        "fields": [
+            {"key": "request_origin", "label": "요청 구분", "type": "origin", "required": True,
+             "hint": "고객사 요청이 아니어도 됩니다. 영업이 직접 발의한 건도 같은 양식으로 넘깁니다."},
+            {"key": "customer", "label": "고객사", "type": "customer",
+             "show_for": "customer"},
+            {"key": "customer_new", "label": "제안할 회사", "type": "text",
+             "show_for": "prospect", "placeholder": "예: Nordic Bloom (스웨덴) · 미정이면 비워 두세요"},
+            {"key": "background", "label": "요청·기획 배경", "type": "textarea",
+             "placeholder": "예: 트라넥사믹애씨드 관심도가 직전 7일 대비 상승, 브라이트닝 라인 확장 제안",
+             "hint": "왜 이 제품인지 한두 줄로 적어 두면 연구소가 우선순위를 잡기 쉽습니다."},
+            {"key": "product_name", "label": "제품명", "type": "text", "required": True,
+             "placeholder": "예: 비타민C 브라이트닝 세럼"},
+            {"key": "product_type", "label": "제품 유형", "type": "text", "required": True,
+             "placeholder": "예: 리브온 페이셜 세럼"},
+            {"key": "volume", "label": "용량", "type": "text", "placeholder": "예: 30ml"},
+            {"key": "container", "label": "용기", "type": "text",
+             "placeholder": "예: 유리 스포이드 병 (30ml)"},
+            {"key": "container_supply", "label": "용기 사급/자급", "type": "select",
+             "options": ["사급 (고객사 지급)", "자급 (우리가 조달)", "미정 — 확인 필요"],
+             "hint": "단가와 납기가 통째로 달라지는 항목입니다."},
+        ],
+    },
+    {
+        "key": "formula", "title": "제형·사용감", "icon": "🧪",
+        "fields": [
+            {"key": "texture", "label": "텍스처", "type": "textarea",
+             "placeholder": "예: 가벼운 워터리, 빠른 흡수 / 끈적임 없을 것"},
+            {"key": "fragrance", "label": "향", "type": "text",
+             "placeholder": "예: 무향 (fragrance-free)"},
+            {"key": "color", "label": "색상", "type": "text", "placeholder": "예: 투명 / 미정"},
+            {"key": "benchmark", "label": "벤치마크 제품", "type": "text",
+             "placeholder": "예: Dewy Lab Glow Drop Serum (미국, 2025)",
+             "hint": "연구소가 사용감을 잡는 데 가장 크게 참고하는 항목입니다."},
+        ],
+    },
+    {
+        "key": "claims", "title": "클레임·시험", "icon": "🏷",
+        "fields": [
+            {"key": "claims", "label": "인증·클레임", "type": "text",
+             "placeholder": "예: Vegan, Cruelty-free"},
+            {"key": "free_from", "label": "배제 성분 (Free-from)", "type": "text",
+             "placeholder": "예: Parabens, Sulfates, Mineral oil"},
+            {"key": "test_stability", "label": "안정성 시험", "type": "text",
+             "placeholder": "예: 가속 안정성 45도 4주"},
+            {"key": "test_irritation", "label": "피부자극 시험", "type": "text",
+             "placeholder": "예: 인체적용 피부자극 시험"},
+        ],
+    },
+    {
+        "key": "commercial", "title": "수량·거래조건", "icon": "💰",
+        "fields": [
+            {"key": "moq", "label": "MOQ", "type": "text", "placeholder": "예: 5,000개"},
+            {"key": "target_price", "label": "목표 단가", "type": "text",
+             "placeholder": "예: USD 2.8 / 개"},
+            {"key": "trade_terms", "label": "거래조건", "type": "text",
+             "placeholder": "예: FOB 부산, T/T 30% 선금",
+             "hint": "통화·Incoterms·결제조건을 같이 적어야 견적이 나옵니다."},
+            {"key": "sample_due", "label": "샘플 납기", "type": "text",
+             "placeholder": "예: 요청일로부터 4주"},
+            {"key": "mass_shipment", "label": "본생산 선적", "type": "text",
+             "placeholder": "예: 2027년 1월"},
+            {"key": "shipping_terms", "label": "선적 조건", "type": "text",
+             "placeholder": "예: FOB 부산항"},
+        ],
+    },
+    {
+        "key": "regulation", "title": "판매 국가·서류", "icon": "🌍",
+        "fields": [
+            {"key": "target_country", "label": "판매 국가", "type": "text", "required": True,
+             "placeholder": "예: 미국(1차) → EU(확장 예정)"},
+            {"key": "documents", "label": "필요 서류", "type": "text",
+             "placeholder": "예: CoA, MSDS, 비동물실험 확인서"},
+            {"key": "responsible_person", "label": "책임자 지정", "type": "text",
+             "placeholder": "예: EU 역내 책임자(RP) 고객사 지정 예정",
+             "hint": "EU·미국은 책임자가 없으면 판매 자체가 불가합니다."},
+            {"key": "package_design", "label": "패키지 디자인", "type": "text",
+             "placeholder": "예: 추후 전달"},
+            {"key": "label", "label": "라벨 요구사항", "type": "text",
+             "placeholder": "예: Vegan / Cruelty-free 표기"},
+        ],
+    },
+]
+
+# 성분 입력 행의 기본 개수
+COMPOSE_INGREDIENT_ROWS = 5
+
+# 트렌드에서 넘어왔을 때 쓰는 카테고리별 제형 힌트
+_COMPOSE_TEMPLATES = {
+    "브라이트닝": ("브라이트닝 세럼", "리브온 페이셜 세럼", "가벼운 워터리, 빠른 흡수 / 끈적임 없을 것"),
+    "안티에이징": ("리뉴얼 나이트 세럼", "리브온 나이트 세럼", "부드러운 에멀전, 유분감 적은 마무리"),
+    "보습": ("수분 앰플", "리브온 페이셜 앰플", "촉촉한 젤, 흡수 후 산뜻함"),
+    "각질·트러블": ("포어 클리어링 세럼", "리브온 페이셜 세럼", "산뜻한 워터리, 무유분"),
+    "장벽": ("배리어 리페어 크림", "리브온 페이셜 크림", "부드러운 크림, 밀착감 있는 마무리"),
+    "진정": ("카밍 수딩 세럼", "리브온 페이셜 세럼", "묽은 젤, 빠른 흡수"),
+}
+
+# 규제 한도가 있는 성분은 한도 안쪽 함량을 제안한다
+_COMPOSE_AMOUNT = {
+    "salicylic": "0.5%", "retinol": "0.2%", "arbutin": "2.0%", "niacinamide": "5.0%",
+    "azelaic": "10.0%", "tranexamic": "3.0%", "hyaluronic": "1.0%", "ceramide": "1.0%",
+    "bakuchiol": "1.0%", "panthenol": "2.0%", "squalane": "5.0%", "centella": "5.0%",
+}
+
+_COMPOSE_PRESET = {
+    "volume": "30ml",
+    "container": "유리 스포이드 병 (30ml)",
+    "container_supply": "미정 — 확인 필요",
+    "fragrance": "무향 (fragrance-free)",
+    "free_from": "Parabens, Sulfates, Mineral oil, Synthetic fragrance",
+    "claims": "Vegan, Cruelty-free",
+    "test_stability": "가속 안정성 45도 4주",
+    "test_irritation": "인체적용 피부자극 시험",
+    "moq": "5,000개",
+    "documents": "CoA, MSDS, 비동물실험 확인서",
+}
+
+
+def get_compose_form(ingredient=None, trend_row=None, handoff=None):
+    """작성 폼의 초기값.
+
+    트렌드 성분을 넘기면 관련 칸을 미리 채우고,
+    일정관리·신규 바이어 발굴에서 넘어온 값(handoff)이 있으면 그 값을 얹는다.
+    """
+    values = dict(_COMPOSE_PRESET)
+    values["request_origin"] = "customer"
+    ingredients = []
+    prefilled = set(_COMPOSE_PRESET)
+    origin = None
+
+    if ingredient:
+        # 트렌드에서 넘어온 건은 고객사 요청이 아니라 자사 기획이다
+        values["request_origin"] = "inhouse"
+        form_name, product_type, texture = _COMPOSE_TEMPLATES.get(
+            ingredient["category"], _COMPOSE_TEMPLATES["보습"])
+        values["product_name"] = "{} {}".format(ingredient["name"], form_name)
+        values["product_type"] = product_type
+        values["texture"] = texture
+        values["target_country"] = "미국 · EU"
+        prefilled |= {"product_name", "product_type", "texture", "target_country",
+                      "background", "request_origin"}
+
+        if trend_row and trend_row.get("status") != "pending":
+            values["background"] = (
+                "{} 관심도가 최근 7일 일평균 {:,.0f}회로 직전 대비 {:+.1f}% — "
+                "{} 라인 확장 제안".format(
+                    ingredient["name"], trend_row["recent_avg"],
+                    trend_row["growth"], ingredient["category"]))
+        else:
+            values["background"] = "{} 기반 {} 제품 기획".format(
+                ingredient["name"], ingredient["category"])
+
+        ingredients.append({
+            "name": ingredient["name"], "inci": ingredient["inci"],
+            "amount": _COMPOSE_AMOUNT.get(ingredient["key"], "1.0%"), "role": "주 성분",
+        })
+        ingredients.append({"name": "페녹시에탄올", "inci": "Phenoxyethanol",
+                            "amount": "0.8%", "role": "방부"})
+
+        detail = "관심도 데이터 없음"
+        if trend_row and trend_row.get("status") != "pending":
+            detail = "관심도 {:,.0f}회/일 · 직전 7일 대비 {:+.1f}%".format(
+                trend_row["recent_avg"], trend_row["growth"])
+        origin = {
+            "type": "trend",
+            "label": "오늘의 트렌드 · {}".format(ingredient["name"]),
+            "detail": detail,
+        }
+
+    if handoff:
+        # 다른 화면에서 넘어온 값이 트렌드 프리셋보다 우선한다 (담당자가 직접 고른 건이라서)
+        kind_map = {"prospect": "prospect", "inhouse": "inhouse", "customer": "customer"}
+        kind = kind_map.get(handoff.get("kind") or "", None)
+        if kind:
+            values["request_origin"] = kind
+            prefilled.add("request_origin")
+        account = (handoff.get("account") or "").strip()
+        if account:
+            known = {row["name"] for row in get_customers()}
+            if account in known:
+                # 등록된 고객사면 드롭다운에서 고르고, 아니면 신규 제안으로 둔다
+                values["request_origin"] = "customer"
+                values["customer"] = account
+                prefilled |= {"request_origin", "customer"}
+            else:
+                if values["request_origin"] == "customer":
+                    values["request_origin"] = "prospect"
+                values["customer_new"] = account
+                prefilled |= {"request_origin", "customer_new"}
+        if handoff.get("product"):
+            values["product_name"] = handoff["product"]
+            prefilled.add("product_name")
+        if handoff.get("country"):
+            values["target_country"] = handoff["country"]
+            prefilled.add("target_country")
+
+        labels = {"schedule": "일정관리", "prospect": "신규 바이어 발굴"}
+        origin = {
+            "type": handoff.get("src") or "handoff",
+            "label": "{} 에서 이어짐".format(labels.get(handoff.get("src"), "다른 화면")),
+            "detail": " · ".join(v for v in [account, handoff.get("product"),
+                                             handoff.get("country")] if v) or "값 일부만 전달됨",
+        }
+
+    while len(ingredients) < COMPOSE_INGREDIENT_ROWS:
+        ingredients.append({"name": "", "inci": "", "amount": "", "role": ""})
+
+    return {
+        "sections": [dict(sec) for sec in COMPOSE_SECTIONS],
+        "form_values": values,
+        "prefilled": sorted(prefilled),
+        "ingredients": ingredients,
+        "customers": get_customers(),
+        "origins": [dict(row) for row in REQUEST_ORIGINS],
+        "origin": origin,
+    }
+
+
+def resolve_requester(form):
+    """요청 구분에 따라 문서에 찍을 '요청 주체'를 정한다."""
+    origin = (form.get("request_origin") or "customer").strip()
+    if origin == "customer":
+        return form.get("customer", "").strip() or "고객사 미지정"
+    if origin == "prospect":
+        return (form.get("customer_new", "").strip()
+                or ORIGIN_LABELS["prospect"])
+    return ORIGIN_LABELS.get(origin, ORIGIN_LABELS["inhouse"])
+
+
+def judge_ingredients(rows):
+    """작성 중인 성분 목록에 EU 판정을 붙인다. (화면에서 실시간으로 호출한다)"""
+    live = reg_store.is_available()
+    result = []
+    for row in rows:
+        name = (row.get("name") or "").strip()
+        inci = (row.get("inci") or "").strip()
+        amount = (row.get("amount") or "").strip()
+        if not (name or inci):
+            continue
+
+        verdict = reg_store.judge(name or inci, inci or name, None, amount) if live else None
+        if verdict is None:
+            verdict = {"status": "ok", "limit": "-", "rule": "-", "annex": "",
+                       "note": "규제 데이터가 수집되지 않아 판정할 수 없습니다."}
+        result.append({
+            "name": name or inci, "inci": inci or name, "amount": amount,
+            "role": (row.get("role") or "").strip(),
+            "status": verdict["status"], "limit": verdict["limit"],
+            "rule": verdict["rule"], "note": verdict["note"],
+            "annex": verdict.get("annex", ""), "live": live,
+        })
+    return result
+
+
+def build_compose_result(form, ingredients):
+    """작성한 내용을 내부 전달 문서용 overrides 로 바꾼다."""
+    overrides = {key: value.strip()
+                 for key, value in form.items() if value and value.strip()}
+
+    # 문서 머리말에 찍을 요청 주체 (고객사 / 자사 기획 / 신규 제안)
+    requester = resolve_requester(form)
+    overrides["_requester"] = requester
+    overrides["_origin"] = (form.get("request_origin") or "customer").strip()
+
+    judged = judge_ingredients(ingredients)
+    if judged:
+        overrides["key_ingredients"] = ", ".join(
+            "{} {}".format(r["inci"], r["amount"]).strip() for r in judged)
+        flagged = [r for r in judged if r["status"] in ("warn", "ban")]
+        if flagged:
+            overrides["regulation_note"] = " / ".join(
+                "{} {} — {}".format(
+                    r["inci"], r["amount"],
+                    "EU 기준 초과" if r["status"] == "ban" else "기준 확인 필요")
+                for r in flagged)
+        else:
+            overrides["regulation_note"] = "EU 기준에서 걸리는 성분 없음 (작성 시점 기준)"
+
+    return {
+        "overrides": overrides,
+        "ingredients": judged,
+        "flagged": [r for r in judged if r["status"] in ("warn", "ban")],
+        "regulation_live": reg_store.is_available(),
     }

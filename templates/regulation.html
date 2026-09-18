@@ -1,11 +1,144 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% if not ready %}
+<form id="reg-form" class="sample-upload" method="post" action="{{ url_for('regulation') }}">
+  <input type="hidden" name="file_name" id="file-name-field">
+
+  <section class="card">
+    <h2 class="card-title">성분표를 올려 국가별 규제 확인</h2>
+    <p class="card-desc">
+      연구소에서 받은 성분표(샘플데이터)를 끌어다 놓으면 성분을 읽어 판매 국가별 허용 기준과 대조합니다.
+      가안에서는 어떤 파일을 올려도 같은 더미 판정 결과가 나옵니다.
+    </p>
+
+    <div id="dropzone" class="dropzone" tabindex="0">
+      <div class="dropzone-icon">🌍</div>
+      <div class="dropzone-main">성분표 파일을 끌어다 놓거나 <span class="link-like">클릭해서 선택</span>하세요</div>
+      <div class="dropzone-sub">XLSX, CSV, PDF, DOCX 지원 · 1개 파일</div>
+      <input type="file" id="file-input" class="hidden-input"
+             accept=".xlsx,.xls,.csv,.pdf,.docx">
+    </div>
+
+    <div id="file-chip" class="file-chip" hidden>
+      <span class="file-chip-icon">📎</span>
+      <span id="file-chip-name" class="file-chip-name"></span>
+      <span id="file-chip-size" class="file-chip-size"></span>
+      <button type="button" id="file-remove" class="file-chip-remove" aria-label="파일 삭제">✕</button>
+    </div>
+
+    <div class="field spaced">
+      <label class="field-label" for="country">대조할 판매 국가</label>
+      <select class="select" name="country" id="country">
+        <option value="all" {% if preset_country in (none, 'all') %}selected{% endif %}>전체 국가 ({{ countries|length }}개국)</option>
+        {% for c in countries %}
+        <option value="{{ c.code }}" {% if preset_country == c.code %}selected{% endif %}>{{ c.flag }} {{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="sample-row">
+      <button type="submit" class="btn btn-primary">🔍 규제 대조 시작</button>
+      <span class="sample-hint">파일 없이 눌러도 샘플 성분표로 체험할 수 있습니다.</span>
+    </div>
+  </section>
+
+  <div class="reg-side">
+  <section class="card">
+    {% if reg_source %}
+    <h2 class="card-title">규제 데이터 출처 <span class="data-badge live">실데이터</span></h2>
+    <p class="card-desc">EU는 실제 법령으로 판정합니다. 나머지 국가는 아직 더미입니다.</p>
+    <div class="info-row">
+      <span class="info-label">🇪🇺 EU</span>
+      <span class="info-value">{{ reg_source.name }}<br>
+        <span class="source-sub">통합본 {{ reg_source.celex }} · 기준일 {{ reg_source.version_date }} · 성분 {{ reg_source.count }}건</span>
+      </span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">수집일</span>
+      <span class="info-value">{{ reg_source.fetched_at }} · <code class="source-cmd">python regdata/sync_eu.py --refresh</code> 로 갱신</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">미연동</span>
+      <span class="info-value">
+        <span class="pill soft">🇺🇸 미국</span><span class="pill soft">🇨🇳 중국</span><span class="pill soft">🇯🇵 일본</span><span class="pill soft">🇻🇳 베트남</span>
+      </span>
+    </div>
+    {% else %}
+    <h2 class="card-title">규제 데이터 출처 <span class="data-badge">더미</span></h2>
+    <p class="card-desc">
+      아직 실제 규제 데이터가 없습니다. 아래 명령으로 EU 법령을 내려받으면
+      EU 판정이 실데이터로 바뀝니다. (API 키 불필요)
+    </p>
+    <div class="info-row">
+      <span class="info-label">수집 명령</span>
+      <span class="info-value"><code class="source-cmd">python regdata/sync_eu.py</code></span>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">대조하는 순서</h2>
+    <div class="how-row"><span class="how-icon">1</span>
+      <div><div class="how-title">성분표 읽기</div>
+      <div class="how-desc">성분명·INCI 명·함량 열을 찾아 행 단위로 뽑아냅니다.</div></div>
+    </div>
+    <div class="how-row"><span class="how-icon">2</span>
+      <div><div class="how-title">INCI 사전 매칭</div>
+      <div class="how-desc">표기가 달라도 같은 성분이면 하나로 묶고, 못 찾은 행은 따로 표시합니다.</div></div>
+    </div>
+    <div class="how-row"><span class="how-icon">3</span>
+      <div><div class="how-title">국가별 기준 대조</div>
+      <div class="how-desc">미국·EU·중국·일본·베트남의 허용 농도와 금지 목록에 맞춰 봅니다.</div></div>
+    </div>
+    <div class="how-row"><span class="how-icon">4</span>
+      <div><div class="how-title">판정과 근거 제시</div>
+      <div class="how-desc">적합·주의·사용 불가로 나누고 근거 규정과 최신 개정일을 보여줍니다.</div></div>
+    </div>
+  </section>
+  </div>
+</form>
+
+<div id="loading" class="loading-overlay" hidden>
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <div id="loading-text" class="loading-text">성분표를 읽는 중…</div>
+    <div class="loading-sub">가안에서는 실제 대조 없이 더미 결과를 보여줍니다.</div>
+  </div>
+</div>
+
+{% else %}
+
+<section class="card result-summary">
+  <div class="result-head">
+    <div>
+      <span class="result-file">📊 {{ parsed.file_name }}</span>
+      <span class="result-meta">{{ parsed.customer }} · {{ parsed.product }}</span>
+    </div>
+    <a class="btn" href="{{ url_for('regulation') }}">다른 성분표 올리기</a>
+  </div>
+  <div class="ai-meta">
+    <span class="ai-chip">읽어낸 행 {{ parsed.rows_read }}개</span>
+    <span class="ai-chip">INCI 매칭 {{ parsed.matched }}건</span>
+    <span class="ai-chip">매칭 실패 {{ parsed.unmatched|length }}건</span>
+    <span class="ai-chip">
+      대조 국가
+      {%- if country_detail %} {{ country_detail.flag }} {{ country_detail.name }}
+      {%- else %} 전체 {{ countries|length }}개국{% endif %}
+    </span>
+    {% if reg_source %}
+    <span class="ai-chip live">🇪🇺 EU 실데이터 · 기준일 {{ reg_source.version_date }}</span>
+    {% endif %}
+  </div>
+</section>
+
 <form class="card filter-bar" method="get" action="{{ url_for('regulation') }}">
+  <input type="hidden" name="ready" value="1">
+
   <div class="filter-field grow">
     <label class="field-label" for="q">성분 검색</label>
     <input class="input" type="text" name="q" id="q" value="{{ selected.q }}"
-           placeholder="성분명 또는 INCI 명으로 검색 (예: 레티놀, Retinol)">
+           placeholder="성분표에서 읽어낸 성분 중에서 찾기 (예: 레티놀, Retinol)">
   </div>
 
   <div class="filter-field">
@@ -30,13 +163,13 @@
 
   <div class="filter-actions">
     <button type="submit" class="btn btn-primary">검색</button>
-    <a class="btn" href="{{ url_for('regulation') }}">초기화</a>
+    <a class="btn" href="{{ url_for('regulation', ready='1') }}">초기화</a>
   </div>
 </form>
 
 <div class="summary-grid summary-grid-3">
   <div class="summary-card">
-    <div class="summary-label">검색 결과</div>
+    <div class="summary-label">대조 결과</div>
     <div class="summary-value">{{ counts.total }}건</div>
   </div>
   <div class="summary-card {% if counts.warn %}warn{% endif %}">
@@ -53,7 +186,7 @@
   <section class="card">
     <h2 class="card-title">성분별 규제 판정 <span class="count-chip">{{ rows|length }}</span></h2>
     <p class="card-desc">
-      현재 분석 중인 개발요청서(Glowtree Beauty · 비타민C 세럼)의 요청 농도를 기준으로 대조한 결과입니다.
+      올린 성분표({{ parsed.file_name }})에서 읽어낸 함량을 기준으로 대조한 결과입니다.
       행을 클릭하면 근거 규정과 메모를 볼 수 있습니다.
     </p>
 
@@ -62,7 +195,7 @@
         <tr>
           <th class="col-country">국가</th>
           <th>성분</th>
-          <th class="col-req">요청 농도</th>
+          <th class="col-req">표기 함량</th>
           <th class="col-limit">허용 기준</th>
           <th class="col-status">판정</th>
         </tr>
@@ -70,7 +203,10 @@
       <tbody>
         {% for row in rows %}
         <tr class="reg-row" data-key="{{ row.key }}">
-          <td class="col-country">{{ row.country_flag }} {{ row.country_name }}</td>
+          <td class="col-country">
+            {{ row.country_flag }} {{ row.country_name }}
+            <span class="data-badge {% if row.live %}live{% endif %}">{{ '실데이터' if row.live else '더미' }}</span>
+          </td>
           <td>
             <div class="reg-name">{{ row.name }}</div>
             <div class="reg-inci">{{ row.inci }}</div>
@@ -93,8 +229,15 @@
                 <span>{{ row.category }}</span>
               </div>
               <div class="reg-detail-item">
-                <span class="reg-detail-label">최신 개정</span>
+                <span class="reg-detail-label">{{ '법령 기준일' if row.live else '최신 개정' }}</span>
                 <span>{{ row.updated }}</span>
+              </div>
+              <div class="reg-detail-item">
+                <span class="reg-detail-label">데이터 출처</span>
+                <span>
+                  {%- if row.live %}EU 법령 통합본 {{ reg_source.celex }} (자동 수집)
+                  {%- else %}가안 더미 — 이 국가는 아직 실데이터에 연결되지 않았습니다{% endif %}
+                </span>
               </div>
               {% if row.note %}
               <p class="reg-detail-note">{{ row.note }}</p>
@@ -146,7 +289,7 @@
       <h2 class="card-title">국가별 등록 개요</h2>
       <p class="card-desc">국가를 선택하면 등록 절차와 필요 서류를 볼 수 있습니다.</p>
       {% for c in countries %}
-      <a class="country-row" href="{{ url_for('regulation', country=c.code, q=selected.q, status=selected.status) }}">
+      <a class="country-row" href="{{ url_for('regulation', ready='1', country=c.code, q=selected.q, status=selected.status) }}">
         <span class="country-flag">{{ c.flag }}</span>
         <span>
           <span class="country-name">{{ c.name }}</span>
@@ -159,21 +302,103 @@
     {% endif %}
 
     <section class="card">
-      <h2 class="card-title">분석 결과와 연동</h2>
-      <p class="card-desc">개발요청서에서 발견된 규제 주의 성분입니다.</p>
+      <h2 class="card-title">매칭하지 못한 행 <span class="count-chip">{{ parsed.unmatched|length }}</span></h2>
+      <p class="card-desc">INCI 명을 찾지 못해 판정에서 빠진 성분입니다. 사람이 확인해야 합니다.</p>
+      {% for item in parsed.unmatched %}
       <div class="link-card">
-        <div class="link-card-main">Retinol 0.5% · EU 기준 초과 가능성</div>
-        <div class="link-card-sub">Glowtree_Beauty_Development_Request.pdf</div>
+        <div class="link-card-main">{{ item.name }}</div>
+        <div class="link-card-sub">원문 표기: {{ item.raw }}</div>
+        <div class="link-card-sub">{{ item.note }}</div>
       </div>
-      <a class="btn btn-ghost full" href="{{ url_for('result') }}">분석 결과로 돌아가기</a>
+      {% else %}
+      <p class="card-desc no-margin">모든 행을 성분으로 인식했습니다.</p>
+      {% endfor %}
+      <a class="btn btn-ghost full" href="{{ url_for('regulation') }}">다른 성분표 올리기</a>
     </section>
   </aside>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
+  var form = document.getElementById('reg-form');
+
+  if (form) {
+    var dropzone = document.getElementById('dropzone');
+    var fileInput = document.getElementById('file-input');
+    var chip = document.getElementById('file-chip');
+    var chipName = document.getElementById('file-chip-name');
+    var chipSize = document.getElementById('file-chip-size');
+    var removeBtn = document.getElementById('file-remove');
+    var nameField = document.getElementById('file-name-field');
+    var overlay = document.getElementById('loading');
+    var loadingText = document.getElementById('loading-text');
+
+    function formatSize(bytes) {
+      if (bytes < 1024) { return bytes + ' B'; }
+      if (bytes < 1024 * 1024) { return (bytes / 1024).toFixed(1) + ' KB'; }
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    // 파일명과 용량만 표시한다 (내용은 서버로 보내지 않는다)
+    function showFile(file) {
+      chipName.textContent = file.name;
+      chipSize.textContent = formatSize(file.size);
+      nameField.value = file.name;
+      chip.hidden = false;
+      dropzone.classList.add('has-file');
+    }
+
+    dropzone.addEventListener('click', function () { fileInput.click(); });
+    dropzone.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+    });
+
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files.length) { showFile(fileInput.files[0]); }
+    });
+
+    ['dragenter', 'dragover'].forEach(function (type) {
+      dropzone.addEventListener(type, function (e) {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(function (type) {
+      dropzone.addEventListener(type, function (e) {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+      });
+    });
+
+    dropzone.addEventListener('drop', function (e) {
+      if (e.dataTransfer.files.length) { showFile(e.dataTransfer.files[0]); }
+    });
+
+    removeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      fileInput.value = '';
+      nameField.value = '';
+      chip.hidden = true;
+      dropzone.classList.remove('has-file');
+    });
+
+    window.addEventListener('pageshow', function () { overlay.hidden = true; });
+
+    // 로딩 연출 (setTimeout 으로 문구만 바꾼다)
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      overlay.hidden = false;
+      loadingText.textContent = '성분표를 읽는 중…';
+      setTimeout(function () { loadingText.textContent = 'INCI 사전과 매칭하는 중…'; }, 900);
+      setTimeout(function () { loadingText.textContent = '국가별 기준과 대조하는 중…'; }, 1800);
+      setTimeout(function () { form.submit(); }, 2600);
+    });
+  }
+
   document.querySelectorAll('.reg-row').forEach(function (row) {
     row.addEventListener('click', function () {
       var detail = document.getElementById('detail-' + row.dataset.key);

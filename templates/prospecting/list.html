@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "prospecting/_bar.html" %}
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-label">등록 후보</div>
+    <div class="summary-value">{{ summary.total }}</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">적합도 검토 가능</div>
+    <div class="summary-value">{{ summary.reviewable }}</div>
+    <div class="summary-sub">확인율 {{ M.COVERAGE_THRESHOLD|int }}% 이상</div>
+  </div>
+  <div class="summary-card warn">
+    <div class="summary-label">오늘 연락</div>
+    <div class="summary-value text-orange">{{ summary.due_today }}</div>
+  </div>
+  <div class="summary-card danger">
+    <div class="summary-label">기한 지남</div>
+    <div class="summary-value text-red">{{ summary.overdue }}</div>
+  </div>
+</div>
+
+<form class="card filter-bar" method="get" action="{{ url_for('prospecting.prospect_list') }}">
+  <input type="hidden" name="mode" value="{{ fit_mode }}">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <div class="filter-field grow">
+    <label class="field-label" for="q">검색</label>
+    <input class="input" type="text" name="q" id="q" value="{{ selected.q }}"
+           placeholder="회사명 · 브랜드명 · 도메인">
+  </div>
+  <div class="filter-field">
+    <label class="field-label" for="btype">기업 유형</label>
+    <select class="select select-inline" name="btype" id="btype">
+      <option value="all">전체</option>
+      {% for t in M.BUSINESS_TYPES %}
+      <option value="{{ t.value }}" {% if selected.btype == t.value %}selected{% endif %}>{{ t.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-field">
+    <label class="field-label" for="stage">단계</label>
+    <select class="select select-inline" name="stage" id="stage">
+      <option value="all">전체</option>
+      {% for s in M.ALL_STAGES %}
+      <option value="{{ s.value }}" {% if selected.stage == s.value %}selected{% endif %}>{{ s.label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filter-actions">
+    <button type="submit" class="btn btn-primary">검색</button>
+    <a class="btn" href="{{ url_for('prospecting.prospect_list') }}">초기화</a>
+  </div>
+</form>
+
+<div class="pros-toolbar">
+  <div class="tabs small">
+    {% for m in M.MODES %}
+    <a class="tab {% if fit_mode == m.value %}active{% endif %}"
+       href="{{ url_for('prospecting.prospect_list', mode=m.value, sort=sort, q=selected.q) }}">{{ m.label }} 기준</a>
+    {% endfor %}
+  </div>
+  <div class="pros-toolbar-right">
+    <span class="sort-label">정렬</span>
+    {% for key, label in [('fit','적합도'), ('recent','최근 확인'), ('due','다음 연락일')] %}
+    <a class="chip-link {% if sort == key %}active{% endif %}"
+       href="{{ url_for('prospecting.prospect_list', mode=fit_mode, sort=key, q=selected.q) }}">{{ label }}</a>
+    {% endfor %}
+    <a class="btn btn-mini" href="{{ url_for('prospecting.csv_import') }}">CSV 가져오기</a>
+    <a class="btn btn-mini" href="{{ url_for('prospecting.csv_export', mode=fit_mode) }}">CSV 내보내기</a>
+    <button type="button" class="btn btn-mini btn-ghost" id="toggle-new">+ 후보 등록</button>
+  </div>
+</div>
+
+<section class="card" id="new-form" hidden>
+  <h2 class="card-title">후보 기업 등록</h2>
+  <form method="post" action="{{ url_for('prospecting.prospect_new') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="compose-fields">
+      <div class="field">
+        <label class="field-label" for="n-company">회사명 <span class="req">*</span></label>
+        <input class="input" type="text" name="company_name" id="n-company" required>
+      </div>
+      <div class="field">
+        <label class="field-label" for="n-brand">브랜드명</label>
+        <input class="input" type="text" name="brand_name" id="n-brand">
+      </div>
+      <div class="field">
+        <label class="field-label" for="n-url">공식 사이트 <span class="req">*</span></label>
+        <input class="input" type="url" name="official_url" id="n-url" required
+               placeholder="https://example.com">
+      </div>
+      <div class="field">
+        <label class="field-label" for="n-contact">공개 사업 문의 페이지</label>
+        <input class="input" type="url" name="contact_url" id="n-contact"
+               placeholder="https://example.com/contact">
+      </div>
+      <div class="field">
+        <label class="field-label" for="n-hq">소재국</label>
+        <input class="input" type="text" name="headquarters_country" id="n-hq" placeholder="United States">
+      </div>
+      <div class="field">
+        <label class="field-label" for="n-market">판매국</label>
+        <input class="input" type="text" name="sales_country" id="n-market" placeholder="United States">
+      </div>
+      <div class="field">
+        <label class="field-label" for="n-type">기업 유형</label>
+        <select class="select" name="business_type" id="n-type">
+          {% for t in M.BUSINESS_TYPES %}<option value="{{ t.value }}">{{ t.label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="n-channel">발굴 경로</label>
+        <input class="input" type="text" name="source_channel" id="n-channel" placeholder="전시회 디렉터리">
+      </div>
+    </div>
+    <p class="field-hint">
+      개인 이메일은 입력하지 않습니다. 공개된 사업 문의 페이지나 대표 업무용 연락처만 기록합니다.
+    </p>
+    <div class="action-row">
+      <button type="submit" class="btn btn-primary">등록</button>
+    </div>
+  </form>
+</section>
+
+{% if duplicates %}
+<div class="dup-box">
+  <strong>중복 후보 {{ duplicates|length }}건</strong> — 도메인이 같습니다.
+  같은 기업인지 확인한 뒤 담당자가 직접 정리하세요. 자동으로 합치지 않습니다.
+  {% for group in duplicates %}
+  <div class="dup-row">
+    <code>{{ group.domain }}</code>
+    {% for item in group.prospects %}
+    <a class="chip-link" href="{{ url_for('prospecting.prospect_detail', prospect_id=item.id) }}">{{ item.company_name }}</a>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<section class="card">
+  <h2 class="card-title">후보 기업 <span class="count-chip">{{ rows|length }}</span></h2>
+  <p class="card-desc">
+    적합도는 등록된 자사 역량과 확인된 고객 정보로 계산한 <strong>내부 참고값</strong>입니다.
+    수주 확률이 아닙니다. 점수는 확인율과 함께만 봅니다.
+  </p>
+
+  <table class="item-table pros-table">
+    <thead>
+      <tr>
+        <th>기업</th>
+        <th class="col-country2">국가</th>
+        <th class="col-btype">유형</th>
+        <th class="col-cats">주요 제품군</th>
+        <th class="col-fit">적합도 / 확인율</th>
+        <th class="col-evidence">주요 근거</th>
+        <th class="col-due">다음 연락</th>
+        <th class="col-stage">단계</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr class="pros-row {% if row.score.blocking %}blocked{% endif %}">
+        <td>
+          <a class="pros-name" href="{{ url_for('prospecting.prospect_detail', prospect_id=row.id) }}">{{ row.company_name }}</a>
+          <div class="pros-domain">{{ row.canonical_domain or '—' }}</div>
+        </td>
+        <td class="col-country2">
+          {{ row.headquarters_country or '미확인' }}
+          {% if row.sales_country %}<div class="pros-sub">판매 {{ row.sales_country }}</div>{% endif %}
+        </td>
+        <td class="col-btype"><span class="pill soft">{{ M.BUSINESS_TYPE_LABELS.get(row.business_type, row.business_type) }}</span></td>
+        <td class="col-cats">
+          {% for c in row.summary.category_list or [] %}
+          <span class="pill soft">{{ M.CATEGORY_LABELS.get(c, c) }}</span>
+          {% else %}<span class="text-gray">수집 전</span>{% endfor %}
+        </td>
+        <td class="col-fit">
+          {% if row.score.fit_score is none %}
+          <span class="status-badge missing">정보 부족</span>
+          {% elif row.score.insufficient %}
+          <span class="status-badge check">정보 부족</span>
+          <div class="pros-sub">{{ '%.0f'|format(row.score.fit_score) }}점 · 확인율 {{ '%.0f'|format(row.score.coverage) }}%</div>
+          {% else %}
+          <span class="fit-num">{{ '%.0f'|format(row.score.fit_score) }}점</span>
+          <div class="pros-sub">확인율 {{ '%.0f'|format(row.score.coverage) }}%</div>
+          {% endif %}
+          {% if row.score.blocking %}<div class="blocking-tag">필수조건 불일치</div>{% endif %}
+        </td>
+        <td class="col-evidence"><span class="pros-reason">{{ row.score.reason }}</span></td>
+        <td class="col-due">
+          {% if row.next_due %}
+          <span class="{% if row.next_due < today %}text-red{% endif %}">{{ row.next_due }}</span>
+          {% else %}<span class="text-gray">—</span>{% endif %}
+        </td>
+        <td class="col-stage">
+          <span class="stage-badge s-{{ row.stage }}">{{ M.STAGE_LABELS.get(row.stage, row.stage) }}</span>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td class="empty-row" colspan="8">
+        등록된 후보가 없습니다. 후보를 등록하거나 CSV로 가져오세요.
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2 class="card-title">데모 모드</h2>
+  <p class="card-desc">
+    실제 수집이 준비되지 않았을 때 화면을 확인하는 용도입니다.
+    데모 레코드는 <code>data_mode=demo</code>로 저장되고 실제 데이터 집계에 섞이지 않습니다.
+  </p>
+  <form method="post" action="{{ url_for('prospecting.demo') }}" class="action-group">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" name="action" value="seed">데모 데이터 만들기</button>
+    <button class="btn" name="action" value="clear">데모 데이터 삭제</button>
+  </form>
+  <p class="field-hint">
+    현재 저장된 후보 — 실제 {{ counts.get('real', 0) }}건 / 데모 {{ counts.get('demo', 0) }}건
+  </p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var btn = document.getElementById('toggle-new');
+  var box = document.getElementById('new-form');
+  if (btn && box) {
+    btn.addEventListener('click', function () {
+      box.hidden = !box.hidden;
+      if (!box.hidden) { box.querySelector('input').focus(); }
+    });
+  }
+})();
+</script>
+{% endblock %}

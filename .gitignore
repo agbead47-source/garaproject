@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+
+# 규제 실데이터 - python regdata/sync_eu.py 로 다시 만든다
+regdata/cache/
+regdata/regulation.db
+
+# 성분 관심도 캐시 - python trend_store.py 로 다시 만든다
+trenddata/
+
+# 번역 캐시 - 다시 호출하면 채워진다
+apicache/
+
+# 신규 바이어 발굴 · 일정관리 DB - 로컬 저장, 저장소 추적 제외
+data/

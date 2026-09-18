@@ -1,0 +1,625 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card result-summary">
+  <div class="result-head">
+    <div>
+      <span class="result-file">💰 {{ d.handoff_product or d.cost_sheet.product }}</span>
+      <span class="result-meta">{{ d.customer }} · {{ d.source_doc }}</span>
+    </div>
+    <a class="btn" href="{{ url_for('result') }}">분석 결과 보기</a>
+  </div>
+  {% if d.handoff %}
+  <p class="live-caveat">
+    다른 화면에서 넘어온 <b>건 이름·고객사</b>만 채웠습니다.
+    원가·물류비는 이 건의 실제 값이 아니라 화면 기본값이니 구매팀 원가표로 바꿔 주세요.
+  </p>
+  {% endif %}
+  <p class="card-desc no-margin">
+    구매팀에서 받은 <strong>원가</strong>에 선적 조건별 물류비·적하보험, 영업마진, 환율을 얹어
+    판매 단가를 뽑습니다. 값을 바꾸면 오른쪽이 바로 다시 계산됩니다.
+  </p>
+</section>
+
+<div class="pricing-grid">
+  <!-- ================= 입력 ================= -->
+  <div class="pricing-inputs">
+
+    <!-- 1. 구매팀 원가표 -->
+    <section class="card">
+      <h2 class="card-title">
+        ① 구매팀 원가
+        {% if loaded %}<span class="data-badge live">인식 완료</span>{% endif %}
+      </h2>
+
+      <form id="cost-form" method="post" action="{{ url_for('pricing') }}">
+        <input type="hidden" name="file_name" id="file-name-field">
+
+        {% if loaded %}
+        <div class="sheet-head">
+          <div>
+            <div class="sheet-file">📊 {{ d.cost_sheet.file_name }}</div>
+            <div class="sheet-meta">
+              {{ d.cost_sheet.issued_by }} · {{ d.cost_sheet.issued_at }} 기준 ·
+              {{ '{:,}'.format(d.cost_sheet.quantity) }}개 기준 원가
+            </div>
+          </div>
+          <a class="btn btn-mini" href="{{ url_for('pricing') }}">다른 원가표</a>
+        </div>
+        {% else %}
+        <p class="card-desc">
+          구매팀에서 받은 원가산출서를 올리면 항목을 읽어 아래에 채웁니다.
+          가안에서는 어떤 파일을 올려도 같은 더미 결과가 나옵니다.
+        </p>
+
+        <div id="dropzone" class="dropzone compact" tabindex="0">
+          <div class="dropzone-icon">📊</div>
+          <div class="dropzone-main">원가산출서를 끌어다 놓거나 <span class="link-like">클릭해서 선택</span>하세요</div>
+          <div class="dropzone-sub">XLSX, CSV, PDF 지원 · 1개 파일</div>
+          <input type="file" id="file-input" class="hidden-input" accept=".xlsx,.xls,.csv,.pdf">
+        </div>
+
+        <div id="file-chip" class="file-chip" hidden>
+          <span class="file-chip-icon">📎</span>
+          <span id="file-chip-name" class="file-chip-name"></span>
+          <span id="file-chip-size" class="file-chip-size"></span>
+          <button type="button" id="file-remove" class="file-chip-remove" aria-label="파일 삭제">✕</button>
+        </div>
+
+        <div class="sample-row">
+          <button type="submit" class="btn btn-ghost">📥 원가표 읽어오기</button>
+          <span class="sample-hint">파일 없이 눌러도 샘플 원가표로 체험할 수 있습니다.</span>
+        </div>
+        {% endif %}
+      </form>
+
+      <div class="field-row spaced">
+        <div class="field">
+          <label class="field-label" for="p-qty">발주 수량 (개)</label>
+          <input class="input" type="number" id="p-qty" value="{{ d.cost_sheet.quantity }}" min="1" step="100">
+        </div>
+      </div>
+
+      <div class="parts-box">
+        {% for line in d.cost_sheet.lines %}
+        <div class="part-row">
+          <label class="part-label" for="cost-{{ line.key }}">
+            {{ line.label }}
+            {% if line.note %}<span class="part-note">{{ line.note }}</span>{% endif %}
+          </label>
+          <input class="input part-input" type="number" id="cost-{{ line.key }}"
+                 data-cost value="{{ line.amount }}" min="0" step="10">
+          <span class="part-unit">원</span>
+        </div>
+        {% endfor %}
+        <div class="part-row part-sum">
+          <span class="part-label">제조원가 합계 (EXW)</span>
+          <span class="part-input sum-value" id="cost-sum">—</span>
+          <span class="part-unit">원</span>
+        </div>
+      </div>
+
+      {% if d.cost_sheet.unmatched %}
+      <div class="unmatched-box">
+        <div class="unmatched-head">인식하지 못한 행 {{ d.cost_sheet.unmatched|length }}건</div>
+        {% for row in d.cost_sheet.unmatched %}
+        <div class="unmatched-row"><strong>{{ row.label }}</strong> — {{ row.note }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- 2. 선적 조건 -->
+    <section class="card">
+      <h2 class="card-title">② 선적 조건 · 물류비</h2>
+      <p class="card-desc">조건을 바꾸면 <strong>판매가에 포함되는 비용 범위</strong>가 달라집니다.</p>
+
+      <div class="field">
+        <label class="field-label" for="p-incoterm">거래 조건 (Incoterms)</label>
+        <select class="select" id="p-incoterm">
+          {% for i in d.incoterms %}
+          <option value="{{ i.code }}" data-desc="{{ i.desc }}"
+                  {% if i.code == d.selected_incoterm %}selected{% endif %}>{{ i.label }}</option>
+          {% endfor %}
+        </select>
+        <p class="field-hint" id="incoterm-hint"></p>
+      </div>
+
+      <div class="parts-box">
+        {% for row in d.logistics %}
+        <div class="part-row" data-logi-row="{{ row.key }}">
+          <label class="part-label" for="logi-{{ row.key }}">
+            {{ row.label }}
+            <span class="part-note">{{ row.from }}부터 포함 · 총액</span>
+          </label>
+          <input class="input part-input" type="number" id="logi-{{ row.key }}"
+                 data-logi data-from="{{ row.from }}" value="{{ row.total }}" min="0" step="10000">
+          <span class="part-unit">원</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="field-row spaced">
+        <div class="field">
+          <label class="field-label" for="p-ins-rate">적하보험 요율 (%)</label>
+          <input class="input" type="number" id="p-ins-rate" value="{{ d.insurance.rate }}" min="0" step="0.01">
+        </div>
+        <div class="field">
+          <label class="field-label" for="p-ins-cov">부보율 (%)</label>
+          <input class="input" type="number" id="p-ins-cov" value="{{ d.insurance.coverage }}" min="100" step="5">
+        </div>
+      </div>
+      <p class="field-hint no-top">보험료 = CFR 금액 × 부보율 × 요율. <strong>CIF</strong>에서만 붙습니다.</p>
+    </section>
+
+    <!-- 3. 영업마진 -->
+    <section class="card">
+      <h2 class="card-title">③ 영업마진</h2>
+
+      <div class="field">
+        <span class="field-label">계산 방식</span>
+        <div class="check-row">
+          {% for m in d.margin_modes %}
+          <label class="check">
+            <input type="radio" name="margin-mode" value="{{ m.value }}"
+                   {% if m.value == d.margin_mode %}checked{% endif %}> {{ m.label }}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="field-hint" id="margin-hint"></p>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="p-margin">마진율 (%)</label>
+        <div class="input-unit">
+          <input class="input" type="number" id="p-margin" value="{{ d.margin }}" min="0" max="95" step="1">
+          <span class="unit">%</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 환율 -->
+    <section class="card">
+      <h2 class="card-title">④ 환율</h2>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="p-fx">견적 환율 (KRW/USD)</label>
+          <input class="input" type="number" id="p-fx" value="{{ d.fx }}" min="100" step="5">
+          <p class="field-hint">{{ d.fx_date }} 기준 · 수기 입력 (TODO: 실시간 환율 연동)</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="p-target">고객사 목표 단가 (USD)</label>
+          <input class="input" type="number" id="p-target" value="{{ d.target_price_usd }}" min="0" step="0.1">
+        </div>
+      </div>
+      <div class="action-row">
+        <button type="button" class="btn" id="p-reset">기본값으로 되돌리기</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= 결과 ================= -->
+  <div class="pricing-results">
+    <section class="card" id="verdict-card">
+      <div class="verdict-head">
+        <div>
+          <div class="verdict-label"><span id="out-term">CIF</span> 판매 단가</div>
+          <div class="verdict-price"><span id="out-usd">—</span> <span class="verdict-cur">USD / 개</span></div>
+          <div class="verdict-krw"><span id="out-krw">—</span>원 / 개</div>
+        </div>
+        <div class="verdict-gap">
+          <div class="verdict-label">목표 단가 대비</div>
+          <div class="verdict-diff" id="out-gap">—</div>
+          <div class="verdict-note" id="out-gap-note"></div>
+        </div>
+      </div>
+      <div class="verdict-bar">
+        <span class="verdict-fill" id="out-bar"></span>
+        <span class="verdict-target" id="out-target-mark"></span>
+      </div>
+      <p class="verdict-msg" id="out-msg"></p>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">조건별 단가 <span class="count-chip">견적서용</span></h2>
+      <p class="card-desc">같은 원가라도 어느 조건으로 파느냐에 따라 단가가 달라집니다.</p>
+      <table class="item-table">
+        <thead>
+          <tr>
+            <th class="col-label">조건</th>
+            <th>포함 범위</th>
+            <th class="col-cost">원가 (원)</th>
+            <th class="col-cost">단가 (USD)</th>
+          </tr>
+        </thead>
+        <tbody id="term-rows"></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">원가 구성</h2>
+      <table class="item-table cost-table">
+        <thead>
+          <tr>
+            <th>항목</th>
+            <th class="col-cost">개당 (원)</th>
+            <th class="col-share">비중</th>
+            <th class="col-kind">구분</th>
+          </tr>
+        </thead>
+        <tbody id="cost-rows"></tbody>
+        <tfoot>
+          <tr class="cost-total">
+            <th>총원가</th>
+            <th class="col-cost" id="cost-total">—</th>
+            <th class="col-share">100%</th>
+            <th class="col-kind"></th>
+          </tr>
+          <tr>
+            <th>영업마진 (<span id="margin-label">—</span>)</th>
+            <th class="col-cost" id="cost-margin">—</th>
+            <th class="col-share"></th>
+            <th class="col-kind"></th>
+          </tr>
+          <tr class="cost-price">
+            <th>판매 단가</th>
+            <th class="col-cost" id="cost-price">—</th>
+            <th class="col-share"></th>
+            <th class="col-kind"></th>
+          </tr>
+        </tfoot>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">환율 변동 시 단가</h2>
+      <p class="card-desc">
+        원가는 원화, 판매는 달러라 <strong>환율이 내려가면(원화 강세) USD 단가가 올라갑니다.</strong>
+      </p>
+      <table class="item-table">
+        <thead>
+          <tr>
+            <th class="col-label">변동</th>
+            <th class="col-cost">환율</th>
+            <th class="col-cost">단가 (USD)</th>
+            <th class="col-status">목표 달성</th>
+          </tr>
+        </thead>
+        <tbody id="fx-rows"></tbody>
+      </table>
+    </section>
+
+    <section class="card" id="breakeven-card">
+      <h2 class="card-title">환율 손익분기점</h2>
+      <div class="info-row">
+        <span class="info-label">필요 최저 환율</span>
+        <span class="info-value" id="out-fxmin">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">현재 환율과 차이</span>
+        <span class="info-value" id="out-fxgap">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">목표 단가로 팔 때 실제 마진</span>
+        <span class="info-value" id="out-realmargin">—</span>
+      </div>
+      <p class="card-desc no-margin" id="out-breakeven-note"></p>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  var ORDER = {{ d.incoterm_order | tojson }};
+  var FX_STEPS = {{ d.fx_steps | tojson }};
+  var TERM_SCOPE = {
+    {% for i in d.incoterms %}'{{ i.code }}': '{{ i.desc }}'{% if not loop.last %},{% endif %}{% endfor %}
+  };
+  var MARGIN_HINTS = {
+    {% for m in d.margin_modes %}'{{ m.value }}': '{{ m.hint }}'{% if not loop.last %},{% endif %}{% endfor %}
+  };
+
+  function el(id) { return document.getElementById(id); }
+  function num(id) { return parseFloat(el(id).value) || 0; }
+  function won(v) { return Math.round(v).toLocaleString('ko-KR'); }
+  function usd(v) { return v.toFixed(2); }
+
+  function marginMode() {
+    var picked = document.querySelector('input[name="margin-mode"]:checked');
+    return picked ? picked.value : 'margin';
+  }
+
+  /* 제조원가(EXW) - 구매팀 원가표 합계 */
+  function exwCost() {
+    var sum = 0;
+    document.querySelectorAll('[data-cost]').forEach(function (input) {
+      sum += parseFloat(input.value) || 0;
+    });
+    return sum;
+  }
+
+  /* 선적 조건까지 포함되는 물류비 (개당) */
+  function logisticsFor(term, qty) {
+    var limit = ORDER.indexOf(term);
+    var rows = [];
+    document.querySelectorAll('[data-logi]').forEach(function (input) {
+      var applies = ORDER.indexOf(input.dataset.from) <= limit;
+      var perUnit = qty > 0 ? (parseFloat(input.value) || 0) / qty : 0;
+      rows.push({ key: input.id, applies: applies, perUnit: applies ? perUnit : 0 });
+    });
+    return rows;
+  }
+
+  /* 조건별 원가. CIF 는 CFR 금액 기준으로 보험료를 더한다 */
+  function costFor(term, qty) {
+    var base = exwCost();
+    var logi = logisticsFor(term, qty);
+    var logiSum = logi.reduce(function (a, r) { return a + r.perUnit; }, 0);
+    var cost = base + logiSum;
+
+    var insurance = 0;
+    if (term === 'CIF') {
+      var cfr = base + logisticsFor('CFR', qty)
+        .reduce(function (a, r) { return a + r.perUnit; }, 0);
+      insurance = cfr * (num('p-ins-cov') / 100) * (num('p-ins-rate') / 100);
+      cost += insurance;
+    }
+    return { base: base, logistics: logi, logiSum: logiSum, insurance: insurance, total: cost };
+  }
+
+  function priceOf(cost) {
+    var rate = Math.min(num('p-margin'), 94) / 100;
+    return marginMode() === 'markup' ? cost * (1 + rate) : cost / (1 - rate);
+  }
+
+  function render() {
+    var qty = num('p-qty');
+    var fx = num('p-fx') || 1;
+    var target = num('p-target');
+    var term = el('p-incoterm').value;
+
+    var c = costFor(term, qty);
+    var price = priceOf(c.total);
+    var priceUsd = price / fx;
+
+    el('cost-sum').textContent = won(c.base);
+    el('out-term').textContent = term;
+
+    /* --- 상단 판정 --- */
+    el('out-usd').textContent = usd(priceUsd);
+    el('out-krw').textContent = won(price);
+
+    var gap = priceUsd - target;
+    var gapEl = el('out-gap');
+    var card = el('verdict-card');
+    card.classList.remove('over', 'under');
+
+    if (target <= 0) {
+      gapEl.textContent = '—';
+      gapEl.className = 'verdict-diff';
+      el('out-gap-note').textContent = '목표 단가를 입력하세요.';
+      el('out-msg').textContent = '';
+    } else if (gap > 0) {
+      gapEl.textContent = '+' + usd(gap) + ' 초과';
+      gapEl.className = 'verdict-diff text-red';
+      card.classList.add('over');
+      el('out-gap-note').textContent = '목표 USD ' + usd(target) + ' / 개';
+      el('out-msg').textContent =
+        '목표 단가를 개당 ' + usd(gap) + ' USD(' + won(gap * fx) + '원) 넘습니다. ' +
+        '선적 조건을 낮추거나(EXW·FOB), 마진율·원가를 조정해야 합니다.';
+    } else {
+      gapEl.textContent = usd(Math.abs(gap)) + ' 여유';
+      gapEl.className = 'verdict-diff text-green';
+      card.classList.add('under');
+      el('out-gap-note').textContent = '목표 USD ' + usd(target) + ' / 개';
+      el('out-msg').textContent =
+        term + ' 조건으로 목표 단가 안에 들어옵니다. 개당 ' + usd(Math.abs(gap)) + ' USD 여유가 있습니다.';
+    }
+
+    var ratio = target > 0 ? Math.min(priceUsd / target, 1.6) : 0;
+    var bar = el('out-bar');
+    bar.style.width = Math.min(ratio / 1.6 * 100, 100) + '%';
+    bar.className = 'verdict-fill' + (gap > 0 ? ' over' : '');
+    el('out-target-mark').style.left = (1 / 1.6 * 100) + '%';
+
+    /* --- 조건별 단가 --- */
+    var termBody = el('term-rows');
+    termBody.innerHTML = '';
+    ORDER.forEach(function (code) {
+      var tc = costFor(code, qty);
+      var tp = priceOf(tc.total) / fx;
+      var tr = document.createElement('tr');
+      if (code === term) { tr.classList.add('step-current'); }
+      tr.innerHTML =
+        '<td class="col-label">' + code + (code === term ? ' <span class="pill">선택</span>' : '') + '</td>' +
+        '<td class="term-scope">' + TERM_SCOPE[code] + '</td>' +
+        '<td class="col-cost">' + won(tc.total) + '</td>' +
+        '<td class="col-cost">' + usd(tp) + '</td>';
+      termBody.appendChild(tr);
+    });
+
+    /* --- 원가 구성 --- */
+    var rows = [['제조원가 (구매팀)', c.base, '원가']];
+    c.logistics.forEach(function (r) {
+      var label = document.querySelector('label[for="' + r.key + '"]');
+      var name = label ? label.childNodes[0].textContent.trim() : r.key;
+      rows.push([name, r.perUnit, r.applies ? '물류비' : '미포함']);
+    });
+    if (c.insurance > 0) { rows.push(['적하보험료', c.insurance, '보험']); }
+
+    var body = el('cost-rows');
+    body.innerHTML = '';
+    rows.forEach(function (row) {
+      var share = c.total > 0 ? (row[1] / c.total * 100) : 0;
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + row[0] + '</td>' +
+        '<td class="col-cost">' + won(row[1]) + '</td>' +
+        '<td class="col-share"><div class="conf"><div class="conf-bar">' +
+          '<span class="conf-fill trend" style="width:' + share.toFixed(1) + '%"></span></div>' +
+          '<span class="conf-num">' + share.toFixed(0) + '%</span></div></td>' +
+        '<td class="col-kind">' + row[2] + '</td>';
+      if (row[1] === 0) { tr.classList.add('cost-zero'); }
+      body.appendChild(tr);
+    });
+
+    el('cost-total').textContent = won(c.total);
+    el('cost-margin').textContent = won(price - c.total);
+    el('cost-price').textContent = won(price);
+    el('margin-label').textContent =
+      num('p-margin') + '% · ' + (marginMode() === 'markup' ? '원가 대비' : '판매가 대비');
+
+    /* --- 환율 시나리오 --- */
+    var fxBody = el('fx-rows');
+    fxBody.innerHTML = '';
+    FX_STEPS.forEach(function (step) {
+      var f = fx * (1 + step / 100);
+      var u = price / f;
+      var pass = target > 0 && u <= target;
+      var tr = document.createElement('tr');
+      if (step === 0) { tr.classList.add('step-current'); }
+      tr.innerHTML =
+        '<td class="col-label">' + (step > 0 ? '+' : '') + step + '%' +
+          (step === 0 ? ' <span class="pill">기준</span>' : '') + '</td>' +
+        '<td class="col-cost">' + won(f) + '원</td>' +
+        '<td class="col-cost">' + usd(u) + '</td>' +
+        '<td class="col-status"><span class="status-badge ' +
+          (pass ? 'confirmed">달성' : 'danger">초과') + '</span></td>';
+      fxBody.appendChild(tr);
+    });
+
+    /* --- 환율 손익분기점 --- */
+    var beCard = el('breakeven-card');
+    beCard.classList.remove('over', 'under');
+
+    if (target <= 0) {
+      el('out-fxmin').textContent = '—';
+      el('out-fxmin').className = 'info-value';
+      el('out-fxgap').textContent = '—';
+      el('out-realmargin').textContent = '—';
+      el('out-breakeven-note').textContent = '';
+    } else {
+      var fxMin = price / target;
+      var diff = fx - fxMin;
+      var realMargin = (1 - c.total / (target * fx)) * 100;
+
+      el('out-fxmin').textContent = won(fxMin) + '원 / USD';
+      el('out-fxmin').className = 'info-value ' + (diff >= 0 ? 'text-green' : 'text-red');
+      el('out-fxgap').textContent = (diff >= 0 ? '+' : '') + won(diff) + '원 ' +
+        (diff >= 0 ? '(여유)' : '(부족)');
+      el('out-realmargin').textContent = realMargin.toFixed(1) + '%' +
+        (realMargin < num('p-margin') ? ' — 목표 ' + num('p-margin') + '%보다 낮음' : '');
+      el('out-realmargin').className = 'info-value ' +
+        (realMargin >= num('p-margin') ? 'text-green' : (realMargin > 0 ? 'text-orange' : 'text-red'));
+      beCard.classList.add(diff >= 0 ? 'under' : 'over');
+
+      el('out-breakeven-note').textContent = diff >= 0
+        ? '환율이 ' + won(fxMin) + '원 밑으로 내려가면 목표 단가 USD ' + usd(target) +
+          '로는 마진 ' + num('p-margin') + '%를 지킬 수 없습니다. 현재 ' + won(fx) +
+          '원이라 ' + won(diff) + '원 여유가 있습니다.'
+        : '지금 환율(' + won(fx) + '원)로는 목표 단가 USD ' + usd(target) + '에 마진 ' +
+          num('p-margin') + '%를 못 맞춥니다. 환율이 ' + won(fxMin) +
+          '원까지 올라야 하거나, 원가·조건을 조정해야 합니다.';
+    }
+
+    /* --- 보조 표시 --- */
+    var opt = el('p-incoterm').selectedOptions[0];
+    el('incoterm-hint').textContent = opt ? opt.dataset.desc : '';
+    el('margin-hint').textContent = MARGIN_HINTS[marginMode()] || '';
+
+    document.querySelectorAll('[data-logi]').forEach(function (input) {
+      var applies = ORDER.indexOf(input.dataset.from) <= ORDER.indexOf(term);
+      input.closest('.part-row').classList.toggle('logi-off', !applies);
+    });
+  }
+
+  /* --- 이벤트 --- */
+  var DEFAULTS = {};
+  var inputs = ['p-qty', 'p-incoterm', 'p-ins-rate', 'p-ins-cov', 'p-margin', 'p-fx', 'p-target'];
+
+  document.querySelectorAll('[data-cost], [data-logi]').forEach(function (input) {
+    inputs.push(input.id);
+  });
+  inputs.forEach(function (id) {
+    var node = el(id);
+    if (!node) { return; }
+    DEFAULTS[id] = node.value;
+    node.addEventListener('input', render);
+    node.addEventListener('change', render);
+  });
+  DEFAULTS.mode = marginMode();
+
+  document.querySelectorAll('input[name="margin-mode"]').forEach(function (radio) {
+    radio.addEventListener('change', render);
+  });
+
+  el('p-reset').addEventListener('click', function () {
+    Object.keys(DEFAULTS).forEach(function (key) {
+      if (key === 'mode') { return; }
+      var node = el(key);
+      if (node) { node.value = DEFAULTS[key]; }
+    });
+    var radio = document.querySelector('input[name="margin-mode"][value="' + DEFAULTS.mode + '"]');
+    if (radio) { radio.checked = true; }
+    render();
+    window.showToast('기본값으로 되돌렸습니다.');
+  });
+
+  /* --- 원가표 드래그앤드롭 (파일명만 쓴다) --- */
+  var dropzone = document.getElementById('dropzone');
+  if (dropzone) {
+    var fileInput = el('file-input');
+    var chip = el('file-chip');
+    var nameField = el('file-name-field');
+
+    function formatSize(bytes) {
+      if (bytes < 1024) { return bytes + ' B'; }
+      if (bytes < 1024 * 1024) { return (bytes / 1024).toFixed(1) + ' KB'; }
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    function showFile(file) {
+      el('file-chip-name').textContent = file.name;
+      el('file-chip-size').textContent = formatSize(file.size);
+      nameField.value = file.name;
+      chip.hidden = false;
+      dropzone.classList.add('has-file');
+    }
+
+    dropzone.addEventListener('click', function () { fileInput.click(); });
+    dropzone.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+    });
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files.length) { showFile(fileInput.files[0]); }
+    });
+    ['dragenter', 'dragover'].forEach(function (type) {
+      dropzone.addEventListener(type, function (e) {
+        e.preventDefault(); dropzone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (type) {
+      dropzone.addEventListener(type, function (e) {
+        e.preventDefault(); dropzone.classList.remove('dragover');
+      });
+    });
+    dropzone.addEventListener('drop', function (e) {
+      if (e.dataTransfer.files.length) { showFile(e.dataTransfer.files[0]); }
+    });
+    el('file-remove').addEventListener('click', function (e) {
+      e.stopPropagation();
+      fileInput.value = '';
+      nameField.value = '';
+      chip.hidden = true;
+      dropzone.classList.remove('has-file');
+    });
+  }
+
+  render();
+})();
+</script>
+{% endblock %}

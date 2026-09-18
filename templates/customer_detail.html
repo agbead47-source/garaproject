@@ -103,6 +103,18 @@
     </div>
     {% endif %}
     <div class="mail-body" id="mail-{{ loop.index }}" hidden>{{ m.body }}</div>
+
+    <div class="mail-tools" id="tools-{{ loop.index }}" hidden>
+      <button type="button" class="btn btn-mini js-translate" data-index="{{ loop.index }}">
+        🌐 번역 <span class="tool-src">MyMemory API</span>
+      </button>
+      <button type="button" class="btn btn-mini js-summarize" data-index="{{ loop.index }}">
+        ✂️ 요약 <span class="tool-src">자체 처리</span>
+      </button>
+      <span class="tool-hint" id="tool-hint-{{ loop.index }}"></span>
+    </div>
+
+    <div class="mail-ai" id="ai-{{ loop.index }}" hidden></div>
   </div>
   {% endfor %}
 </section>
@@ -160,12 +172,107 @@
 <script>
 (function () {
   document.querySelectorAll('.mail-row').forEach(function (row) {
-    row.addEventListener('click', function () {
-      var body = document.getElementById('mail-' + row.dataset.index);
+    row.addEventListener('click', function (e) {
+      if (e.target.closest('.mail-tools') || e.target.closest('.mail-ai')) { return; }
+      var idx = row.dataset.index;
+      var body = document.getElementById('mail-' + idx);
       if (!body) { return; }
       var open = !body.hidden;
       body.hidden = open;
+      document.getElementById('tools-' + idx).hidden = open;
       row.classList.toggle('open', !open);
+    });
+  });
+
+  /* ---------- 메일 번역·요약 ---------- */
+  var STATUS = { ok: '적합', warn: '주의', ban: '사용 불가' };
+  var CSS = { ok: 'confirmed', warn: 'check', ban: 'danger' };
+
+  function esc(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function bodyText(index) {
+    var el = document.getElementById('mail-' + index);
+    return el ? el.textContent : '';
+  }
+
+  function busy(index, message) {
+    document.getElementById('tool-hint-' + index).textContent = message;
+  }
+
+  function showPanel(index, html) {
+    var box = document.getElementById('ai-' + index);
+    box.innerHTML = html;
+    box.hidden = false;
+  }
+
+  document.querySelectorAll('.js-translate').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var index = btn.dataset.index;
+      busy(index, '번역 중…');
+      btn.disabled = true;
+
+      fetch('{{ url_for("api_translate") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: bodyText(index) })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        busy(index, d.failed
+          ? d.failed + '개 문장 번역 실패 (원문 유지)'
+          : '문장 ' + d.segments.length + '개 · 캐시 ' + d.cached + '개');
+        var rows = d.segments.map(function (s) {
+          return '<div class="tr-row' + (s.ok ? '' : ' failed') + '">' +
+                   '<div class="tr-src">' + esc(s.source) + '</div>' +
+                   '<div class="tr-dst">' + esc(s.translated) + '</div>' +
+                 '</div>';
+        }).join('');
+        showPanel(index,
+          '<div class="ai-head">🌐 번역 <span class="ai-src">' + esc(d.provider) +
+            ' · ' + esc(d.source_lang) + ' → ' + esc(d.target_lang) + '</span></div>' + rows);
+      }).catch(function () {
+        busy(index, '번역에 실패했습니다.');
+      }).then(function () { btn.disabled = false; });
+    });
+  });
+
+  document.querySelectorAll('.js-summarize').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var index = btn.dataset.index;
+      busy(index, '요약 중…');
+
+      fetch('{{ url_for("api_summarize") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: bodyText(index) })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        busy(index, '문장 ' + d.total_sentences + '개 → ' + d.sentences.length + '개로 요약');
+
+        var html = '<div class="ai-head">✂️ 요약 <span class="ai-src">자체 처리 (외부 전송 없음)</span></div>';
+        html += '<ul class="ai-list">' + d.sentences.map(function (s) {
+          return '<li>' + esc(s.text) + '</li>';
+        }).join('') + '</ul>';
+
+        if (d.facts.length) {
+          html += '<div class="ai-facts">' + d.facts.map(function (f) {
+            return '<span class="ai-fact"><b>' + esc(f.label) + '</b> ' + esc(f.value) + '</span>';
+          }).join('') + '</div>';
+        }
+        if (d.ingredients.length) {
+          html += '<div class="ai-reg"><div class="ai-reg-head">🇪🇺 EU 규제 대조</div>' +
+            d.ingredients.map(function (r) {
+              return '<div class="ai-reg-row">' +
+                '<span class="status-badge ' + (CSS[r.status] || 'confirmed') + '">' +
+                  (STATUS[r.status] || r.status) + '</span> ' +
+                '<b>' + esc(r.name) + ' ' + esc(r.amount) + '</b>' +
+                '<div class="ai-reg-note">' + esc(r.limit) + ' · ' + esc(r.rule) + '</div></div>';
+            }).join('') + '</div>';
+        }
+        showPanel(index, html);
+      }).catch(function () {
+        busy(index, '요약에 실패했습니다.');
+      });
     });
   });
 

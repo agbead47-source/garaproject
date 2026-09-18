@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "prospecting/_bar.html" %}
+
+<a class="back-link" href="{{ url_for('prospecting.prospect_list') }}">← 후보 목록</a>
+
+<div class="pros-grid">
+  <section class="card">
+    <h2 class="card-title">CSV 가져오기</h2>
+    <p class="card-desc">
+      <strong>미리보기 → 오류 행 확인 → 저장</strong> 순서로 동작합니다.
+      수용한 행과 거절한 행의 합은 전체 행 수와 같아야 합니다.
+    </p>
+
+    <form method="post" action="{{ url_for('prospecting.csv_import') }}"
+          enctype="multipart/form-data" class="collect-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input class="input" type="file" name="file" accept=".csv" required>
+      <button class="btn btn-primary" type="submit">미리보기</button>
+    </form>
+    <p class="field-hint">.csv 만 허용하고 최대 2MB 까지 읽습니다.</p>
+
+    {% if preview %}
+      {% if preview.error %}
+      <div class="pros-flash error">{{ preview.error }}</div>
+      {% else %}
+      <div class="import-stat">
+        전체 <b>{{ preview.total }}</b>행 =
+        수용 <b class="text-green">{{ preview.accepted|length }}</b>행 +
+        거절 <b class="text-red">{{ preview.rejected|length }}</b>행
+        {% if preview.accepted|length + preview.rejected|length != preview.total %}
+        <span class="text-red">— 합이 맞지 않습니다. 확인이 필요합니다.</span>
+        {% endif %}
+      </div>
+
+      {% if preview.rejected %}
+      <h3 class="sub-title">거절된 행 {{ preview.rejected|length }}건</h3>
+      <table class="item-table">
+        <thead><tr><th class="col-amount">행</th><th>회사명</th><th>사유</th></tr></thead>
+        <tbody>
+          {% for row in preview.rejected %}
+          <tr>
+            <td class="col-amount">{{ row.row_no }}</td>
+            <td>{{ row.company_name or '(비어 있음)' }}</td>
+            <td class="text-red">{{ row.reasons|join(' / ') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {% if preview.accepted %}
+      <h3 class="sub-title">저장할 행 {{ preview.accepted|length }}건</h3>
+      <table class="item-table">
+        <thead>
+          <tr><th>회사명</th><th>도메인</th><th class="col-country2">소재국</th>
+              <th class="col-btype">경로</th></tr>
+        </thead>
+        <tbody>
+          {% for row in preview.accepted[:30] %}
+          <tr>
+            <td>{{ row.company_name }}</td>
+            <td><code>{{ row.canonical_domain }}</code></td>
+            <td class="col-country2">{{ row.headquarters_country or '—' }}</td>
+            <td class="col-btype">{{ row.source_channel }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if preview.accepted|length > 30 %}
+      <p class="field-hint">앞의 30건만 보여줍니다. 저장은 전체 {{ preview.accepted|length }}건에 적용됩니다.</p>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('prospecting.csv_import') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="step" value="save">
+        <input type="hidden" name="payload" value="{{ preview.payload }}">
+        <div class="action-row">
+          <button class="btn btn-primary" type="submit">{{ preview.accepted|length }}건 저장</button>
+        </div>
+      </form>
+      <p class="field-hint">
+        이미 같은 도메인의 후보가 있으면 건너뜁니다. 이름이 비슷하다는 이유로 합치지 않습니다.
+      </p>
+      {% endif %}
+      {% endif %}
+    {% endif %}
+  </section>
+
+  <aside class="pros-side">
+    <section class="card">
+      <h2 class="card-title">열 구성</h2>
+      <div class="info-row">
+        <span class="info-label">필수</span>
+        <span class="info-value"><code>{{ M.CSV_REQUIRED|join('</code>, <code>')|safe }}</code></span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">선택</span>
+        <span class="info-value"><code>{{ M.CSV_OPTIONAL|join('</code>, <code>')|safe }}</code></span>
+      </div>
+      <h3 class="sub-title">예시</h3>
+      <pre class="csv-sample">company_name,official_url,source_channel
+Northlight Skin Labs,https://example.com,전시회 디렉터리
+Harborrow Beauty,https://example.org,브랜드 홈페이지</pre>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">거절 기준</h2>
+      <ul class="ai-list">
+        <li>company_name / official_url / source_channel 이 비어 있음</li>
+        <li>official_url 이 http·https 형식이 아님</li>
+        <li>official_url 에서 도메인을 읽지 못함</li>
+        <li>business_type 값이 목록에 없음</li>
+        <li>파일 안에 같은 도메인이 이미 있음</li>
+      </ul>
+      <p class="field-hint">
+        거절된 행은 저장하지 않고 사유를 그대로 보여줍니다. 값을 임의로 보정하지 않습니다.
+      </p>
+    </section>
+  </aside>
+</div>
+{% endblock %}

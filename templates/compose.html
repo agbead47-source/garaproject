@@ -1,0 +1,393 @@
+{% extends "base.html" %}
+
+{% block content %}
+<form id="compose-form" method="post" action="{{ url_for('compose') }}">
+  <section class="card result-summary">
+    <div class="result-head">
+      <div>
+        <span class="result-file">📝 개발요청서 직접 작성</span>
+        <span class="result-meta">해외영업 → 연구소·공장</span>
+      </div>
+      <a class="btn" href="{{ url_for('upload') }}">파일 업로드로</a>
+    </div>
+    <p class="card-desc no-margin">
+      고객사 요청이 메일·전화·미팅으로 오는 경우, 파일 없이 사내 양식에 바로 적어 개발팀에 넘깁니다.
+      작성한 내용은 그대로 <strong>연구소용·공장용 문서</strong>로 변환됩니다.
+    </p>
+
+    {% if d.origin %}
+    <div class="origin-chip">
+      <span class="origin-badge">불러옴</span>
+      <span class="origin-label">{{ d.origin.label }}</span>
+      <span class="origin-detail">{{ d.origin.detail }}</span>
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="compose-grid">
+    <!-- ============ 작성 폼 ============ -->
+    <div class="compose-main">
+      {% for sec in d.sections %}
+      <section class="card">
+        <h2 class="card-title">{{ sec.icon }} {{ sec.title }}</h2>
+        <div class="compose-fields">
+          {% for f in sec.fields %}
+          <div class="field {% if f.type in ('textarea', 'origin') %}wide{% endif %}"
+               {% if f.show_for %}data-show-for="{{ f.show_for }}"{% endif %}>
+            <label class="field-label" for="f-{{ f.key }}">
+              {{ f.label }}
+              {% if f.required %}<span class="req">*</span>{% endif %}
+              {% if d.form_values.get(f.key) and f.key in d.prefilled %}
+              <span class="mini-badge">자동</span>
+              {% endif %}
+            </label>
+
+            {% if f.type == 'origin' %}
+            <div class="origin-picker">
+              {% for o in d.origins %}
+              <label class="origin-option">
+                <input type="radio" name="request_origin" value="{{ o.value }}"
+                       {% if d.form_values.get('request_origin') == o.value %}checked{% endif %}>
+                <span class="origin-option-body">
+                  <span class="origin-option-title">{{ o.label }}</span>
+                  <span class="origin-option-desc">{{ o.desc }}</span>
+                </span>
+              </label>
+              {% endfor %}
+            </div>
+            {% elif f.type == 'customer' %}
+            <select class="select" name="{{ f.key }}" id="f-{{ f.key }}">
+              {% for c in d.customers %}
+              <option value="{{ c.name }}" {% if d.form_values.get(f.key) == c.name %}selected{% endif %}>{{ c.name }} ({{ c.country }})</option>
+              {% endfor %}
+            </select>
+            {% elif f.type == 'select' %}
+            <select class="select" name="{{ f.key }}" id="f-{{ f.key }}">
+              {% for opt in f.options %}
+              <option value="{{ opt }}" {% if d.form_values.get(f.key) == opt %}selected{% endif %}>{{ opt }}</option>
+              {% endfor %}
+            </select>
+            {% elif f.type == 'textarea' %}
+            <textarea class="input textarea" name="{{ f.key }}" id="f-{{ f.key }}" rows="2"
+                      placeholder="{{ f.placeholder or '' }}">{{ d.form_values.get(f.key, '') }}</textarea>
+            {% else %}
+            <input class="input" type="text" name="{{ f.key }}" id="f-{{ f.key }}"
+                   value="{{ d.form_values.get(f.key, '') }}" placeholder="{{ f.placeholder or '' }}">
+            {% endif %}
+
+            {% if f.hint %}<p class="field-hint">{{ f.hint }}</p>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+
+      <!-- 성분 입력 -->
+      <section class="card">
+        <h2 class="card-title">
+          🧬 요청 성분
+          {% if reg_live %}<span class="data-badge live">EU 실시간 판정</span>
+          {% else %}<span class="data-badge">규제 DB 없음</span>{% endif %}
+        </h2>
+        <p class="card-desc">
+          성분과 함량을 넣으면 <strong>EU 기준 판정이 바로</strong> 오른쪽에 뜹니다.
+          INCI 명을 적어야 정확히 대조됩니다.
+        </p>
+
+        <table class="item-table ing-input-table">
+          <thead>
+            <tr>
+              <th>성분명</th>
+              <th>INCI</th>
+              <th class="col-amount">함량</th>
+              <th class="col-role2">역할</th>
+              <th class="col-del"></th>
+            </tr>
+          </thead>
+          <tbody id="ing-rows">
+            {% for row in d.ingredients %}
+            <tr class="ing-input-row">
+              <td><input class="input" type="text" name="ing_name" value="{{ row.name }}" placeholder="레티놀"></td>
+              <td><input class="input" type="text" name="ing_inci" value="{{ row.inci }}" placeholder="Retinol"></td>
+              <td class="col-amount"><input class="input" type="text" name="ing_amount" value="{{ row.amount }}" placeholder="0.2%"></td>
+              <td class="col-role2"><input class="input" type="text" name="ing_role" value="{{ row.role }}" placeholder="주 성분"></td>
+              <td class="col-del">
+                <button type="button" class="row-del" aria-label="행 삭제">✕</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <div class="sample-row">
+          <button type="button" class="btn btn-mini" id="add-row">+ 성분 추가</button>
+          <span class="sample-hint">빈 행은 저장할 때 자동으로 빠집니다.</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ 실시간 검토 ============ -->
+    <aside class="compose-side">
+      <section class="card sticky-card">
+        <h2 class="card-title">작성 상태</h2>
+        <div class="info-row">
+          <span class="info-label">요청 주체</span>
+          <span class="info-value" id="requester">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">채운 항목</span>
+          <span class="info-value" id="fill-count">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">필수 미입력</span>
+          <span class="info-value" id="required-left">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">입력 성분</span>
+          <span class="info-value" id="ing-count">—</span>
+        </div>
+
+        <div class="field spaced">
+          <label class="field-label" for="f-lang">출력 언어</label>
+          <select class="select" name="lang" id="f-lang">
+            {% for l in languages %}
+            <option value="{{ l.code }}">{{ l.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field">
+          <span class="field-label">전달 대상</span>
+          <div class="check-row">
+            <label class="check"><input type="checkbox" name="targets" value="연구소" checked> 🧪 연구소</label>
+            <label class="check"><input type="checkbox" name="targets" value="공장" checked> 🏭 공장</label>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button type="submit" class="btn btn-primary">개발팀 전달 문서 만들기 →</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">
+          성분 규제 판정
+          <span class="count-chip" id="judge-count">0</span>
+        </h2>
+        <p class="card-desc" id="judge-desc">성분을 입력하면 EU 기준으로 바로 대조합니다.</p>
+        <div id="judge-rows"></div>
+        <div id="judge-empty" class="empty-card">아직 입력된 성분이 없습니다.</div>
+      </section>
+    </aside>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  var form = document.getElementById('compose-form');
+  var rowsBody = document.getElementById('ing-rows');
+  var STATUS = {
+    ok:   { label: '적합', css: 'confirmed' },
+    warn: { label: '주의', css: 'check' },
+    ban:  { label: '사용 불가', css: 'danger' }
+  };
+
+  function el(id) { return document.getElementById(id); }
+
+  /* ---------- 요청 구분에 따라 고객사 칸을 바꾼다 ---------- */
+  function currentOrigin() {
+    var picked = form.querySelector('input[name="request_origin"]:checked');
+    return picked ? picked.value : 'customer';
+  }
+
+  function applyOrigin() {
+    var origin = currentOrigin();
+    form.querySelectorAll('[data-show-for]').forEach(function (field) {
+      var show = field.dataset.showFor === origin;
+      field.hidden = !show;
+      field.querySelectorAll('input, select, textarea').forEach(function (input) {
+        input.disabled = !show;
+      });
+    });
+    el('requester').textContent = requesterLabel(origin);
+  }
+
+  function requesterLabel(origin) {
+    if (origin === 'customer') {
+      var sel = form.querySelector('[name="customer"]');
+      return sel ? sel.value : '고객사 미지정';
+    }
+    if (origin === 'prospect') {
+      var input = form.querySelector('[name="customer_new"]');
+      var typed = input ? input.value.trim() : '';
+      return typed || '신규 제안 (고객사 미정)';
+    }
+    return '자사 기획 (해외영업팀)';
+  }
+
+  /* ---------- 작성 상태 ---------- */
+  function updateStatus() {
+    applyOrigin();
+
+    var fields = [];
+    form.querySelectorAll('.compose-fields input, .compose-fields textarea, .compose-fields select')
+      .forEach(function (f) {
+        if (f.type === 'radio' || f.disabled) { return; }
+        fields.push(f);
+      });
+    var filled = 0;
+    fields.forEach(function (f) { if ((f.value || '').trim()) { filled++; } });
+    el('fill-count').textContent = filled + ' / ' + fields.length;
+
+    var missing = [];
+    form.querySelectorAll('.req').forEach(function (mark) {
+      var field = mark.closest('.field');
+      var input = field.querySelector('input, textarea, select');
+      var label = field.querySelector('.field-label').childNodes[0].textContent.trim();
+      if (!(input.value || '').trim()) { missing.push(label); }
+      field.classList.toggle('missing-required', !(input.value || '').trim());
+    });
+    el('required-left').textContent = missing.length ? missing.join(', ') : '없음';
+    el('required-left').className = 'info-value ' + (missing.length ? 'text-orange' : 'text-green');
+
+    var ings = collectIngredients();
+    el('ing-count').textContent = ings.length + '종';
+  }
+
+  function collectIngredients() {
+    var out = [];
+    rowsBody.querySelectorAll('.ing-input-row').forEach(function (row) {
+      var v = {};
+      ['name', 'inci', 'amount', 'role'].forEach(function (k) {
+        var input = row.querySelector('[name="ing_' + k + '"]');
+        v[k] = input ? input.value.trim() : '';
+      });
+      if (v.name || v.inci) { out.push(v); }
+    });
+    return out;
+  }
+
+  /* ---------- 성분 판정 (서버 호출) ---------- */
+  var judgeTimer = null;
+  var lastPayload = '';
+
+  function renderJudge(data) {
+    var box = el('judge-rows');
+    box.innerHTML = '';
+    el('judge-count').textContent = data.ingredients.length;
+    el('judge-empty').hidden = data.ingredients.length > 0;
+
+    var flagged = 0;
+    data.ingredients.forEach(function (r) {
+      var meta = STATUS[r.status] || STATUS.ok;
+      if (r.status !== 'ok') { flagged++; }
+      var div = document.createElement('div');
+      div.className = 'judge-row ' + r.status;
+      div.innerHTML =
+        '<div class="judge-head">' +
+          '<span class="judge-name">' + escapeHtml(r.inci) + '</span>' +
+          '<span class="judge-amount">' + escapeHtml(r.amount || '—') + '</span>' +
+          '<span class="status-badge ' + meta.css + '">' + meta.label + '</span>' +
+        '</div>' +
+        '<div class="judge-limit">' + escapeHtml(r.limit) + '</div>' +
+        (r.note ? '<div class="judge-note">' + escapeHtml(r.note) + '</div>' : '');
+      box.appendChild(div);
+    });
+
+    el('judge-desc').textContent = data.ingredients.length === 0
+      ? '성분을 입력하면 EU 기준으로 바로 대조합니다.'
+      : (flagged === 0
+          ? 'EU 기준에서 걸리는 성분이 없습니다.'
+          : '확인이 필요한 성분 ' + flagged + '건입니다.');
+  }
+
+  function escapeHtml(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function judge() {
+    var ings = collectIngredients();
+    var payload = JSON.stringify({ ingredients: ings });
+    if (payload === lastPayload) { return; }
+    lastPayload = payload;
+
+    if (!ings.length) { renderJudge({ ingredients: [] }); return; }
+
+    fetch('{{ url_for("api_judge") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    }).then(function (res) { return res.json(); })
+      .then(renderJudge)
+      .catch(function () {
+        el('judge-desc').textContent = '판정을 불러오지 못했습니다.';
+      });
+  }
+
+  function scheduleJudge() {
+    clearTimeout(judgeTimer);
+    judgeTimer = setTimeout(judge, 450);   // 타이핑이 멈추면 조회한다
+  }
+
+  /* ---------- 행 추가·삭제 ---------- */
+  function bindRow(row) {
+    row.querySelector('.row-del').addEventListener('click', function () {
+      if (rowsBody.querySelectorAll('.ing-input-row').length <= 1) {
+        row.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+      } else {
+        row.remove();
+      }
+      updateStatus();
+      scheduleJudge();
+    });
+    row.querySelectorAll('input').forEach(function (input) {
+      input.addEventListener('input', function () { updateStatus(); scheduleJudge(); });
+    });
+  }
+
+  rowsBody.querySelectorAll('.ing-input-row').forEach(bindRow);
+
+  document.getElementById('add-row').addEventListener('click', function () {
+    var first = rowsBody.querySelector('.ing-input-row');
+    var clone = first.cloneNode(true);
+    clone.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+    rowsBody.appendChild(clone);
+    bindRow(clone);
+    clone.querySelector('input').focus();
+    updateStatus();
+  });
+
+  /* ---------- 폼 전체 ---------- */
+  form.querySelectorAll('.compose-fields input, .compose-fields textarea, .compose-fields select')
+    .forEach(function (f) {
+      f.addEventListener('input', updateStatus);
+      f.addEventListener('change', updateStatus);
+    });
+  form.querySelectorAll('input[name="request_origin"]').forEach(function (radio) {
+    radio.addEventListener('change', updateStatus);
+  });
+
+  form.addEventListener('submit', function (e) {
+    var missing = [];
+    form.querySelectorAll('.req').forEach(function (mark) {
+      var input = mark.closest('.field').querySelector('input, textarea, select');
+      if (!(input.value || '').trim()) { missing.push(input); }
+    });
+    if (missing.length) {
+      e.preventDefault();
+      missing[0].focus();
+      window.showToast('필수 항목을 먼저 채워 주세요.', 'warn');
+    }
+  });
+
+  updateStatus();
+  judge();
+})();
+</script>
+{% endblock %}

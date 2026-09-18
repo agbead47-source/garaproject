@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "prospecting/_bar.html" %}
+
+<a class="back-link" href="{{ url_for('prospecting.prospect_detail', prospect_id=p.id, tab='opportunity') }}">← {{ p.company_name }}</a>
+
+<section class="card result-summary">
+  <div class="result-head">
+    <div>
+      <span class="result-file">📄 {{ draft.subject }}</span>
+      <span class="result-meta">{{ p.company_name }} · {{ mode|upper }} · {{ language }}</span>
+    </div>
+    <div class="action-group">
+      <a class="btn btn-mini" href="{{ url_for('prospecting.proposal_download', prospect_id=p.id, mode=mode, language=language, hypothesis=hypothesis, format='txt') }}">TXT</a>
+      <a class="btn btn-mini" href="{{ url_for('prospecting.proposal_download', prospect_id=p.id, mode=mode, language=language, hypothesis=hypothesis, format='md') }}">Markdown</a>
+      <button type="button" class="btn btn-mini js-copy">복사</button>
+    </div>
+  </div>
+  <p class="card-desc no-margin">
+    템플릿 기반 초안입니다. <strong>확인되지 않은 인증·실적·효능·납기·가격은 문장에 넣지 않습니다.</strong>
+    임의 문장의 자동 번역은 지원하지 않습니다 — 한국어·영어 템플릿을 각각 제공합니다.
+    이메일은 제목과 본문 초안까지만 만들고, 수신자 추정이나 자동 발송은 하지 않습니다.
+  </p>
+</section>
+
+<div class="pros-toolbar">
+  <div class="tabs small">
+    {% for m in M.MODES %}
+    <a class="tab {% if mode == m.value %}active{% endif %}"
+       href="{{ url_for('prospecting.proposal', prospect_id=p.id, mode=m.value, language=language, hypothesis=hypothesis) }}">{{ m.label }}</a>
+    {% endfor %}
+  </div>
+  <div class="tabs small">
+    {% for l in languages %}
+    <a class="tab {% if language == l.value %}active{% endif %}"
+       href="{{ url_for('prospecting.proposal', prospect_id=p.id, mode=mode, language=l.value, hypothesis=hypothesis) }}">{{ l.label }}</a>
+    {% endfor %}
+  </div>
+  <div class="tabs small">
+    {% for h in hypotheses %}
+    <a class="tab {% if hypothesis == h.value %}active{% endif %}"
+       href="{{ url_for('prospecting.proposal', prospect_id=p.id, mode=mode, language=language, hypothesis=h.value) }}">{{ h.ko }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="pros-grid">
+  <section class="card">
+    <h2 class="card-title">
+      초안
+      {% if saved %}
+      <span class="status-badge {% if saved.review_status == 'reviewed' %}confirmed{% else %}missing{% endif %}">
+        {{ '검토 완료' if saved.review_status == 'reviewed' else '검토 전' }}
+      </span>
+      {% endif %}
+    </h2>
+    <form method="post" action="{{ url_for('prospecting.proposal', prospect_id=p.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="mode" value="{{ mode }}">
+      <input type="hidden" name="language" value="{{ language }}">
+      <input type="hidden" name="hypothesis" value="{{ hypothesis }}">
+
+      <div class="field">
+        <label class="field-label" for="subject">제목</label>
+        <input class="input" type="text" name="subject" id="subject"
+               value="{{ saved.subject if saved else draft.subject }}">
+      </div>
+      <div class="field">
+        <label class="field-label" for="body">본문</label>
+        <textarea class="input textarea proposal-body" name="body" id="body"
+                  rows="24">{{ saved.body if saved else draft.body }}</textarea>
+      </div>
+      <div class="field">
+        <label class="field-label" for="review">검토 상태</label>
+        <select class="select" name="review_status" id="review">
+          {% for r in M.REVIEW_STATUS %}
+          <option value="{{ r.value }}" {% if saved and saved.review_status == r.value %}selected{% endif %}>{{ r.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="action-row">
+        <button class="btn btn-primary" type="submit">저장</button>
+      </div>
+    </form>
+  </section>
+
+  <aside class="pros-side">
+    <section class="card">
+      <h2 class="card-title">확인된 사실</h2>
+      <p class="card-desc">본문에 들어간 근거입니다.</p>
+      <ul class="ai-list">
+        {% for f in draft.facts %}<li>{{ f }}</li>{% endfor %}
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">미확인 조건 · 상담 질문</h2>
+      <p class="card-desc">채워 넣지 않고 질문으로 돌린 항목입니다.</p>
+      <ul class="ai-list">
+        {% for q in draft.questions %}<li>{{ q }}</li>
+        {% else %}<li>미확인 항목이 없습니다.</li>{% endfor %}
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">제안 가설</h2>
+      <div class="info-row">
+        <span class="info-label">선택</span>
+        <span class="info-value">{{ draft.hypothesis.ko }}</span>
+      </div>
+      <p class="card-desc no-margin">{{ draft.hypothesis.ko_desc }}</p>
+      {% if score.fit_score is not none %}
+      <div class="info-row">
+        <span class="info-label">적합도</span>
+        <span class="info-value">
+          {{ '%.0f'|format(score.fit_score) }}점 · 확인율 {{ '%.0f'|format(score.coverage) }}%
+          {% if score.insufficient %}<span class="status-badge check">정보 부족</span>{% endif %}
+        </span>
+      </div>
+      {% endif %}
+      <a class="btn full" href="{{ url_for('prospecting.prospect_detail', prospect_id=p.id, tab='fit', mode=mode) }}">적합도 근거 보기</a>
+    </section>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var btn = document.querySelector('.js-copy');
+  if (!btn) { return; }
+  btn.addEventListener('click', function () {
+    var text = document.getElementById('subject').value + '\n\n' +
+               document.getElementById('body').value;
+    navigator.clipboard.writeText(text).then(function () {
+      window.showToast('제안 초안을 복사했습니다.');
+    }, function () {
+      window.showToast('복사에 실패했습니다.', 'error');
+    });
+  });
+})();
+</script>
+{% endblock %}

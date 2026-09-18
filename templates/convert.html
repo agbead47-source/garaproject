@@ -3,7 +3,10 @@
 {% macro doc_body(doc) -%}
 <div class="doc-head">
   <h2 class="doc-title">{{ doc.title }}</h2>
-  <div class="doc-meta">{{ doc.customer }}{% if doc.file_name %} · {{ doc.file_name }}{% endif %}</div>
+  <div class="doc-meta">
+    {{ doc.customer }}{% if doc.file_name %} · {{ doc.file_name }}{% endif %}
+    {% if composed %}<span class="data-badge live">영업 직접 작성</span>{% endif %}
+  </div>
 </div>
 
 {% for section in doc.sections %}
@@ -60,6 +63,7 @@
 <div class="bottom-actions">
   <a class="btn" href="{{ url_for('result') }}">이전</a>
   <div class="action-group">
+    <a class="btn" href="{{ url_for('schedule.new', title=handoff.product, account=handoff.account, country=handoff.country, origin='compose') }}">🗓 일정 등록</a>
     <button type="button" class="btn" id="copy-btn">📋 복사하기</button>
     <button type="button" class="btn" id="pdf-btn">⬇️ PDF 다운로드</button>
     <button type="button" class="btn btn-primary" id="send-btn">✉️ 담당자에게 전달</button>

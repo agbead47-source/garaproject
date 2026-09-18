@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a class="back-link" href="{{ url_for('schedule.board') }}">← 일정관리</a>
+
+{% if flash %}
+<div class="pros-flash {{ flash.level }}">{{ flash.message }}</div>
+{% endif %}
+
+<section class="card result-summary">
+  <div class="result-head">
+    <div>
+      <span class="result-file">
+        {{ p.title }}
+        {% if p.is_demo %}<span class="sch-demo-tag">예시</span>{% endif %}
+      </span>
+      <span class="result-meta">
+        {{ p.account or p.kind_label }}{% if p.country %} · {{ p.country }}{% endif %}
+        · 착수 {{ p.start_date }} · 담당 {{ p.owner or '미정' }}
+      </span>
+    </div>
+    <div class="action-group">
+      <form method="post" action="{{ url_for('schedule.status', project_id=p.id) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <select class="select select-inline" name="status" onchange="this.form.submit()">
+          {% for s in S.PROJECT_STATUS %}
+          <option value="{{ s.value }}" {% if p.status == s.value %}selected{% endif %}>{{ s.label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <form method="post" action="{{ url_for('schedule.delete', project_id=p.id) }}"
+            onsubmit="return confirm('이 건과 일정을 모두 삭제합니다. 되돌릴 수 없습니다.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn btn-mini" type="submit">삭제</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="sch-progress">
+    <div class="sch-bar big">
+      <span class="sch-bar-fill h-{{ p.health }}" style="width: {{ p.progress }}%"></span>
+    </div>
+    <div class="sch-progress-meta">
+      {{ p.done_count }}/{{ p.total }} 단계 완료 ({{ p.progress }}%)
+      {% if p.overdue_count %}
+      <span class="text-red">· 기한 지난 일정 {{ p.overdue_count }}건</span>
+      {% elif p.next_task %}
+      <span class="text-sub">· 다음 일정 {{ p.next_task.title }} ({{ p.next_task.plan_date }} {{ p.next_task.d_label }})</span>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<div class="pros-grid">
+  <section class="card">
+    <h2 class="card-title">단계별 일정</h2>
+    <p class="card-desc">
+      날짜를 바꿀 때 <b>이후 단계도 함께 밀기</b>를 켜면 뒤 단계가 같은 일수만큼 이동합니다.
+      한 단계가 밀리면 나머지가 다 밀리는 게 실제 흐름이라 기본값으로 두었습니다.
+    </p>
+
+    {% for t in p.tasks %}
+    <div class="sch-item st-{{ t.state }}">
+      <div class="sch-item-head">
+        <span class="sch-phase-icon">{{ t.phase_icon }}</span>
+        <span class="sch-item-title">{{ t.title }}</span>
+        <span class="sch-dday st-{{ t.state }}">{{ t.d_label }}</span>
+        {% if t.state == 'done' and t.late_days %}
+        <span class="sch-late">계획보다 {{ t.late_days }}일 늦게 완료</span>
+        {% endif %}
+        <span class="sch-item-owner">{{ t.owner or '담당 미정' }}</span>
+      </div>
+
+      {% if t.phase_hint %}<p class="sch-item-hint">{{ t.phase_hint }}</p>{% endif %}
+      {% if t.note %}<p class="sch-item-note">{{ t.note }}</p>{% endif %}
+
+      <div class="sch-item-actions">
+        <form method="post" action="{{ url_for('schedule.task_reschedule', task_id=t.id) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input class="input date-mini" type="date" name="plan_date" value="{{ t.plan_date }}">
+          <label class="check-mini">
+            <input type="checkbox" name="cascade" value="1" checked> 이후 단계도 함께
+          </label>
+          <button class="btn btn-mini" type="submit">날짜 변경</button>
+        </form>
+
+        {% if t.status == 'done' %}
+        <form method="post" action="{{ url_for('schedule.task_reopen', task_id=t.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-mini" type="submit">완료 취소</button>
+        </form>
+        <span class="sch-done-date">완료 {{ t.done_date }}</span>
+        {% else %}
+        <form method="post" action="{{ url_for('schedule.task_done', task_id=t.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-mini" type="submit">완료</button>
+        </form>
+        {% endif %}
+
+        {% if t.link %}
+        <a class="btn btn-mini" href="{{ url_for(t.link) }}">{{ t.link_label }}</a>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('schedule.task_delete', task_id=t.id) }}"
+              onsubmit="return confirm('이 일정을 삭제합니다.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-mini danger-text" type="submit">삭제</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <p class="empty-row">일정이 없습니다. 아래에서 추가해 주세요.</p>
+    {% endfor %}
+
+    <h3 class="sub-title spaced-top">일정 추가</h3>
+    <form method="post" action="{{ url_for('schedule.task_add', project_id=p.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="t-title">할 일</label>
+          <input class="input" type="text" name="title" id="t-title" required
+                 placeholder="예: 2차 샘플 재제작 (향 조정)">
+        </div>
+        <div class="field">
+          <label class="field-label" for="t-date">계획일</label>
+          <input class="input" type="date" name="plan_date" id="t-date" value="{{ today }}">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="t-phase">단계</label>
+          <select class="select" name="phase" id="t-phase">
+            {% for ph in S.PHASES %}
+            <option value="{{ ph.key }}">{{ ph.icon }} {{ ph.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="t-owner">담당</label>
+          <select class="select" name="owner" id="t-owner">
+            {% for o in S.OWNERS %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="action-row">
+        <button class="btn" type="submit">일정 추가</button>
+      </div>
+    </form>
+  </section>
+
+  <aside class="pros-side">
+    <section class="card">
+      <h2 class="card-title">다음 화면으로</h2>
+      <p class="card-desc">이 건에서 바로 이어지는 작업입니다.</p>
+      <a class="btn full" href="{{ url_for('compose', account=p.account or '', country=p.country or '', product=p.title, kind=p.account_kind) }}">개발요청서 작성</a>
+      <a class="btn full spaced-btn" href="{{ url_for('regulation', country_hint=p.country or '') }}">국가별 규제 검색</a>
+      <a class="btn full spaced-btn" href="{{ url_for('sample') }}">AI 샘플 미리보기</a>
+      <a class="btn full spaced-btn" href="{{ url_for('pricing', customer=p.account or '', product=p.title) }}">영업단가 계산</a>
+      {% if p.customer_id %}
+      <a class="btn full spaced-btn" href="{{ url_for('customer_detail', customer_id=p.customer_id) }}">고객사 상세</a>
+      {% else %}
+      <a class="btn full spaced-btn" href="{{ url_for('customers') }}">고객사 관리</a>
+      {% endif %}
+      {% if p.prospect_id %}
+      <a class="btn full spaced-btn" href="{{ url_for('prospecting.prospect_detail', prospect_id=p.prospect_id) }}">발굴 후보 보기</a>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">건 정보</h2>
+      <form method="post" action="{{ url_for('schedule.edit', project_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="field">
+          <label class="field-label" for="e-title">제품명</label>
+          <input class="input" type="text" name="title" id="e-title" value="{{ p.title }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-account">고객사 · 바이어</label>
+          <input class="input" type="text" name="account" id="e-account" value="{{ p.account or '' }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-kind">요청 구분</label>
+          <select class="select" name="account_kind" id="e-kind">
+            {% for k in S.ACCOUNT_KINDS %}
+            <option value="{{ k.value }}" {% if p.account_kind == k.value %}selected{% endif %}>{{ k.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="e-country">판매 국가</label>
+            <input class="input" type="text" name="country" id="e-country" value="{{ p.country or '' }}">
+          </div>
+          <div class="field">
+            <label class="field-label" for="e-owner">담당</label>
+            <input class="input" type="text" name="owner" id="e-owner" value="{{ p.owner or '' }}">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-note">메모</label>
+          <textarea class="input textarea" name="note" id="e-note" rows="3">{{ p.note or '' }}</textarea>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary" type="submit">저장</button>
+        </div>
+      </form>
+    </section>
+  </aside>
+</div>
+{% endblock %}

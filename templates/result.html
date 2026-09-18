@@ -84,18 +84,69 @@
   </section>
 </div>
 
+<section class="card">
+  <h2 class="card-title">
+    성분별 규제 판정 <span class="count-chip">{{ analysis.ingredient_count }}</span>
+    {% if analysis.regulation_live %}<span class="data-badge live">🇪🇺 EU 실데이터</span>
+    {% else %}<span class="data-badge">더미</span>{% endif %}
+  </h2>
+  <p class="card-desc">
+    요청서에서 읽어낸 성분과 함량을 EU 기준에 대조한 결과입니다.
+    {%- if analysis.regulation_source %}
+    근거: {{ analysis.regulation_source.name }} 통합본 {{ analysis.regulation_source.celex }} (기준일 {{ analysis.regulation_source.version_date }})
+    {%- endif %}
+    행을 클릭하면 왼쪽 원문에서 해당 문장이 강조됩니다.
+  </p>
+
+  <table class="item-table">
+    <thead>
+      <tr>
+        <th class="col-label">성분</th>
+        <th class="col-inci">INCI</th>
+        <th class="col-amount">요청 함량</th>
+        <th class="col-role">역할</th>
+        <th>허용 기준 · 근거</th>
+        <th class="col-status">판정</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ing in analysis.ingredients %}
+      <tr class="item-row" data-key="ing-{{ loop.index }}" data-source="{{ ing.source }}">
+        <td class="col-label">{{ ing.name }}</td>
+        <td class="col-inci">{{ ing.inci }}</td>
+        <td class="col-amount">{{ ing.amount }}</td>
+        <td class="col-role">{{ ing.role }}</td>
+        <td>
+          <div class="ing-limit">{{ ing.limit }}</div>
+          <div class="ing-rule">{{ ing.rule }}</div>
+        </td>
+        <td class="col-status">
+          <span class="status-badge {{ reg_status_meta[ing.status].css }}">{{ reg_status_meta[ing.status].label }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
 <section class="reg-box">
-  <div class="reg-head">⚠️ 규제 체크 미리보기</div>
+  <div class="reg-head">
+    {% if analysis.regulation_count %}⚠️ 확인이 필요한 성분 {{ analysis.regulation_count }}건
+    {% else %}✅ EU 기준에서 걸리는 성분이 없습니다{% endif %}
+  </div>
+  {% if analysis.regulation_count %}
   <ul class="reg-list">
     {% for note in analysis.regulation_notes %}
     <li>
-      <span class="reg-ingredient">{{ note.ingredient }}</span>
-      <span class="reg-message">{{ note.message }}</span>
+      <span class="reg-ingredient">{{ note.inci }} {{ note.amount }}</span>
+      <span class="reg-message">{{ note.note }}</span>
     </li>
     {% endfor %}
   </ul>
-  <button type="button" class="btn btn-disabled" disabled
-          title="다른 팀원 파트 연동 예정">규제 검색으로 이동</button>
+  {% else %}
+  <p class="reg-message">다른 판매 국가 기준은 규제 검색에서 확인하세요.</p>
+  {% endif %}
+  <a class="btn" href="{{ url_for('regulation') }}">규제 검색으로 이동</a>
 </section>
 
 <div class="bottom-actions">

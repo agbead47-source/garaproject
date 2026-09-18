@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "prospecting/_bar.html" %}
+
+<div class="pros-toolbar">
+  <div class="tabs small">
+    {% for d in [30, 90, 180, 365] %}
+    <a class="tab {% if days == d %}active{% endif %}"
+       href="{{ url_for('prospecting.analytics_view', days=d, mode=fit_mode) }}">최근 {{ d }}일</a>
+    {% endfor %}
+  </div>
+  <div class="tabs small">
+    {% for m in M.MODES %}
+    <a class="tab {% if fit_mode == m.value %}active{% endif %}"
+       href="{{ url_for('prospecting.analytics_view', days=days, mode=m.value) }}">{{ m.label }} 기준</a>
+    {% endfor %}
+  </div>
+</div>
+
+<p class="live-caveat">
+  <strong>{{ '실제' if data.data_mode == 'real' else '데모' }} 데이터만</strong> 집계합니다. 실제와 데모는 섞지 않습니다.
+  전환율은 고유 기업 기준이며, 연락 기록이 여러 건이어도 한 번만 셉니다.
+  {% if data.recent %}<span class="text-orange">최근 14일 등록 후보 {{ data.recent }}건은 관찰기간이 짧아 지표가 낮게 나올 수 있습니다.</span>{% endif %}
+</p>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-label">최초 연락 기업</div>
+    <div class="summary-value">{{ data.funnel.contacted }}</div>
+    <div class="summary-sub">{{ data.funnel.since }} 이후</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">회신 기업</div>
+    <div class="summary-value">{{ data.funnel.replied }}</div>
+    <div class="summary-sub">무응답 {{ data.funnel.no_reply }}건</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">상담 도달</div>
+    <div class="summary-value">{{ data.funnel.meetings }}</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">상담 전환율</div>
+    <div class="summary-value {% if data.funnel.rate is none %}text-gray{% endif %}">{{ data.funnel.rate_label }}</div>
+    <div class="summary-sub">상담 도달 ÷ 최초 연락</div>
+  </div>
+</div>
+
+<div class="pros-grid">
+  <section class="card">
+    <h2 class="card-title">발굴 경로별</h2>
+    <p class="card-desc">고유 기업 기준입니다.</p>
+    <table class="item-table">
+      <thead>
+        <tr><th>경로</th><th class="col-amount">후보</th><th class="col-amount">첫 연락</th>
+            <th class="col-amount">회신</th><th class="col-amount">상담</th></tr>
+      </thead>
+      <tbody>
+        {% for row in data.channels %}
+        <tr>
+          <td>{{ row.channel }}</td>
+          <td class="col-amount">{{ row.prospects }}</td>
+          <td class="col-amount">{{ row.contacted }}</td>
+          <td class="col-amount">{{ row.replied }}</td>
+          <td class="col-amount">{{ row.meetings }}</td>
+        </tr>
+        {% else %}
+        <tr><td class="empty-row" colspan="5">집계할 후보가 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">국가별 적합도 분포</h3>
+    <table class="item-table">
+      <thead>
+        <tr><th>소재국</th><th class="col-amount">후보</th><th class="col-amount">점수 산출</th>
+            <th class="col-amount">평균 적합도</th><th class="col-amount">평균 확인율</th></tr>
+      </thead>
+      <tbody>
+        {% for row in data.distribution.countries %}
+        <tr>
+          <td>{{ row.country }}</td>
+          <td class="col-amount">{{ row.count }}</td>
+          <td class="col-amount">{{ row.scored }}</td>
+          <td class="col-amount">
+            {% if row.avg_fit is none %}<span class="text-gray">—</span>
+            {% else %}{{ '%.0f'|format(row.avg_fit) }}{% endif %}
+          </td>
+          <td class="col-amount">
+            {% if row.avg_coverage is none %}<span class="text-gray">—</span>
+            {% else %}{{ '%.0f'|format(row.avg_coverage) }}%{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td class="empty-row" colspan="5">집계할 후보가 없습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <aside class="pros-side">
+    <section class="card">
+      <h2 class="card-title">회신 소요기간</h2>
+      <div class="info-row">
+        <span class="info-label">중앙값</span>
+        <span class="info-value">
+          {% if data.response.median is none %}<span class="text-gray">계산 불가</span>
+          {% else %}{{ '%.0f'|format(data.response.median) }}일{% endif %}
+        </span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">표본</span>
+        <span class="info-value">{{ data.response.samples }}건</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">무응답</span>
+        <span class="info-value">{{ data.response.no_reply }}건</span>
+      </div>
+      <p class="field-hint">제안일이 아니라 <b>최초 연락 단계 도달일</b>을 기준으로 셉니다.</p>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">정보 확인 상태</h2>
+      <div class="info-row">
+        <span class="info-label">점수 산출됨</span>
+        <span class="info-value">{{ data.distribution.scored }}건</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">정보 부족</span>
+        <span class="info-value text-orange">{{ data.distribution.insufficient }}건</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">점수 미산출</span>
+        <span class="info-value text-gray">{{ data.distribution.unscored }}건</span>
+      </div>
+      <p class="field-hint">
+        확인율 {{ M.COVERAGE_THRESHOLD|int }}% 미만은 확정 추천 순위에서 제외합니다.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">오늘 할 일</h2>
+      <div class="info-row">
+        <span class="info-label">오늘 연락</span>
+        <span class="info-value">{{ data.due_today }}건</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">기한 지남</span>
+        <span class="info-value text-red">{{ data.overdue }}건</span>
+      </div>
+      <a class="btn full" href="{{ url_for('prospecting.followups') }}">후속 연락 보기</a>
+    </section>
+  </aside>
+</div>
+{% endblock %}

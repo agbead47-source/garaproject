@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a class="back-link" href="{{ url_for('schedule.board') }}">← 일정관리</a>
+
+{% if flash %}
+<div class="pros-flash {{ flash.level }}">{{ flash.message }}</div>
+{% endif %}
+
+{% if came_from and came_from != 'manual' %}
+<p class="live-caveat">
+  {% if came_from == 'prospect' %}<b>신규 바이어 발굴</b>{% elif came_from == 'compose' %}<b>개발요청서</b>{% else %}<b>{{ came_from }}</b>{% endif %}
+  에서 넘어온 값을 미리 채웠습니다. 틀린 값은 그대로 고쳐 저장하면 됩니다.
+</p>
+{% endif %}
+
+<form method="post" action="{{ url_for('schedule.new') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="origin" value="{{ prefill.origin }}">
+  <input type="hidden" name="prospect_id" value="{{ prefill.prospect_id }}">
+  <input type="hidden" name="customer_id" value="{{ prefill.customer_id }}">
+
+  <div class="pros-grid">
+    <section class="card">
+      <h2 class="card-title">건 정보</h2>
+      <p class="card-desc">
+        개발요청을 넣은 건 하나가 일정 하나입니다. 제품명과 착수일만 있으면 만들 수 있습니다.
+      </p>
+
+      <div class="field">
+        <label class="field-label" for="title">제품명 <span class="req">*</span></label>
+        <input class="input" type="text" name="title" id="title" required
+               value="{{ prefill.title }}" placeholder="예: 비타민C 브라이트닝 세럼 30ml">
+      </div>
+
+      <div class="field">
+        <label class="field-label">요청 구분</label>
+        <div class="tabs small radio-tabs">
+          {% for k in S.ACCOUNT_KINDS %}
+          <label class="tab {% if prefill.account_kind == k.value %}active{% endif %}">
+            <input type="radio" name="account_kind" value="{{ k.value }}"
+                   {% if prefill.account_kind == k.value %}checked{% endif %}>{{ k.label }}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="field-hint">고객사 요청이 아니어도 됩니다. 자사 기획·신규 제안 건도 같은 일정으로 관리합니다.</p>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="account">고객사 · 바이어</label>
+          <input class="input" type="text" name="account" id="account"
+                 value="{{ prefill.account }}" placeholder="예: Glowtree Beauty">
+        </div>
+        <div class="field">
+          <label class="field-label" for="country">판매 국가</label>
+          <input class="input" type="text" name="country" id="country"
+                 value="{{ prefill.country }}" placeholder="예: 미국">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="owner">담당</label>
+          <input class="input" type="text" name="owner" id="owner"
+                 value="{{ prefill.owner or current_user }}">
+        </div>
+        <div class="field">
+          <label class="field-label" for="start_date">착수일 (요청 전달일)</label>
+          <input class="input" type="date" name="start_date" id="start_date"
+                 value="{{ prefill.start_date }}">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">리드타임</label>
+        <div class="tabs small radio-tabs">
+          {% for p in S.PACES %}
+          <label class="tab {% if prefill.pace == p.value %}active{% endif %}">
+            <input type="radio" name="pace" value="{{ p.value }}"
+                   {% if prefill.pace == p.value %}checked{% endif %}>{{ p.label }}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="field-hint">
+          {% for p in S.PACES %}{{ p.label }} — {{ p.desc }}{% if not loop.last %} · {% endif %}{% endfor %}
+        </p>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="note">메모</label>
+        <textarea class="input textarea" name="note" id="note" rows="3"
+                  placeholder="예: 12월 전시회 전 샘플 필요. 용기 사급 여부 미정.">{{ prefill.note }}</textarea>
+      </div>
+
+      <div class="field">
+        <label class="check-line">
+          <input type="checkbox" name="with_tasks" value="1" checked>
+          <span>기본 9단계 일정을 자동으로 만든다</span>
+        </label>
+        <p class="field-hint">끄면 빈 일정으로 만들고 필요한 항목만 직접 추가합니다.</p>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-primary" type="submit">일정 만들기</button>
+      </div>
+    </section>
+
+    <aside class="pros-side">
+      <section class="card">
+        <h2 class="card-title">이렇게 깔립니다</h2>
+        <p class="card-desc">선택한 착수일·리드타임 기준 초안입니다. 등록 뒤 단계별로 바꿀 수 있습니다.</p>
+        {% for row in plan %}
+        <div class="sch-plan-row">
+          <span class="sch-phase-icon">{{ S.PHASE_MAP[row.phase].icon }}</span>
+          <span class="sch-phase-name">{{ row.title }}</span>
+          <span class="sch-plan-date">{{ row.plan_date }}</span>
+        </div>
+        {% endfor %}
+        <p class="field-hint">
+          날짜는 달력 기준입니다. 공휴일·휴무는 반영하지 않으니 공장 일정과 대조해 주세요.
+        </p>
+      </section>
+    </aside>
+  </div>
+</form>
+{% endblock %}

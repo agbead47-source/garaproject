@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "prospecting/_bar.html" %}
+
+<section class="card result-summary">
+  <div class="result-head">
+    <div>
+      <span class="result-file">🏭 자사 역량</span>
+      <span class="result-meta">
+        {% if cap %}최종 갱신 {{ cap.updated_at[:10] }}{% else %}아직 등록되지 않았습니다{% endif %}
+      </span>
+    </div>
+  </div>
+  <p class="card-desc no-margin">
+    후보 기업의 적합도는 여기 등록한 값과 비교해 계산합니다.
+    <strong>자료가 없는 항목은 미확인으로 처리</strong>되고, 점수가 아니라 확인율이 떨어집니다.
+    국가 대응 경험을 수출 허가나 적법성 보장으로 표현하지 않습니다.
+  </p>
+</section>
+
+<form method="post" action="{{ url_for('prospecting.capabilities') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+  <div class="pros-grid">
+    <div class="compose-main">
+      <section class="card">
+        <h2 class="card-title">대응 범위</h2>
+        <div class="compose-fields">
+          <div class="field">
+            <label class="field-label" for="c-mode">대응 방식</label>
+            <select class="select" name="mode" id="c-mode">
+              {% for value, label in [('oem','OEM'), ('odm','ODM'), ('both','OEM / ODM 둘 다')] %}
+              <option value="{{ value }}" {% if cap and cap.mode == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="c-contact">상담 담당자</label>
+            <input class="input" type="text" name="contact_person" id="c-contact"
+                   value="{{ cap.contact_person if cap else '' }}" placeholder="해외영업팀 홍길동">
+          </div>
+          <div class="field wide">
+            <label class="field-label" for="c-cats">제조 가능 제품군</label>
+            <input class="input" type="text" name="product_categories" id="c-cats"
+                   value="{{ cap.product_categories if cap else '' }}"
+                   placeholder="serum, cream, cleanser (쉼표로 구분)">
+            <p class="field-hint">제품군 코드: {% for c in M.PRODUCT_CATEGORIES %}<code>{{ c.value }}</code>={{ c.label }} {% endfor %}</p>
+          </div>
+          <div class="field wide">
+            <label class="field-label" for="c-form">개발 가능 제형·특징</label>
+            <textarea class="input textarea" name="formulations" id="c-form" rows="2"
+                      placeholder="watery serum, gel cream, ceramide barrier, fragrance-free">{{ cap.formulations if cap else '' }}</textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">제품군별 MOQ</h2>
+        <p class="card-desc">고객이 밝힌 주문량과 비교합니다. 비워 두면 해당 기준은 미확인이 됩니다.</p>
+        <table class="item-table">
+          <thead><tr><th>제품군</th><th class="col-amount">MOQ</th><th class="col-btype">단위</th></tr></thead>
+          <tbody>
+            {% set moq_rows = (cap.moq if cap else []) %}
+            {% for i in range(4) %}
+            {% set row = moq_rows[i] if i < moq_rows|length else None %}
+            <tr>
+              <td><input class="input" type="text" name="moq_category"
+                         value="{{ row.product_category if row else '' }}" placeholder="serum"></td>
+              <td class="col-amount"><input class="input" type="text" name="moq_value"
+                         value="{{ row.moq_value|round(0)|int if row and row.moq_value else '' }}" placeholder="5000"></td>
+              <td class="col-btype"><input class="input" type="text" name="moq_unit"
+                         value="{{ row.moq_unit if row else '' }}" placeholder="units"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">보유 인증</h2>
+        <p class="card-desc">
+          <strong>고객이 요구한 인증만</strong> 비교에 사용합니다. 요구가 없는 인증을 필수조건처럼 쓰지 않습니다.
+          내부 확인이 끝난 인증만 제안문에 실립니다.
+        </p>
+        <table class="item-table">
+          <thead>
+            <tr><th>인증명</th><th>적용 범위</th><th class="col-amount">유효기간</th><th class="col-btype">내부 확인</th></tr>
+          </thead>
+          <tbody>
+            {% set certs = (cap.certs if cap else []) %}
+            {% for i in range(4) %}
+            {% set row = certs[i] if i < certs|length else None %}
+            <tr>
+              <td><input class="input" type="text" name="cert_name" value="{{ row.name if row else '' }}" placeholder="ISO 22716"></td>
+              <td><input class="input" type="text" name="cert_scope" value="{{ row.scope if row else '' }}" placeholder="생산 공장 전체"></td>
+              <td class="col-amount"><input class="input" type="text" name="cert_until" value="{{ row.valid_until if row else '' }}" placeholder="2028-03-31"></td>
+              <td class="col-btype">
+                <label class="check">
+                  <input type="checkbox" name="cert_verified" value="{{ i }}"
+                         {% if row and row.internally_verified %}checked{% endif %}> 확인
+                </label>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </div>
+
+    <aside class="pros-side">
+      <section class="card">
+        <h2 class="card-title">국가 대응</h2>
+        <div class="field">
+          <label class="field-label" for="c-countries">대응 경험 국가</label>
+          <input class="input" type="text" name="countries" id="c-countries"
+                 value="{{ cap.countries if cap else '' }}" placeholder="United States, EU, Japan">
+        </div>
+        <div class="field">
+          <label class="field-label" for="c-reg">규제 검토 지원 범위</label>
+          <textarea class="input textarea" name="regulatory_support" id="c-reg" rows="3"
+                    placeholder="성분 한도 검토 보조, 서류 목록 안내">{{ cap.regulatory_support if cap else '' }}</textarea>
+          <p class="field-hint text-orange">
+            수출 허가나 적법성 보장으로 읽히는 표현은 쓰지 않습니다.
+          </p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 class="card-title">소요 기간</h2>
+        <div class="field">
+          <label class="field-label" for="c-sample">통상 샘플</label>
+          <input class="input" type="text" name="sample_lead_time" id="c-sample"
+                 value="{{ cap.sample_lead_time if cap else '' }}" placeholder="4 weeks">
+        </div>
+        <div class="field">
+          <label class="field-label" for="c-mass">통상 양산</label>
+          <input class="input" type="text" name="mass_lead_time" id="c-mass"
+                 value="{{ cap.mass_lead_time if cap else '' }}" placeholder="10 weeks">
+          <p class="field-hint">고객 요구 납기와 숫자로 비교합니다.</p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="c-note">전제조건</label>
+          <textarea class="input textarea" name="lead_time_note" id="c-note" rows="2"
+                    placeholder="부자재 사급 기준, 디자인 확정일로부터">{{ cap.lead_time_note if cap else '' }}</textarea>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary" type="submit">저장하고 전체 재채점</button>
+        </div>
+      </section>
+    </aside>
+  </div>
+</form>
+{% endblock %}
