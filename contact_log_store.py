@@ -66,7 +66,23 @@ CREATE TABLE IF NOT EXISTS contact_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_log_customer ON contact_log(customer_id);
+
+-- 내부 메모. 연락 기록과 다르다.
+--   연락 기록은 "누구와 무슨 얘기를 했나" 이고
+--   내부 메모는 "이 거래처를 다룰 때 알아 둘 것" 이다 (결제 습관, 주의점 등).
+--   화면에서만 추가되고 새로고침하면 사라지던 것을 실제로 저장하게 바꿨다.
+CREATE TABLE IF NOT EXISTS notes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id TEXT NOT NULL,
+    text        TEXT NOT NULL,
+    author      TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notes_customer ON notes(customer_id);
 """
+
+NOTE_LIMIT = 800
 
 
 def _conn():
@@ -155,6 +171,40 @@ def of_customer(customer_id, limit=None):
 def last_of(customer_id):
     rows = of_customer(customer_id, limit=1)
     return rows[0] if rows else None
+
+
+# ---------------------------------------------------------------------------
+# 내부 메모
+# ---------------------------------------------------------------------------
+
+def add_note(customer_id, text, author=""):
+    text = _clean(text, NOTE_LIMIT)
+    if not text:
+        return False
+    _conn().execute(
+        "INSERT INTO notes (customer_id, text, author, created_at) VALUES (?,?,?,?)",
+        (_clean(customer_id, 60), text, _clean(author, 40),
+         _now().strftime("%Y-%m-%d %H:%M")))
+    _conn().commit()
+    return True
+
+
+def remove_note(note_id, customer_id):
+    cur = _conn().execute("DELETE FROM notes WHERE id = ? AND customer_id = ?",
+                          (note_id, _clean(customer_id, 60)))
+    _conn().commit()
+    return cur.rowcount > 0
+
+
+def notes_of(customer_id):
+    return [dict(r) for r in _conn().execute(
+        "SELECT * FROM notes WHERE customer_id = ? ORDER BY id DESC",
+        (_clean(customer_id, 60),))]
+
+
+def note_counts():
+    return {r["customer_id"]: r["n"] for r in _conn().execute(
+        "SELECT customer_id, COUNT(*) AS n FROM notes GROUP BY customer_id")}
 
 
 def counts():

@@ -14,6 +14,7 @@ from flask import (Flask, jsonify, redirect, render_template, request,
 
 import beauty_rank_store
 import chat_bot
+import company_store
 import contact_log_store
 import contact_store
 import customer_excel
@@ -50,6 +51,9 @@ customer_store.init_db()
 
 # 고객사 연락 기록 (SQLite. 누구와 무슨 연락을 했는지 한 줄 메모)
 contact_log_store.init_db()
+
+# 자사 정보 (SQLite. 서류가 여기서 읽어 간다)
+company_store.init_db()
 
 # 포장재 가격 동향 (SQLite. 화면은 받아 둔 값만 읽는다)
 packaging_store.init_db()
@@ -932,6 +936,25 @@ def _find_profile(customer_id):
             or customer_store.profile(customer_id))
 
 
+@app.route("/company", methods=["GET", "POST"])
+def company():
+    """자사 정보. 모든 서류가 같은 값을 읽어 가는 자리."""
+    if request.method == "POST":
+        changed = company_store.save(request.form.to_dict(),
+                                     who=session.get("user", DEFAULT_USER))
+        if changed:
+            names = [company_store.FIELD_MAP[k]["label"] for k in changed]
+            session["contact_msg"] = ("ok", "{}개 칸을 고쳤습니다 ({}).".format(
+                len(changed), " · ".join(names[:4])
+                + (" 외" if len(names) > 4 else "")))
+        else:
+            session["contact_msg"] = ("ok", "바뀐 값이 없습니다.")
+        return redirect(url_for("company"))
+
+    return render_template("company.html", page_title="자사 정보",
+                           active_menu="customers", d=company_store.board())
+
+
 @app.route("/customers/new", methods=["POST"])
 def customer_new():
     """거래처 한 곳을 화면에서 바로 등록한다.
@@ -1032,6 +1055,15 @@ def customer_detail(customer_id):
     # 연락 기록은 담당자 목록에서 고르게 한다. 이름을 매번 타이핑하면
     # 철자가 조금씩 달라져서 나중에 사람별로 묶이지 않는다.
     profile["log"] = contact_log_store.of_customer(customer_id)
+    profile["saved_notes"] = contact_log_store.notes_of(customer_id)
+
+    # 진행 건은 더미가 아니라 실제 프로젝트를 읽는다.
+    # 카드에 박아 둔 예시 목록과 실제 건이 따로 놀면 어느 쪽을 믿어야 할지 모른다.
+    live = [row for row in project_store.list_projects()
+            if row["customer_id"] == customer_id
+            or (row["customer_name"] or "") == profile["name"]]
+    profile["live_projects"] = live
+    profile["signals"] = project_store.customer_signals(customer_id, profile["name"])
 
     return render_template(
         "customer_detail.html",
@@ -1053,7 +1085,7 @@ def customer_detail(customer_id):
 
 @app.route("/customers/<customer_id>/update", methods=["POST"])
 def customer_update(customer_id):
-    """거래처 정보 고치기. 지금은 유형만 바꾼다."""
+    """거래처 정보 고치기."""
     if _find_profile(customer_id) is None:
         return redirect(url_for("customers"))
 
@@ -1064,6 +1096,26 @@ def customer_update(customer_id):
         session["contact_msg"] = ("error", "예시 카드는 고칠 수 없습니다.")
     return redirect(url_for("customer_detail", customer_id=customer_id,
                             tab=request.form.get("tab", "requests")))
+
+
+@app.route("/customers/<customer_id>/notes", methods=["POST"])
+def customer_notes(customer_id):
+    """내부 메모. 전에는 화면에서만 붙고 새로고침하면 사라졌다."""
+    if _find_profile(customer_id) is None:
+        return redirect(url_for("customers"))
+
+    back = url_for("customer_detail", customer_id=customer_id, tab="notes")
+    if request.form.get("action") == "delete":
+        contact_log_store.remove_note(request.form.get("note_id", type=int),
+                                      customer_id)
+        session["contact_msg"] = ("ok", "메모를 지웠습니다.")
+        return redirect(back)
+
+    ok = contact_log_store.add_note(customer_id, request.form.get("text", ""),
+                                    session.get("user", DEFAULT_USER))
+    session["contact_msg"] = (("ok", "메모를 남겼습니다.") if ok
+                              else ("error", "메모 내용을 적어 주세요."))
+    return redirect(back)
 
 
 @app.route("/customers/<customer_id>/log", methods=["POST"])

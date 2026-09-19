@@ -591,6 +591,7 @@ def list_projects(status="all"):
         item = dict(row)
         item["parts"] = json.loads(item["parts"] or "[]")
         item["status_meta"] = STATUS_META.get(item["status"], STATUS_META["active"])
+        item["stage_meta"] = STAGE_MAP.get(item["stage"], STAGES[0])
         # 목록에서도 왜 무산됐는지가 바로 보여야 한다
         item["drop_meta"] = DROP_MAP.get(item.get("closed_reason") or "")
         item["progress"] = progress(item["id"])

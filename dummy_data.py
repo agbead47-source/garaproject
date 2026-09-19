@@ -12,6 +12,7 @@ import json
 import zlib
 from datetime import date
 
+import company_store
 import customer_store
 import reg_store
 import us_reg_store
@@ -2216,8 +2217,10 @@ def get_pricing_defaults(file_name=None, handoff=None):
 #   고객 발송용에는 절대 넣지 않는다.
 # ---------------------------------------------------------------------------
 
-# 공급자(자사) 정보 - 견적서 머리말과 하단 직인 옆에 들어간다
-SELLER = {
+# 공급자(자사) 정보 - 견적서 머리말과 하단 직인 옆에 들어간다.
+#   실제 값은 company_store 가 들고 있다 (자사 정보 화면에서 고친다).
+#   아래는 그 모듈이 없던 시절의 기본값이라 예비로만 남겨 둔다.
+_SELLER_FALLBACK = {
     "name": "주식회사 투두트레이드",
     "name_en": "TO-DO TRADE CO., LTD.",
     "ceo": "김무역",
@@ -2408,7 +2411,9 @@ def build_quote(form, view="customer"):
     ]
 
     today = date.today()
-    seller = dict(SELLER)
+    # 서류는 자사 정보에서 읽어 간다. 서류마다 회사 주소가 달라지면 안 된다
+    seller = dict(_SELLER_FALLBACK, **{
+        key: value for key, value in company_store.values().items() if value})
     return {
         "view": view,
         "internal": internal,

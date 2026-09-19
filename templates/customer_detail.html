@@ -100,7 +100,8 @@
 
 <div class="convert-bar">
   <div class="tabs">
-    {% set tabs = [('contacts', '👤 담당자'), ('requests', '📌 바이어 요청사항'), ('log', '📞 연락 기록'), ('projects', '📦 진행 건'), ('notes', '📝 내부 메모')] %}
+    {% set tabs = [('contacts', '👤 담당자'), ('log', '📞 연락 기록'), ('projects', '📦 진행 건'),
+                   ('requests', '📌 바이어 요청사항'), ('notes', '📝 내부 메모'), ('edit', '⚙️ 정보 고치기')] %}
     {% for key, label in tabs %}
     <a class="tab {% if tab == key %}active{% endif %}"
        href="{{ url_for('customer_detail', customer_id=c.id, tab=key) }}">{{ label }}</a>
@@ -110,8 +111,27 @@
 
 {% if tab == 'requests' %}
 <section class="card">
-  <h2 class="card-title">바이어 요청사항 <span class="count-chip">{{ c.requests|length }}</span></h2>
-  <p class="card-desc">이메일과 개발요청서에서 반복적으로 나온 요구를 정리한 내용입니다. 새 요청서를 분석할 때 자동으로 대조됩니다.</p>
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        바이어 요청사항 <span class="count-chip">{{ c.requests|length }}</span>
+      </h2>
+      <p class="card-desc no-margin">
+        메일과 개발요청서에서 반복적으로 나온 요구입니다.
+        새 요청서를 분석할 때 자동으로 대조됩니다.
+      </p>
+    </div>
+    {% if not c.imported %}
+    <span class="vstate v-example" title="시연용으로 깔아 둔 값입니다">예시 데이터</span>
+    {% endif %}
+  </div>
+
+  {% if not c.requests %}
+  <p class="empty-row">
+    정리된 요청사항이 없습니다. 건별 확인사항은
+    <strong>프로젝트 → 바이어 확인사항</strong>에서 관리합니다.
+  </p>
+  {% endif %}
 
   {% for r in c.requests %}
   <div class="req-row {{ r.priority }}">
@@ -397,49 +417,226 @@
 
 {% elif tab == 'projects' %}
 <section class="card">
-  <h2 class="card-title">진행 건 <span class="count-chip">{{ c.projects|length }}</span></h2>
-  <p class="card-desc">이 고객사와 진행 중이거나 완료된 개발 건입니다.</p>
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        진행 건 <span class="count-chip">{{ c.live_projects|length }}</span>
+      </h2>
+      <p class="card-desc no-margin">
+        이 거래처로 열린 <strong>실제 프로젝트</strong>입니다.
+      </p>
+    </div>
+    <form method="post" action="{{ url_for('project_new') }}">
+      <input type="hidden" name="customer_id" value="{{ c.id }}">
+      <input type="hidden" name="title" value="{{ c.name }} 신규 건">
+      <button type="submit" class="btn btn-mini">＋ 프로젝트 열기</button>
+    </form>
+  </div>
 
   <table class="item-table">
     <thead>
-      <tr><th>제품</th><th class="col-stage">단계</th><th class="col-due">일정</th><th class="col-status">상태</th></tr>
+      <tr><th>건</th><th class="col-stage">단계</th><th class="col-due">진행</th><th class="col-status">상태</th></tr>
     </thead>
     <tbody>
-      {% for p in c.projects %}
+      {% for p in c.live_projects %}
       <tr>
-        <td>{{ p.name }}</td>
-        <td class="col-stage">{{ p.stage }}</td>
-        <td class="col-due">{{ p.due }}</td>
+        <td>
+          <a href="{{ url_for('project_hub', project_id=p.id) }}">{{ p.title }}</a>
+          <div class="text-gray">{{ p.code }}</div>
+        </td>
+        <td class="col-stage">{{ p.stage_meta.icon }} {{ p.stage_meta.label }}</td>
+        <td class="col-due">{{ p.progress.done }}/{{ p.progress.total }} 단계</td>
         <td class="col-status">
-          <span class="status-badge {{ status_meta[p.status].css }}">{{ status_meta[p.status].label }}</span>
+          <span class="fill-badge {{ p.status_meta.css }}">{{ p.status_meta.label }}</span>
+          {% if p.drop_meta %}
+          <div class="drop-chip {% if p.drop_meta.signal %}signal{% endif %}">{{ p.drop_meta.label }}</div>
+          {% endif %}
         </td>
       </tr>
+      {% else %}
+      <tr><td class="empty-row" colspan="4">아직 열린 프로젝트가 없습니다.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </section>
 
-{% else %}
-<section class="card">
-  <h2 class="card-title">내부 메모 <span class="count-chip">{{ c.notes|length }}</span></h2>
-  <p class="card-desc">담당자끼리 공유하는 메모입니다. 고객사에는 보이지 않습니다.</p>
+{# 무산이 쌓이면 회사 단위로 보인다. 단정하지 않고 숫자만 보여 준다 #}
+{% if c.signals and c.signals.projects > 1 %}
+<section class="card sig-card sig-{{ c.signals.level_meta.css }}">
+  <h2 class="card-title">
+    거래 이력
+    <span class="sig-badge sig-{{ c.signals.level_meta.css }}">{{ c.signals.level_meta.label }}</span>
+  </h2>
+  <p class="card-desc">{{ c.signals.why }}</p>
+  <div class="sig-nums">
+    <div class="sig-num"><b>{{ c.signals.projects }}</b><span>건</span></div>
+    <div class="sig-num"><b class="text-green">{{ c.signals.won }}</b><span>수주</span></div>
+    <div class="sig-num"><b>{{ c.signals.active }}</b><span>진행 중</span></div>
+    <div class="sig-num"><b>{{ c.signals.lost }}</b><span>무산</span></div>
+    <div class="sig-num"><b>{{ c.signals.spent.samples }}</b><span>샘플</span></div>
+    <div class="sig-num"><b>{{ c.signals.spent.quotes }}</b><span>견적</span></div>
+  </div>
+  {% if c.signals.reasons %}
+  <div class="sig-reasons">
+    {% for r in c.signals.reasons %}
+    <span class="drop-chip {% if r.signal %}signal{% endif %}">{{ r.label }} {{ r.count }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endif %}
 
-  <div class="note-form">
-    <input class="input" type="text" id="note-input" placeholder="메모를 입력하세요 (가안에서는 저장되지 않습니다)">
-    <button type="button" class="btn btn-primary js-note">추가</button>
+{% elif tab == 'edit' %}
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">거래처 정보</h2>
+      <p class="card-desc no-margin">
+        여기 값만 실제로 저장됩니다. 나머지 화면의 숫자·태그는
+        <strong>예시 데이터</strong>입니다.
+      </p>
+    </div>
+    <span class="vstate v-{{ 'user' if c.imported else 'example' }}">
+      {{ '저장값' if c.imported else '예시 카드' }}
+    </span>
   </div>
 
-  <div class="note-list" id="note-list">
-    {% for n in c.notes %}
-    <div class="note-item">
-      <div class="note-head">
-        <span class="note-author">{{ n.author }}</span>
-        <span class="note-date">{{ n.date }}</span>
+  {% if not c.imported %}
+  <p class="live-caveat">
+    예시로 깔아 둔 카드라 고칠 수 없습니다.
+    실제로 쓰실 거래처는 <a href="{{ url_for('customers', new='1') }}">＋ 거래처 추가</a>로
+    새로 넣어 주세요.
+  </p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('customer_update', customer_id=c.id) }}">
+    <input type="hidden" name="tab" value="edit">
+    <fieldset class="bare" {% if not c.imported %}disabled{% endif %}>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="e-kind">유형</label>
+          <select class="select" name="kind" id="e-kind">
+            {% for k in kinds %}
+            <option value="{{ k.value }}" {% if k.value == c.kind %}selected{% endif %}>
+              {{ k.icon }} {{ k.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-grade">등급</label>
+          <select class="select" name="grade" id="e-grade">
+            {% for key, meta in grade_meta.items() %}
+            <option value="{{ key }}" {% if key == c.grade %}selected{% endif %}>{{ meta.label }}</option>
+            {% endfor %}
+          </select>
+          <p class="field-hint">파는 쪽(고객사·에이전트)에만 씁니다.</p>
+        </div>
       </div>
-      <div class="note-text">{{ n.text }}</div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="e-country">국가</label>
+          <input class="input" type="text" name="country" id="e-country"
+                 value="{{ c.country }}" maxlength="40">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-city">도시</label>
+          <input class="input" type="text" name="city" id="e-city"
+                 value="{{ c.city }}" maxlength="60">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="e-manager">우리 쪽 담당</label>
+          <input class="input" type="text" name="manager" id="e-manager"
+                 value="{{ c.manager }}" maxlength="40">
+        </div>
+        <div class="field">
+          <label class="field-label" for="e-channel">소통 채널</label>
+          <input class="input" type="text" name="channel" id="e-channel"
+                 value="{{ c.channel }}" maxlength="80"
+                 placeholder="이메일 · WhatsApp · WeChat">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="e-since">거래 시작</label>
+        <input class="input input-date" type="date" name="since" id="e-since"
+               value="{{ c.since }}">
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="e-note">메모</label>
+        <textarea class="input textarea" name="note" id="e-note" rows="3"
+                  maxlength="500">{{ c.note }}</textarea>
+      </div>
+
+      <p class="field-hint no-top">
+        빈 칸으로 두면 <strong>기존 값을 지우지 않고 그대로 둡니다.</strong>
+        엑셀로 다시 올릴 때 안 적은 칸이 지워지면 안 되기 때문입니다.
+      </p>
+      <button type="submit" class="btn btn-primary">저장</button>
+    </fieldset>
+  </form>
+</section>
+
+{% else %}
+<section class="card">
+  <h2 class="card-title">
+    내부 메모 <span class="count-chip">{{ c.saved_notes|length }}</span>
+  </h2>
+  <p class="card-desc">
+    이 거래처를 다룰 때 알아 둘 것을 적습니다 — 결제 습관, 회신이 늦는 시기,
+    깐깐한 부분. <strong>거래처에는 보이지 않습니다.</strong><br>
+    연락 기록과 다릅니다. 연락 기록은 "무슨 얘기를 했나" 고,
+    여기는 "다음 사람이 알아야 할 것" 입니다.
+  </p>
+
+  <form class="log-form" method="post"
+        action="{{ url_for('customer_notes', customer_id=c.id) }}">
+    <div class="log-form-row">
+      <input class="input" type="text" name="text" maxlength="800"
+             placeholder="예: 인보이스에 HS 코드를 꼭 적어 달라고 매번 요청함">
+      <button type="submit" class="btn btn-primary">메모 남기기</button>
+    </div>
+  </form>
+
+  <div class="log-list">
+    {% for n in c.saved_notes %}
+    <div class="log-row">
+      <div class="log-meta">
+        <span class="log-date">{{ n.created_at }}</span>
+        <span class="log-person">{{ n.author or '—' }}</span>
+      </div>
+      <div class="log-memo">{{ n.text }}</div>
+      <form class="log-del" method="post"
+            action="{{ url_for('customer_notes', customer_id=c.id) }}">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="note_id" value="{{ n.id }}">
+        <button type="submit" class="part-del" aria-label="메모 삭제">&#10005;</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="empty-row">아직 메모가 없습니다.</p>
+    {% endfor %}
+  </div>
+
+  {% if c.notes %}
+  <h3 class="sub-title">예시로 깔아 둔 메모</h3>
+  <div class="log-list">
+    {% for n in c.notes %}
+    <div class="log-row plain">
+      <div class="log-meta">
+        <span class="log-date">{{ n.date }}</span>
+        <span class="log-person">{{ n.author }}</span>
+        <span class="vstate tiny v-example">예시</span>
+      </div>
+      <div class="log-memo">{{ n.text }}</div>
     </div>
     {% endfor %}
   </div>
+  {% endif %}
 </section>
 {% endif %}
 {% endblock %}
@@ -458,26 +655,7 @@
     });
   }
 
-  var noteBtn = document.querySelector('.js-note');
-  if (noteBtn) {
-    noteBtn.addEventListener('click', function () {
-      var input = document.getElementById('note-input');
-      var text = input.value.trim();
-      if (!text) { window.showToast('메모 내용을 입력하세요.', 'warn'); return; }
-
-      // 화면에서만 추가한다 (새로고침하면 사라진다)
-      var item = document.createElement('div');
-      item.className = 'note-item';
-      item.innerHTML =
-        '<div class="note-head"><span class="note-author">{{ current_user }}</span>' +
-        '<span class="note-date">방금</span></div><div class="note-text"></div>';
-      item.querySelector('.note-text').textContent = text;
-      document.getElementById('note-list').prepend(item);
-
-      input.value = '';
-      window.showToast('메모를 추가했습니다. (가안이라 저장되지는 않습니다)');
-    });
-  }
+  /* 내부 메모는 이제 서버에 저장합니다. 화면에서만 붙이던 코드를 걷어냈습니다 */
 })();
 </script>
 {% endblock %}

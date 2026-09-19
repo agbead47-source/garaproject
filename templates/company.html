@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a class="back-link" href="{{ url_for('customers') }}">‹ 거래처 관리</a>
+
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">🏢 자사 정보</h2>
+      <p class="card-desc no-margin">
+        견적서 · 인보이스 · 패킹리스트 · 원산지증명 · 해외 등록 · 바이어 거래처 등록 양식.
+        여기 들어가는 회사 정보는 전부 같은 값입니다.
+        매번 예전 메일을 열어 복사하다 보면 <strong>영문 주소가 서류마다 달라지고,
+        그게 통관에서 걸립니다.</strong> 한 군데 적어 두고 서류가 여기서 읽어 갑니다.
+      </p>
+    </div>
+  </div>
+
+  {# 예시값을 입력값으로 착각하면 남의 회사 이름이 그대로 나간다 #}
+  {% if d.missing %}
+  <p class="live-caveat">
+    <strong>서류에 찍혀 나가는 칸 {{ d.missing|length }}개가 비어 있습니다</strong> —
+    {{ d.missing | join(' · ') }}.
+    이 값이 없으면 그 서류를 만들 수 없습니다.
+  </p>
+  {% endif %}
+  {% if d.sample_left %}
+  <p class="live-caveat">
+    <strong>{{ d.sample_left|length }}개 칸이 아직 예시값입니다</strong> —
+    {{ d.sample_left | join(' · ') }}.
+    이대로 견적서를 내보내면 <b>남의 회사 이름이 그대로 나갑니다.</b>
+  </p>
+  {% endif %}
+  {% if d.ready %}
+  <p class="live-caveat ok">
+    서류에 쓰이는 칸 {{ d.doc_total }}개가 모두 채워져 있습니다.
+  </p>
+  {% endif %}
+
+  <div class="state-legend">
+    <span class="state-legend-head">값 상태</span>
+    <span class="vstate v-user">입력값</span>
+    <span class="vstate v-example">예시 데이터</span>
+    <span class="vstate v-check">비어 있음</span>
+    <span class="text-gray">📄 는 서류에 그대로 찍혀 나가는 칸입니다</span>
+  </div>
+</section>
+
+<form method="post" action="{{ url_for('company') }}">
+  {% for g in d.groups %}
+  <section class="card">
+    <div class="result-head">
+      <div>
+        <h2 class="card-title no-margin">{{ g.icon }} {{ g.label }}</h2>
+        <p class="card-desc no-margin">{{ g.desc }}</p>
+      </div>
+      {% if g.sensitive %}
+      <button type="button" class="btn btn-mini js-reveal" data-group="{{ g.key }}">
+        가려 둔 값 보기
+      </button>
+      {% endif %}
+    </div>
+
+    {% if g.sensitive %}
+    <p class="live-caveat">
+      계좌만 바꿔치기해 보내는 사기 메일이 흔합니다.
+      <strong>이 값을 고치면 기록이 남습니다.</strong>
+      견적서에는 넣지 않습니다 — 송금 정보는 인보이스에 들어갑니다.
+    </p>
+    {% endif %}
+
+    <div class="co-grid {% if g.sensitive %}co-masked{% endif %}" data-group="{{ g.key }}">
+      {% for f in g.rows %}
+      <div class="field co-field">
+        <label class="field-label" for="co-{{ f.key }}">
+          {{ f.label }}
+          {% if f.doc %}<span class="co-doc" title="서류에 그대로 찍혀 나갑니다">📄</span>{% endif %}
+          <span class="vstate tiny v-{{ 'user' if f.state == 'user' else ('example' if f.state == 'sample' else 'check') }}">
+            {{ '입력값' if f.state == 'user' else ('예시' if f.state == 'sample' else '비어 있음') }}
+          </span>
+        </label>
+        <input class="input {% if g.sensitive %}co-secret{% endif %}"
+               type="text" name="{{ f.key }}" id="co-{{ f.key }}"
+               value="{{ f.saved }}" maxlength="{{ f.limit }}"
+               placeholder="{{ f.value if f.state == 'sample' else (f.hint or '') }}"
+               {% if g.sensitive %}data-real="1"{% endif %}>
+        <p class="field-hint">
+          {% if f.used %}<b>{{ f.used }}</b>{% endif %}
+          {%- if f.hint %} · {{ f.hint }}{% endif %}
+          {%- if f.state == 'sample' %} · <span class="text-orange">지금은 예시값입니다</span>{% endif %}
+        </p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <div class="bottom-actions">
+    <p class="card-desc no-margin">
+      빈 칸으로 저장하면 그 칸은 <strong>예시값으로 돌아갑니다.</strong>
+      실제 값을 지우려면 공백이 아니라 실제 값을 넣어 주세요.
+    </p>
+    <button type="submit" class="btn btn-primary">자사 정보 저장</button>
+  </div>
+</form>
+
+{% if d.bank_history %}
+<section class="card">
+  <h2 class="card-title">계좌 정보 변경 기록</h2>
+  <p class="card-desc">
+    누가 언제 바꿨는지 남깁니다. 송금 계좌는 조용히 바뀌면 안 되는 값입니다.
+  </p>
+  <div class="log-list">
+    {% for h in d.bank_history %}
+    <div class="log-row plain">
+      <div class="log-meta">
+        <span class="log-date">{{ h.at }}</span>
+        <span class="log-person">{{ h.who or '—' }}</span>
+      </div>
+      <div class="log-memo">{{ h.field }} 를 고쳤습니다</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  /* 계좌 같은 민감한 값은 눌러야 보인다. 어깨너머로 보이는 걸 막는다 */
+  document.querySelectorAll('.js-reveal').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var box = document.querySelector('.co-grid[data-group="' + btn.dataset.group + '"]');
+      if (!box) { return; }
+      var hidden = box.classList.toggle('co-masked');
+      btn.textContent = hidden ? '가려 둔 값 보기' : '다시 가리기';
+    });
+  });
+})();
+</script>
+{% endblock %}

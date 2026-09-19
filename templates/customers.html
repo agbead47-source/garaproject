@@ -17,6 +17,8 @@
     {# 받기와 올리기가 같은 화면이라 버튼도 하나다. 조건은 그대로 들고 간다 #}
     <a class="btn" href="{{ url_for('customers_import', q=selected.q,
                             grade=selected.grade) }}">📗 엑셀로 주고받기</a>
+    {# 서류에 들어가는 우리 회사 값. 거래처와 같은 자리에 두는 게 맞다 #}
+    <a class="btn" href="{{ url_for('company') }}">🏢 자사 정보</a>
   </div>
 </div>
 

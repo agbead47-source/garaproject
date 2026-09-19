@@ -4199,3 +4199,26 @@ span.cert-dday.ca-prep, span.cert-dday.ca-off {
 }
 .kind-form .field-label { margin: 0; flex: none; }
 .kind-form .select { flex: 1 1 auto; min-width: 0; }
+
+/* 자사 정보 */
+.co-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 4px 16px;
+}
+.co-field { margin-bottom: 12px; min-width: 0; }
+.co-field .field-label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.co-doc { font-size: 11px; }
+
+/* 계좌 같은 값은 눌러야 보인다 */
+.co-grid.co-masked .co-secret {
+  -webkit-text-security: disc;
+  text-security: disc;
+  font-family: monospace;
+  letter-spacing: 2px;
+}
+.live-caveat.ok { border-color: #CDE9D6; background: #F6FBF8; color: #2E7D4F; }
+
+/* 못 고치는 카드는 폼을 통째로 잠근다 (disabled 로 값은 보이되 안 바뀐다) */
+fieldset.bare { border: none; margin: 0; padding: 0; min-width: 0; }
+fieldset.bare[disabled] { opacity: .55; }
