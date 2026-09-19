@@ -3,23 +3,122 @@
 {% block content %}
 <div class="bottom-actions top-bar">
   <p class="card-desc no-margin">
-    명단을 엑셀로 주고받을 수 있습니다.
-    {% if selected.q or selected.grade != 'all' %}
+    고객사만이 아닙니다. <strong>원료사·임가공·포워더·시험기관</strong>도 같이 관리합니다.
+    {% if selected.q or selected.grade != 'all' or selected.kind != 'all' %}
     <span class="pill soft">지금 검색 조건을 그대로 가져갑니다</span>
-    {% elif summary.imported %}
-    <span class="pill soft">엑셀로 등록 {{ summary.imported }}곳</span>
+    {% else %}
+    {% if summary.manual %}<span class="pill soft">화면에서 등록 {{ summary.manual }}곳</span>{% endif %}
+    {% if summary.imported %}<span class="pill soft">엑셀로 등록 {{ summary.imported }}곳</span>{% endif %}
     {% endif %}
   </p>
   <div class="action-group">
+    <a class="btn btn-primary" href="{{ url_for('customers', q=selected.q,
+       grade=selected.grade, kind=selected.kind, new='1') }}">＋ 거래처 추가</a>
     {# 받기와 올리기가 같은 화면이라 버튼도 하나다. 조건은 그대로 들고 간다 #}
-    <a class="btn btn-primary" href="{{ url_for('customers_import', q=selected.q,
-                                       grade=selected.grade) }}">📗 엑셀로 주고받기</a>
+    <a class="btn" href="{{ url_for('customers_import', q=selected.q,
+                            grade=selected.grade) }}">📗 엑셀로 주고받기</a>
   </div>
 </div>
 
+{# 명함 한 장 받아 온 걸 넣으려고 엑셀을 만들게 하면 아무도 안 쓴다 #}
+{% if show_new %}
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">거래처 추가</h2>
+      <p class="card-desc no-margin">
+        회사명만 있으면 등록됩니다. 담당자는 등록한 뒤 바로 이어서 넣습니다.
+      </p>
+    </div>
+    <a class="btn btn-mini" href="{{ url_for('customers', q=selected.q,
+       grade=selected.grade, kind=selected.kind) }}">닫기</a>
+  </div>
+
+  <form method="post" action="{{ url_for('customer_new') }}">
+    <div class="field">
+      <label class="field-label" for="n-name">회사명 <span class="req">*</span></label>
+      <input class="input" type="text" name="name" id="n-name" required maxlength="120"
+             placeholder="예: Glowtree Beauty / 한성용기(주)" autofocus>
+      <p class="field-hint">
+        표기만 다른 같은 회사가 둘로 갈리면 연락 기록이 쪼개집니다.
+        이미 있는 이름이면 그쪽으로 보내 드립니다.
+      </p>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="n-kind">유형</label>
+      <select class="select" name="kind" id="n-kind">
+        {% for k in kinds %}
+        <option value="{{ k.value }}"
+                {% if k.value == selected.kind %}selected{% endif %}>{{ k.icon }} {{ k.label }}</option>
+        {% endfor %}
+      </select>
+      <p class="field-hint">
+        {% for k in kinds %}{% if k.desc %}
+        <b>{{ k.icon }} {{ k.label }}</b> {{ k.desc }}<br>
+        {% endif %}{% endfor %}
+      </p>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label" for="n-country">국가</label>
+        <input class="input" type="text" name="country" id="n-country" maxlength="40"
+               placeholder="미국 / 베트남 / 대한민국">
+      </div>
+      <div class="field">
+        <label class="field-label" for="n-city">도시</label>
+        <input class="input" type="text" name="city" id="n-city" maxlength="60"
+               placeholder="Los Angeles, CA">
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label" for="n-grade">등급</label>
+        <select class="select" name="grade" id="n-grade">
+          {% for key, meta in grade_meta.items() %}
+          <option value="{{ key }}" {% if key == 'new' %}selected{% endif %}>{{ meta.label }}</option>
+          {% endfor %}
+        </select>
+        <p class="field-hint">파는 쪽(고객사·에이전트)에만 씁니다.</p>
+      </div>
+      <div class="field">
+        <label class="field-label" for="n-manager">우리 쪽 담당</label>
+        <input class="input" type="text" name="manager" id="n-manager" maxlength="40"
+               placeholder="{{ current_user }}">
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="n-note">메모</label>
+      <textarea class="input textarea" name="note" id="n-note" rows="2" maxlength="500"
+                placeholder="예: 2026 코스모프로프에서 만남. 세럼 라인 관심"></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary">등록하고 담당자 넣기</button>
+  </form>
+</section>
+{% endif %}
+
+{# 유형별로 나눠 본다. 파는 쪽과 사는 쪽은 챙기는 게 다르다 #}
+<div class="tabs kind-tabs">
+  <a class="tab {% if selected.kind == 'all' %}active{% endif %}"
+     href="{{ url_for('customers', q=selected.q, grade=selected.grade) }}">
+    전체 {{ summary.total }}</a>
+  {% for k in kinds %}
+  {% if kind_counts.get(k.value) %}
+  <a class="tab {% if selected.kind == k.value %}active{% endif %}"
+     href="{{ url_for('customers', q=selected.q, grade=selected.grade, kind=k.value) }}">
+    {{ k.icon }} {{ k.label }} {{ kind_counts[k.value] }}</a>
+  {% endif %}
+  {% endfor %}
+</div>
+
 <form class="card filter-bar" method="get" action="{{ url_for('customers') }}">
+  <input type="hidden" name="kind" value="{{ selected.kind }}">
   <div class="filter-field grow">
-    <label class="field-label" for="q">고객사 검색</label>
+    <label class="field-label" for="q">거래처 검색</label>
     <input class="input" type="text" name="q" id="q" value="{{ selected.q }}"
            placeholder="회사명, 담당자 이름·이메일, 국가로 검색">
   </div>
@@ -42,8 +141,9 @@
 
 <div class="summary-grid summary-grid-5">
   <div class="summary-card">
-    <div class="summary-label">등록 고객사</div>
+    <div class="summary-label">등록 거래처</div>
     <div class="summary-value">{{ summary.total }}곳</div>
+    <div class="summary-sub">파는 쪽 {{ summary.sell }} · 사는 쪽 {{ summary.buy }}</div>
   </div>
   <div class="summary-card">
     <div class="summary-label">VIP 고객사</div>
@@ -72,7 +172,15 @@
         <div class="cust-name">{{ c.name }}</div>
         <div class="cust-place">{{ c.city }} · {{ c.country }}</div>
       </div>
+      {% if c.kind_meta.side == 'sell' %}
       <span class="grade-badge {{ grade_meta[c.grade].css }}">{{ grade_meta[c.grade].label }}</span>
+      {% endif %}
+    </div>
+
+    <div class="kind-line">
+      <span class="kind-chip k-{{ c.kind_meta.side or 'none' }}">
+        {{ c.kind_meta.icon }} {{ c.kind_meta.label }}
+      </span>
     </div>
 
     <div class="cust-buyer">
@@ -92,21 +200,30 @@
       {% for t in c.tags %}<span class="pill soft">{{ t }}</span>{% endfor %}
     </div>
 
+    {# 임가공 업체에 '누적 발주 0건 · 평균 회신 —' 을 띄워 봐야 자리만 먹는다 #}
     <div class="cust-stats">
+      {% if c.kind_meta.side == 'sell' %}
       <div class="cust-stat"><span class="cust-stat-num">{{ c.stats.orders }}</span><span class="cust-stat-label">누적 발주</span></div>
       <div class="cust-stat"><span class="cust-stat-num">{{ c.stats.active }}</span><span class="cust-stat-label">진행 중</span></div>
       <div class="cust-stat"><span class="cust-stat-num">{{ c.active_contacts|length }}</span><span class="cust-stat-label">담당자</span></div>
       <div class="cust-stat"><span class="cust-stat-num">{{ c.requests|length }}</span><span class="cust-stat-label">요청사항</span></div>
       <div class="cust-stat"><span class="cust-stat-num">{{ c.stats.avg_reply }}</span><span class="cust-stat-label">평균 회신</span></div>
+      {% else %}
+      <div class="cust-stat"><span class="cust-stat-num">{{ c.active_contacts|length }}</span><span class="cust-stat-label">담당자</span></div>
+      <div class="cust-stat"><span class="cust-stat-num">{{ c.log_count }}</span><span class="cust-stat-label">연락 기록</span></div>
+      {% endif %}
     </div>
 
     <div class="cust-foot">
-      <span>담당 {{ c.manager }}</span>
-      <span>최근 연락 {{ c.last_contact }}</span>
+      <span>{% if c.manager %}담당 {{ c.manager }}{% endif %}</span>
+      <span>{% if c.last_contact %}최근 연락 {{ c.last_contact }}{% endif %}</span>
     </div>
   </a>
   {% else %}
-  <div class="card empty-card">조건에 맞는 고객사가 없습니다.</div>
+  <div class="card empty-card">
+    조건에 맞는 거래처가 없습니다.
+    <a href="{{ url_for('customers', new='1', kind=selected.kind) }}">＋ 거래처 추가</a>
+  </div>
   {% endfor %}
 </div>
 {% endblock %}

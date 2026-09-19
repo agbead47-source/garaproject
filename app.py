@@ -603,7 +603,7 @@ def _quote_customers():
     """견적서 만들기 창에서 고를 고객사 + 담당자.
 
     수신처를 손으로 타이핑하면 이름·철자가 매번 달라진다.
-    고객사 관리에 등록된 담당자를 그대로 고를 수 있게 내려준다.
+    거래처 관리에 등록된 담당자를 그대로 고를 수 있게 내려준다.
     """
     grouped = contact_store.contacts_by_customer()
     rows = []
@@ -920,10 +920,10 @@ def _with_contacts(profile, contacts=None):
     return profile
 
 
-def _all_profiles(keyword="", grade="all"):
-    """고객사 카드 = 더미 카드 + 엑셀로 올린 회사."""
-    return (dummy_data.get_customer_profiles(keyword, grade)
-            + customer_store.profiles(keyword, grade))
+def _all_profiles(keyword="", grade="all", kind="all"):
+    """거래처 카드 = 예시 카드 + 화면·엑셀에서 등록한 회사."""
+    return (dummy_data.get_customer_profiles(keyword, grade, kind)
+            + customer_store.profiles(keyword, grade, kind))
 
 
 def _find_profile(customer_id):
@@ -932,15 +932,52 @@ def _find_profile(customer_id):
             or customer_store.profile(customer_id))
 
 
+@app.route("/customers/new", methods=["POST"])
+def customer_new():
+    """거래처 한 곳을 화면에서 바로 등록한다.
+
+    전에는 엑셀로 올리는 길밖에 없었다. 전시회에서 명함 한 장 받아 온 걸
+    넣으려고 엑셀을 만들게 하면 아무도 안 쓴다.
+    """
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        session["contact_msg"] = ("error", "회사명을 적어 주세요.")
+        return redirect(url_for("customers", new="1"))
+
+    # 이름이 같은 곳이 이미 있으면 새로 만들지 않고 그쪽으로 보낸다.
+    # 표기만 다른 같은 회사가 둘로 갈리면 연락 기록이 쪼개진다.
+    existing = customer_store.find_by_name(name)
+    if existing:
+        session["contact_msg"] = ("error", "이미 등록된 회사입니다: " + existing["name"])
+        return redirect(url_for("customer_detail", customer_id=existing["id"]))
+    for row in dummy_data.get_customer_profiles():
+        if customer_store.norm_name(row["name"]) == customer_store.norm_name(name):
+            session["contact_msg"] = ("error", "이미 등록된 회사입니다: " + row["name"])
+            return redirect(url_for("customer_detail", customer_id=row["id"]))
+
+    data = request.form.to_dict()
+    data["source"] = "manual"
+    customer_id = customer_store.create(
+        data, taken_ids=[row["id"] for row in dummy_data.get_customer_profiles()])
+    session["contact_msg"] = (
+        "ok", "{} 을(를) 등록했습니다. 담당자를 이어서 넣어 주세요.".format(name))
+    return redirect(url_for("customer_detail", customer_id=customer_id, tab="contacts"))
+
+
 @app.route("/customers")
 def customers():
-    """8. 고객사 관리 - 목록. (UI 가안. 담당자는 실제 저장값)"""
+    """8. 거래처 관리 - 목록. (UI 가안. 담당자·연락 기록은 실제 저장값)"""
     keyword = request.args.get("q", "")
     grade = request.args.get("grade", "all")
+    kind = request.args.get("kind", "all")
 
     grouped = contact_store.contacts_by_customer()
-    rows = [_with_contacts(row, grouped.get(row["id"], []))
-            for row in _all_profiles("", grade)]
+    logged = contact_log_store.counts()
+    rows = []
+    for row in _all_profiles("", grade, kind):
+        item = _with_contacts(row, grouped.get(row["id"], []))
+        item["log_count"] = logged.get(row["id"], 0)
+        rows.append(item)
 
     # 회사명·국가뿐 아니라 담당자 이름·이메일로도 찾을 수 있어야 한다
     needle = (keyword or "").strip().lower()
@@ -952,26 +989,41 @@ def customers():
 
     summary = dummy_data.get_customer_summary()
     summary["contacts"] = sum(len(v) for v in grouped.values())
-    # 엑셀로 올린 회사도 고객사다. 요약 숫자에 같이 센다
+    # 화면·엑셀에서 등록한 회사도 거래처다. 요약 숫자에 같이 센다
     imported = customer_store.profiles()
     summary["total"] += len(imported)
     summary["vip"] += sum(1 for row in imported if row["grade"] == "vip")
-    summary["imported"] = len(imported)
+    summary["imported"] = sum(1 for row in imported if row["source"] != "manual")
+    summary["manual"] = sum(1 for row in imported if row["source"] == "manual")
+
+    # 유형별 건수. 예시 카드는 전부 고객사다
+    counted = customer_store.count_by_kind()
+    for row in dummy_data.get_customer_profiles():
+        key = row.get("kind", customer_store.DEFAULT_KIND)
+        counted[key] = counted.get(key, 0) + 1
+    # 파는 쪽 / 사는 쪽. 같은 거래처라도 챙기는 게 다르다
+    summary["sell"] = sum(n for k, n in counted.items()
+                          if customer_store.kind_meta(k)["side"] == "sell")
+    summary["buy"] = sum(n for k, n in counted.items()
+                         if customer_store.kind_meta(k)["side"] == "buy")
 
     return render_template(
         "customers.html",
-        page_title="고객사 관리",
+        page_title="거래처 관리",
         active_menu="customers",
         rows=rows,
         summary=summary,
         grade_meta=dummy_data.CUSTOMER_GRADE_META,
-        selected={"q": keyword, "grade": grade},
+        kinds=customer_store.kinds(),
+        kind_counts=counted,
+        show_new=request.args.get("new") == "1",
+        selected={"q": keyword, "grade": grade, "kind": kind},
     )
 
 
 @app.route("/customers/<customer_id>")
 def customer_detail(customer_id):
-    """8-1. 고객사 관리 - 상세. (UI 가안. 담당자는 실제 저장값)"""
+    """8-1. 거래처 관리 - 상세. (UI 가안. 담당자·연락 기록은 실제 저장값)"""
     profile = _find_profile(customer_id)
     if profile is None:
         return redirect(url_for("customers"))
@@ -986,6 +1038,7 @@ def customer_detail(customer_id):
         page_title=profile["name"],
         active_menu="customers",
         c=profile,
+        kinds=customer_store.kinds(),
         log_channels=contact_log_store.channels(),
         today=contact_log_store.today_iso(),
         tab=request.args.get("tab", "requests"),
@@ -996,6 +1049,21 @@ def customer_detail(customer_id):
         contact_roles=contact_store.ROLES,
         edit_contact=request.args.get("edit", type=int),
     )
+
+
+@app.route("/customers/<customer_id>/update", methods=["POST"])
+def customer_update(customer_id):
+    """거래처 정보 고치기. 지금은 유형만 바꾼다."""
+    if _find_profile(customer_id) is None:
+        return redirect(url_for("customers"))
+
+    if customer_store.update(customer_id, request.form.to_dict()):
+        session["contact_msg"] = ("ok", "거래처 정보를 고쳤습니다.")
+    else:
+        # 예시 카드는 저장할 곳이 없다
+        session["contact_msg"] = ("error", "예시 카드는 고칠 수 없습니다.")
+    return redirect(url_for("customer_detail", customer_id=customer_id,
+                            tab=request.form.get("tab", "requests")))
 
 
 @app.route("/customers/<customer_id>/log", methods=["POST"])
@@ -1520,7 +1588,7 @@ def _export_facets():
 
 @app.route("/customers/export")
 def customers_export():
-    """고객사·담당자를 엑셀로 내려받는다. 어떤 값을 받을지 고를 수 있다.
+    """거래처·담당자를 엑셀로 내려받는다. 어떤 값을 받을지 고를 수 있다.
 
     아무 조건 없이 부르면 전부 받는다. (목록 화면의 '엑셀로 받기' 버튼)
     """
@@ -1536,7 +1604,7 @@ def customers_export():
     elif opt["primary_only"]:
         label = "고객사_대표담당자"
     else:
-        label = "고객사_담당자"
+        label = "거래처_담당자"
     name = "{}_{}.xlsx".format(label, date.today().strftime("%Y%m%d"))
     return _xlsx(customer_excel.build_workbook(
         rows, with_guide=opt["guide"], columns=opt["columns"]), name)
@@ -1545,7 +1613,7 @@ def customers_export():
 @app.route("/customers/template")
 def customers_template():
     """빈 양식. 예시 두 줄과 작성 안내가 들어 있다."""
-    return _xlsx(customer_excel.build_template(), "고객사_담당자_양식.xlsx")
+    return _xlsx(customer_excel.build_template(), "거래처_담당자_양식.xlsx")
 
 
 def _pending_import():
@@ -1580,7 +1648,7 @@ def _plan_import(path):
 
 @app.route("/customers/import", methods=["GET", "POST"])
 def customers_import():
-    """엑셀 명단을 올려 고객사·담당자를 한 번에 등록한다.
+    """엑셀 명단을 올려 거래처·담당자를 한 번에 등록한다.
 
     올리자마자 저장하지 않는다. 한 줄씩 무엇이 될지 보여 주고, 확인을 눌러야
     들어간다. 명단은 잘못 들어가면 되돌리기가 번거롭다.

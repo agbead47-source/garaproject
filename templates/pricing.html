@@ -473,7 +473,7 @@
           <input class="input spaced-top" type="text" name="customer" id="q-customer"
                  value="{{ d.customer }}" placeholder="견적서에 적을 회사명">
           <p class="field-hint">
-            고객사를 고르면 <a href="{{ url_for('customers') }}" target="_blank">고객사 관리</a>에
+            고객사를 고르면 <a href="{{ url_for('customers') }}" target="_blank">거래처 관리</a>에
             등록된 담당자를 아래에서 고를 수 있습니다. 회사명은 그대로 고쳐도 됩니다.
           </p>
         </div>
@@ -1212,7 +1212,7 @@
   /* --- 견적서 만들기 --- */
   var quoteModal = el('quote-modal');
 
-  /* 고객사별 담당자 (고객사 관리에 등록된 값) */
+  /* 고객사별 담당자 (거래처 관리에 등록된 값) */
   var CUSTOMERS = {{ quote_customers | tojson }};
 
   function customerById(id) {
@@ -1255,7 +1255,7 @@
       sel.value = '';
       hint.innerHTML = '이 고객사에 등록된 담당자가 없습니다. ' +
         '<a href="/customers/' + encodeURIComponent(picked.id) + '?tab=contacts" target="_blank">' +
-        '고객사 관리에서 추가</a>하거나 직접 적으세요.';
+        '거래처 관리에서 추가</a>하거나 직접 적으세요.';
     } else {
       /* 대표 담당자가 맨 앞이라 기본값으로 쓴다 */
       sel.value = String(picked.contacts[0].id);

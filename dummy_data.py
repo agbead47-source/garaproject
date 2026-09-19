@@ -12,6 +12,7 @@ import json
 import zlib
 from datetime import date
 
+import customer_store
 import reg_store
 import us_reg_store
 
@@ -1974,25 +1975,36 @@ _CUSTOMER_PROFILES = [
 ]
 
 
-def get_customer_profiles(keyword="", grade="all"):
-    """고객사 카드 목록. 회사명·바이어명·국가로 검색한다."""
+def _with_kind(row):
+    """더미 카드는 전부 고객사(바이어)다. 유형 칸을 같은 모양으로 붙여 둔다."""
+    data = dict(row)
+    data.setdefault("kind", customer_store.DEFAULT_KIND)
+    data["kind_meta"] = customer_store.kind_meta(data["kind"])
+    data.setdefault("source", "sample")
+    return data
+
+
+def get_customer_profiles(keyword="", grade="all", kind="all"):
+    """거래처 카드 목록. 회사명·바이어명·국가로 검색한다."""
     keyword = (keyword or "").strip().lower()
     rows = []
     for row in _CUSTOMER_PROFILES:
         if grade != "all" and row["grade"] != grade:
             continue
+        if kind != "all" and row.get("kind", customer_store.DEFAULT_KIND) != kind:
+            continue
         haystack = " ".join([row["name"], row["country"], row["buyer"]["name"]]).lower()
         if keyword and keyword not in haystack:
             continue
-        rows.append(dict(row))
+        rows.append(_with_kind(row))
     return rows
 
 
 def get_customer_profile(customer_id):
-    """고객사 상세 한 건. 없으면 None."""
+    """거래처 상세 한 건. 없으면 None."""
     for row in _CUSTOMER_PROFILES:
         if row["id"] == customer_id:
-            return dict(row)
+            return _with_kind(row)
     return None
 
 

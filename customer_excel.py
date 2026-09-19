@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""고객사·담당자 엑셀 내보내기 / 가져오기.
+"""거래처·담당자 엑셀 내보내기 / 가져오기.
 
-해외영업은 고객사 명단을 엑셀로 들고 다닌다. 전시회에서 받아온 명함을 정리한
+해외영업은 거래처 명단을 엑셀로 들고 다닌다. 전시회에서 받아온 명함을 정리한
 표, 전임자에게 넘겨받은 목록 같은 것들이다. 그걸 화면에서 한 명씩 다시 치게
 하면 아무도 쓰지 않는다.
 
@@ -22,20 +22,23 @@ from openpyxl.utils import get_column_letter
 import contact_store
 import customer_store
 
-SHEET_NAME = "고객사·담당자"
+# 시트 이름이 바뀌어도 예전 파일을 올릴 수 있다 (없으면 첫 시트를 읽는다)
+SHEET_NAME = "거래처·담당자"
 GUIDE_SHEET = "작성 안내"
 
 # 엑셀 열. header 가 그대로 첫 줄에 들어가고, 가져올 때도 이 이름으로 찾는다.
 COLUMNS = [
-    {"key": "customer_id", "header": "고객사 ID", "width": 14,
+    {"key": "customer_id", "header": "거래처 ID", "width": 14,
      "hint": "비워 두면 회사명으로 찾습니다. 새 회사는 자동으로 만들어집니다"},
     {"key": "company", "header": "회사명", "width": 24, "required": True,
      "hint": "필수. 대소문자·공백 차이는 같은 회사로 봅니다"},
     {"key": "country", "header": "국가", "width": 10,
      "hint": "예: 미국, 베트남 (국기는 자동)"},
     {"key": "city", "header": "도시", "width": 16, "hint": "예: Los Angeles, CA"},
+    {"key": "kind", "header": "유형", "width": 16,
+     "hint": "고객사 / 에이전트 / 원료·부자재 / 하청·임가공 / 물류 / 시험·인증 / 기타"},
     {"key": "grade", "header": "등급", "width": 8,
-     "hint": "VIP / 일반 / 신규 (비우면 신규)"},
+     "hint": "VIP / 일반 / 신규 (비우면 신규) — 고객사·에이전트에만 씁니다"},
     {"key": "manager", "header": "담당 영업", "width": 12, "hint": "우리 쪽 담당자"},
     {"key": "name", "header": "담당자", "width": 14,
      "hint": "비워 두면 회사만 등록합니다"},
@@ -59,7 +62,7 @@ BY_KEY = {c["key"]: c for c in COLUMNS}
 # 담당자 쪽 열. 이게 하나도 없으면 회사 명단이라 한 회사 한 줄로 접는다.
 CONTACT_KEYS = {"name", "title", "role", "email", "phone", "timezone",
                 "language", "is_primary", "note"}
-COMPANY_KEYS = {"customer_id", "company", "country", "city", "grade", "manager"}
+COMPANY_KEYS = {"customer_id", "company", "country", "city", "kind", "grade", "manager"}
 
 # 받는 쪽에서 자주 쓰는 조합. 열뿐 아니라 "누구를 받을지"까지 같이 정해 둔다.
 PRESETS = [
@@ -86,7 +89,7 @@ PRESETS = [
      "cols": ["company", "country", "name", "title", "role", "email", "phone"],
      "filters": {"primary": "1", "empty": "0"}},
     {"key": "company", "label": "회사만", "desc": "담당자 없이 회사 목록만",
-     "cols": ["customer_id", "company", "country", "city", "grade", "manager"],
+     "cols": ["customer_id", "company", "country", "city", "kind", "grade", "manager"],
      "filters": {}},
 ]
 PRESET_MAP = {p["key"]: p for p in PRESETS}
@@ -244,6 +247,7 @@ def export_rows(profiles, grouped, opt=None):
             "company": profile["name"],
             "country": profile.get("country", ""),
             "city": profile.get("city", ""),
+            "kind": _kind_label(profile.get("kind", "")),
             "grade": customer_store.GRADES and {
                 "vip": "VIP", "regular": "일반", "new": "신규"
             }.get(profile.get("grade", ""), ""),
@@ -293,13 +297,13 @@ def build_template():
     """빈 양식. 예시 두 줄을 넣어 둔다 - 빈 표만 받으면 어떻게 쓰는지 모른다."""
     return build_workbook([
         {"customer_id": "", "company": "Glowtree Beauty", "country": "미국",
-         "city": "Los Angeles, CA", "grade": "VIP", "manager": "홍길동",
+         "city": "Los Angeles, CA", "kind": "고객사", "grade": "VIP", "manager": "홍길동",
          "name": "Emily Park", "title": "Product Director", "role": "구매·발주",
          "email": "emily.park@example.com", "phone": "+1 213-555-0148",
          "timezone": "PST (한국 −16시간)", "language": "English",
          "is_primary": "Y", "note": "회신 빠름. 무향 제품만 취급"},
         {"customer_id": "", "company": "Glowtree Beauty", "country": "", "city": "",
-         "grade": "", "manager": "", "name": "Daniel Kim", "title": "QA Manager",
+         "kind": "", "grade": "", "manager": "", "name": "Daniel Kim", "title": "QA Manager",
          "role": "품질·인증", "email": "daniel.kim@example.com", "phone": "",
          "timezone": "", "language": "English", "is_primary": "",
          "note": "인증서 원본을 매 건 요구"},
@@ -380,6 +384,42 @@ def _grade_of(text):
     return GRADE_WORDS.get(word, GRADE_WORDS.get(word.lower(), ""))
 
 
+# 엑셀에는 사람이 읽는 말로 적는다. 코드값을 외우게 하면 안 쓴다.
+KIND_WORDS = {
+    "고객사": "buyer", "바이어": "buyer", "buyer": "buyer",
+    "에이전트": "agent", "유통": "agent", "현지 에이전트": "agent", "agent": "agent",
+    "원료": "vendor", "부자재": "vendor", "공급처": "vendor",
+    "원료·부자재": "vendor", "vendor": "vendor",
+    "하청": "subcon", "임가공": "subcon", "하청·임가공": "subcon", "subcon": "subcon",
+    "물류": "logistics", "포워더": "logistics", "물류·포워더": "logistics",
+    "logistics": "logistics",
+    "시험": "lab", "인증": "lab", "시험·인증": "lab", "lab": "lab",
+    "기타": "other", "other": "other",
+}
+
+
+def _kind_of(text):
+    """유형 칸을 읽는다. 못 읽으면 빈 값 - 부르는 쪽이 기존 값을 지킨다."""
+    word = (text or "").strip()
+    if not word:
+        return ""
+    if word in KIND_WORDS:
+        return KIND_WORDS[word]
+    low = word.lower()
+    if low in KIND_WORDS:
+        return KIND_WORDS[low]
+    # "🏭 하청·임가공" 처럼 아이콘이 붙어 와도 읽는다
+    for key, value in KIND_WORDS.items():
+        if key in word:
+            return value
+    return ""
+
+
+def _kind_label(value):
+    meta = customer_store.KIND_MAP.get(value or "")
+    return meta["label"] if meta else ""
+
+
 # ---------------------------------------------------------------------------
 # 판정 - 저장하기 전에 한 줄씩 무슨 일이 일어날지 보여 준다
 # ---------------------------------------------------------------------------
@@ -418,7 +458,7 @@ def plan(rows, profiles, grouped):
             target = by_id.get(given_id)
             if target is None:
                 item.update(action="error",
-                            reason="고객사 ID '{}' 를 찾지 못했습니다. ID 를 비우면 "
+                            reason="거래처 ID '{}' 를 찾지 못했습니다. ID 를 비우면 "
                                    "회사명으로 찾거나 새로 만듭니다.".format(given_id))
                 planned.append(item)
                 continue
@@ -526,6 +566,7 @@ def apply(planned):
                     "name": row["company"],
                     "country": row.get("country", ""),
                     "city": row.get("city", ""),
+                    "kind": _kind_of(row.get("kind", "")),
                     "grade": _grade_of(row.get("grade", "")),
                     "manager": row.get("manager", ""),
                 }, taken_ids=set(created_company.values()))
@@ -535,6 +576,7 @@ def apply(planned):
             # 엑셀로 등록된 고객사면 비어 있던 칸을 채운다 (더미 카드는 건드리지 않는다)
             customer_store.update(customer_id, {
                 "country": row.get("country", ""), "city": row.get("city", ""),
+                "kind": _kind_of(row.get("kind", "")),
                 "grade": _grade_of(row.get("grade", "")),
                 "manager": row.get("manager", ""),
             })

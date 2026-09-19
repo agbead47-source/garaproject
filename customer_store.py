@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
-"""엑셀로 올린 고객사 저장소.
+"""거래처 저장소.
+
+고객사만 관리하면 안 된다. 해외영업 한 건이 돌아가려면 파는 쪽(바이어·현지
+에이전트)과 사는 쪽(원료사·부자재·임가공·포워더·시험기관)이 같이 움직인다.
+바이어 연락처만 정리해 두고 임가공 업체 담당자는 메신저를 뒤지는 게 실제 모습이다.
+
+그래서 회사마다 **유형(kind)** 을 붙인다. 등급(VIP·일반·신규)은 파는 쪽에만
+의미가 있어서 사는 쪽에는 띄우지 않는다.
+
+원래 이름은 "엑셀로 올린 고객사 저장소" 였다.
 
 기존 고객사 카드(`dummy_data._CUSTOMER_PROFILES`)는 더미다. 엑셀에서 올라온
 회사는 더미에 없으니 어딘가에 실제로 담아야 하고, 그게 이 모듈이다.
@@ -35,6 +44,44 @@ LIMITS = {"name": 120, "country": 40, "city": 60, "manager": 40,
 GRADES = ("vip", "regular", "new")
 DEFAULT_GRADE = "new"
 
+# ---------------------------------------------------------------------------
+# 거래처 유형
+# ---------------------------------------------------------------------------
+#   side 로 파는 쪽·사는 쪽을 가른다. 같은 '거래처' 라도 챙기는 게 다르다.
+#   파는 쪽은 등급·요청사항·견적이 중요하고,
+#   사는 쪽은 납기·단가·품질 문제 이력이 중요하다.
+
+KINDS = [
+    {"value": "buyer", "label": "고객사 (바이어)", "icon": "🛍️", "side": "sell",
+     "desc": "우리가 파는 쪽. 발주를 넣는 해외 브랜드·유통사"},
+    {"value": "agent", "label": "현지 에이전트·유통", "icon": "🌏", "side": "sell",
+     "desc": "현지 수입자, EU 책임자(RP), 중국 경내책임자 등"},
+    {"value": "vendor", "label": "원료·부자재 공급처", "icon": "🧴", "side": "buy",
+     "desc": "벌크 원료, 용기·펌프·단상자를 대는 곳"},
+    {"value": "subcon", "label": "하청·임가공", "icon": "🏭", "side": "buy",
+     "desc": "충전·포장 등 우리 대신 만드는 곳"},
+    {"value": "logistics", "label": "물류·포워더", "icon": "🚢", "side": "buy",
+     "desc": "선적·통관·내륙 운송을 맡는 곳"},
+    {"value": "lab", "label": "시험·인증기관", "icon": "🔬", "side": "buy",
+     "desc": "안정성·미생물 시험, 인증 심사기관"},
+    {"value": "other", "label": "기타", "icon": "🏢", "side": "",
+     "desc": "위에 해당하지 않는 거래처"},
+]
+KIND_MAP = {row["value"]: row for row in KINDS}
+KIND_ORDER = [row["value"] for row in KINDS]
+DEFAULT_KIND = "buyer"
+
+# 등급을 띄울 유형. 임가공 업체에 'VIP 고객사' 라고 적히면 우습다.
+GRADED_KINDS = {"buyer", "agent"}
+
+
+def kind_meta(value):
+    return KIND_MAP.get(value or "", KIND_MAP[DEFAULT_KIND])
+
+
+def kinds():
+    return [dict(row) for row in KINDS]
+
 # 국가 이름 -> 국기. 엑셀에 국기까지 적어 달라고 할 수는 없다.
 COUNTRY_FLAGS = {
     "미국": "🇺🇸", "중국": "🇨🇳", "일본": "🇯🇵", "홍콩": "🇭🇰", "대만": "🇹🇼",
@@ -55,6 +102,7 @@ CREATE TABLE IF NOT EXISTS customers (
     country    TEXT,
     city       TEXT,
     grade      TEXT NOT NULL DEFAULT 'new',
+    kind       TEXT NOT NULL DEFAULT 'buyer',
     manager    TEXT,
     channel    TEXT,
     since      TEXT,
@@ -86,10 +134,23 @@ def connect():
     return conn
 
 
+# 나중에 붙인 칸. 이미 만들어진 DB 에도 넣어 줘야 한다.
+LATE_COLUMNS = [("kind", "TEXT NOT NULL DEFAULT 'buyer'")]
+
+
+def _add_missing_columns(conn):
+    have = {row["name"] for row in conn.execute("PRAGMA table_info(customers)")}
+    for column, decl in LATE_COLUMNS:
+        if column not in have:
+            conn.execute("ALTER TABLE customers ADD COLUMN {} {}".format(column, decl))
+    conn.commit()
+
+
 def init_db():
     conn = connect()
     conn.executescript(SCHEMA)
     conn.commit()
+    _add_missing_columns(conn)
 
 
 def norm_name(name):
@@ -133,6 +194,8 @@ def blank_profile(row):
         "flag": COUNTRY_FLAGS.get(data["country"] or "", "🏳"),
         "city": data["city"] or "",
         "grade": data["grade"] if data["grade"] in GRADES else DEFAULT_GRADE,
+        "kind": data.get("kind") or DEFAULT_KIND,
+        "kind_meta": kind_meta(data.get("kind")),
         "manager": data["manager"] or "",
         "since": data["since"] or "",
         "last_contact": "",
@@ -147,7 +210,9 @@ def blank_profile(row):
         "notes": [],
         "history": [],
         "note": data["note"] or "",
-        "imported": True,                 # 화면에서 더미 카드와 구분하는 표시
+        # 엑셀로 올린 것과 화면에서 직접 넣은 것을 구분한다
+        "imported": True,
+        "source": data.get("source") or "excel",
         "created_at": data["created_at"],
     }
 
@@ -162,12 +227,14 @@ def all_rows():
         "SELECT * FROM customers ORDER BY created_at DESC, name ASC")]
 
 
-def profiles(keyword="", grade="all"):
-    """엑셀로 등록된 고객사를 카드 모양으로. (더미 카드와 같은 키를 갖는다)"""
+def profiles(keyword="", grade="all", kind="all"):
+    """등록된 거래처를 카드 모양으로. (더미 카드와 같은 키를 갖는다)"""
     rows = []
     needle = (keyword or "").strip().lower()
     for row in all_rows():
         if grade != "all" and row["grade"] != grade:
+            continue
+        if kind != "all" and (row["kind"] or DEFAULT_KIND) != kind:
             continue
         if needle and needle not in " ".join(
                 [row["name"], row["country"] or ""]).lower():
@@ -198,6 +265,12 @@ def count():
     return conn.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
 
 
+def count_by_kind():
+    conn = connect()
+    return {row["kind"] or DEFAULT_KIND: row["n"] for row in conn.execute(
+        "SELECT kind, COUNT(*) AS n FROM customers GROUP BY kind")}
+
+
 # ---------------------------------------------------------------------------
 # 저장
 # ---------------------------------------------------------------------------
@@ -209,19 +282,23 @@ def create(data, taken_ids=()):
 
     name = _clean(data.get("name"), "name")
     grade = (data.get("grade") or "").strip().lower()
+    kind = (data.get("kind") or "").strip().lower()
     taken = set(taken_ids) | {row["id"] for row in all_rows()}
 
     customer_id = make_id(name, taken)
     conn.execute(
         """INSERT INTO customers
-           (id, name, country, city, grade, manager, channel, since, note,
+           (id, name, country, city, grade, kind, manager, channel, since, note,
             source, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,'excel',?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (customer_id, name,
          _clean(data.get("country"), "country"), _clean(data.get("city"), "city"),
          grade if grade in GRADES else DEFAULT_GRADE,
+         kind if kind in KIND_MAP else DEFAULT_KIND,
          _clean(data.get("manager"), "manager"), _clean(data.get("channel"), "channel"),
          _clean(data.get("since"), "since"), _clean(data.get("note"), "note"),
+         # 엑셀로 올라온 것인지 화면에서 직접 넣은 것인지
+         "manual" if data.get("source") == "manual" else "excel",
          stamp, stamp))
     conn.commit()
     return customer_id
@@ -240,12 +317,16 @@ def update(customer_id, data):
 
     grade = (data.get("grade") or "").strip().lower()
     merged["grade"] = grade if grade in GRADES else row["grade"]
+    kind = (data.get("kind") or "").strip().lower()
+    merged["kind"] = kind if kind in KIND_MAP else (row["kind"] or DEFAULT_KIND)
 
     conn.execute(
-        """UPDATE customers SET country = ?, city = ?, grade = ?, manager = ?,
-           channel = ?, since = ?, note = ?, updated_at = ? WHERE id = ?""",
-        (merged["country"], merged["city"], merged["grade"], merged["manager"],
-         merged["channel"], merged["since"], merged["note"], now_iso(), customer_id))
+        """UPDATE customers SET country = ?, city = ?, grade = ?, kind = ?,
+           manager = ?, channel = ?, since = ?, note = ?, updated_at = ?
+           WHERE id = ?""",
+        (merged["country"], merged["city"], merged["grade"], merged["kind"],
+         merged["manager"], merged["channel"], merged["since"], merged["note"],
+         now_iso(), customer_id))
     conn.commit()
     return True
 

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<a class="back-link" href="{{ url_for('customers') }}">‹ 고객사 목록</a>
+<a class="back-link" href="{{ url_for('customers') }}">‹ 거래처 목록</a>
 
 <section class="card profile-card">
   <div class="profile-head">
@@ -9,9 +9,18 @@
     <div class="profile-title">
       <div class="profile-name">
         {{ c.name }}
+        <span class="kind-chip k-{{ c.kind_meta.side or 'none' }}">
+          {{ c.kind_meta.icon }} {{ c.kind_meta.label }}
+        </span>
+        {# 등급은 파는 쪽에만 의미가 있다. 임가공 업체에 'VIP 고객사'는 우습다 #}
+        {% if c.kind_meta.side == 'sell' %}
         <span class="grade-badge {{ grade_meta[c.grade].css }}">{{ grade_meta[c.grade].label }}</span>
+        {% endif %}
       </div>
-      <div class="profile-place">{{ c.city }} · {{ c.country }} · 거래 시작 {{ c.since }}</div>
+      <div class="profile-place">
+        {{ c.city }}{% if c.city and c.country %} · {% endif %}{{ c.country }}
+        {%- if c.since %} · 거래 시작 {{ c.since }}{% endif %}
+      </div>
     </div>
     <div class="action-group">
       <button type="button" class="btn js-mail">✉️ 메일 쓰기</button>
@@ -40,12 +49,33 @@
     </div>
 
     <div class="profile-block">
-      <div class="profile-block-title">거래 현황</div>
+      <div class="profile-block-title">
+        {{ '거래 현황' if c.kind_meta.side == 'sell' else '거래처 정보' }}
+      </div>
+      {% if c.kind_meta.side == 'sell' %}
       <div class="info-row"><span class="info-label">누적 발주</span><span class="info-value">{{ c.stats.orders }}건 · {{ c.stats.amount }}</span></div>
       <div class="info-row"><span class="info-label">진행 중</span><span class="info-value">{{ c.stats.active }}건</span></div>
       <div class="info-row"><span class="info-label">평균 회신</span><span class="info-value">{{ c.stats.avg_reply }}</span></div>
-      <div class="info-row"><span class="info-label">소통 채널</span><span class="info-value">{{ c.channel }}</span></div>
-      <div class="info-row"><span class="info-label">사내 담당</span><span class="info-value">{{ c.manager }}</span></div>
+      {% endif %}
+      <div class="info-row"><span class="info-label">소통 채널</span><span class="info-value">{{ c.channel or '—' }}</span></div>
+      <div class="info-row"><span class="info-label">사내 담당</span><span class="info-value">{{ c.manager or '—' }}</span></div>
+
+      {# 유형을 잘못 골랐으면 여기서 바꾼다. 예시 카드는 저장할 곳이 없어 못 바꾼다 #}
+      {% if c.imported %}
+      <form class="kind-form" method="post"
+            action="{{ url_for('customer_update', customer_id=c.id) }}">
+        <label class="field-label" for="k-kind">유형</label>
+        <select class="select select-inline" name="kind" id="k-kind"
+                onchange="this.form.submit()">
+          {% for k in kinds %}
+          <option value="{{ k.value }}" {% if k.value == c.kind %}selected{% endif %}>
+            {{ k.icon }} {{ k.label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% else %}
+      <p class="field-hint">예시 카드라 유형을 바꿀 수 없습니다.</p>
+      {% endif %}
     </div>
 
     <div class="profile-block">
@@ -165,7 +195,7 @@
   </div>
 
   <div class="check-row">
-    <label class="check" title="고객사 목록과 상세 맨 위에 보이는 담당자입니다.">
+    <label class="check" title="거래처 목록과 상세 맨 위에 보이는 담당자입니다.">
       <input type="checkbox" name="is_primary" value="1"
              {% if p and p.is_primary %}checked{% endif %}> 대표 담당자로 지정
     </label>
