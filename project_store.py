@@ -282,12 +282,14 @@ CONTAINER_MAP = {row["key"]: row for row in CONTAINER_TIERS}
 # ---------------------------------------------------------------------------
 
 CONTACT_CHANNELS = {
-    "email": {"label": "이메일", "icon": "✉️"},
+    "email": {"label": "이메일", "icon": "📧"},
     "call": {"label": "전화", "icon": "📞"},
     "meeting": {"label": "미팅·화상", "icon": "👥"},
+    "message": {"label": "메신저", "icon": "💬"},
     "sample": {"label": "샘플 발송", "icon": "📦"},
     "other": {"label": "기타", "icon": "•"},
 }
+CONTACT_CHANNEL_ORDER = ["email", "call", "meeting", "message", "sample", "other"]
 CONTACT_DIRECTIONS = {
     "in": {"label": "받음", "css": "in"},
     "out": {"label": "보냄", "css": "out"},
@@ -394,6 +396,9 @@ CREATE TABLE IF NOT EXISTS contacts_log (
     at         TEXT NOT NULL,
     direction  TEXT NOT NULL DEFAULT 'out',
     channel    TEXT NOT NULL DEFAULT 'email',
+    contact_id INTEGER,
+    person     TEXT NOT NULL DEFAULT '',
+    role       TEXT NOT NULL DEFAULT '',
     summary    TEXT NOT NULL,
     next_date  TEXT,
     next_action TEXT,
@@ -435,10 +440,29 @@ def connect():
     return conn
 
 
+# 나중에 붙인 칸. 이미 만들어진 DB 에도 넣어 줘야 한다.
+#   CREATE TABLE IF NOT EXISTS 는 있는 표를 그냥 두고 지나간다.
+LATE_COLUMNS = [
+    ("contacts_log", "contact_id", "INTEGER"),
+    ("contacts_log", "person", "TEXT NOT NULL DEFAULT ''"),
+    ("contacts_log", "role", "TEXT NOT NULL DEFAULT ''"),
+]
+
+
+def _add_missing_columns(conn):
+    for table, column, decl in LATE_COLUMNS:
+        have = {row["name"] for row in conn.execute(
+            "PRAGMA table_info({})".format(table))}
+        if column not in have:
+            conn.execute("ALTER TABLE {} ADD COLUMN {} {}".format(table, column, decl))
+    conn.commit()
+
+
 def init_db():
     conn = connect()
     conn.executescript(SCHEMA)
     conn.commit()
+    _add_missing_columns(conn)
 
 
 def _clean(value, limit=500):
@@ -1168,12 +1192,17 @@ def add_contact(project_id, data):
         return False
 
     conn.execute(
-        """INSERT INTO contacts_log (project_id, at, direction, channel, summary,
+        """INSERT INTO contacts_log (project_id, at, direction, channel,
+                                     contact_id, person, role, summary,
                                      next_date, next_action, owner, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (project_id, _clean(data.get("at"), 10) or today_iso(),
          data.get("direction") if data.get("direction") in CONTACT_DIRECTIONS else "out",
          data.get("channel") if data.get("channel") in CONTACT_CHANNELS else "email",
+         # 담당자는 목록에서 고르되 이름을 같이 적어 둔다.
+         # 그 사람이 명단에서 빠져도 "누구와 한 연락인지" 는 남아야 한다
+         data.get("contact_id") or None,
+         _clean(data.get("person"), 60), _clean(data.get("role"), 40),
          summary, _clean(data.get("next_date"), 10),
          _clean(data.get("next_action"), 200), _clean(data.get("owner"), 40),
          now_iso()))
@@ -1181,6 +1210,15 @@ def add_contact(project_id, data):
     conn.execute("UPDATE projects SET updated_at = ? WHERE id = ?", (now_iso(), project_id))
     conn.commit()
     return True
+
+
+def remove_contact(project_id, log_id):
+    """잘못 적은 줄을 지운다. 다른 건의 기록을 지우지 못하게 같이 건다."""
+    conn = connect()
+    cur = conn.execute("DELETE FROM contacts_log WHERE id = ? AND project_id = ?",
+                       (log_id, project_id))
+    conn.commit()
+    return cur.rowcount > 0
 
 
 def contacts_of(project_id):

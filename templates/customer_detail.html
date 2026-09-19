@@ -54,7 +54,12 @@
         {% for t in c.tags %}<span class="pill soft">{{ t }}</span>{% endfor %}
       </div>
       <div class="profile-block-title spaced">최근 연락</div>
-      {% if c.emails %}
+      {% if c.log %}
+      <div class="profile-last">
+        {{ c.log[0].at }} · {{ c.log[0].channel_meta.icon }}
+        {% if c.log[0].person %}{{ c.log[0].person }} · {% endif %}{{ c.log[0].memo }}
+      </div>
+      {% elif c.emails %}
       <div class="profile-last">{{ c.last_contact }} · {{ c.emails[0].subject }}</div>
       {% else %}
       <div class="profile-last text-gray">주고받은 메일이 아직 없습니다</div>
@@ -65,7 +70,7 @@
 
 <div class="convert-bar">
   <div class="tabs">
-    {% set tabs = [('contacts', '👤 담당자'), ('requests', '📌 바이어 요청사항'), ('emails', '✉️ 이메일'), ('projects', '📦 진행 건'), ('notes', '📝 내부 메모')] %}
+    {% set tabs = [('contacts', '👤 담당자'), ('requests', '📌 바이어 요청사항'), ('log', '📞 연락 기록'), ('projects', '📦 진행 건'), ('notes', '📝 내부 메모')] %}
     {% for key, label in tabs %}
     <a class="tab {% if tab == key %}active{% endif %}"
        href="{{ url_for('customer_detail', customer_id=c.id, tab=key) }}">{{ label }}</a>
@@ -257,44 +262,108 @@
   </form>
 </section>
 
-{% elif tab == 'emails' %}
+{% elif tab == 'log' %}
 <section class="card">
-  <h2 class="card-title">이메일 <span class="count-chip">{{ c.emails|length }}</span></h2>
-  <p class="card-desc">고객사와 주고받은 메일입니다. 제목을 클릭하면 본문이 열립니다.</p>
-
-  {% for m in c.emails %}
-  <div class="mail-row" data-index="{{ loop.index }}">
-    <div class="mail-head">
-      <span class="mail-dir {{ m.direction }}">{{ '받음' if m.direction == 'in' else '보냄' }}</span>
-      <span class="mail-subject">{{ m.subject }}</span>
-      <span class="mail-status {% if m.status == '확인 필요' %}warn{% endif %}">{{ m.status }}</span>
-      <span class="mail-date">{{ m.date }}</span>
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        연락 기록 <span class="count-chip">{{ c.log|length }}</span>
+      </h2>
+      <p class="card-desc no-margin">
+        누구와 · 어떤 방법으로 · 무슨 얘기를 했는지 한 줄로 남깁니다.
+        메일 원문과 첨부는 그 건(프로젝트)의
+        <strong>바이어 연락</strong>에서 봅니다.
+      </p>
     </div>
-    <div class="mail-sub">
-      <span class="mail-sender">{{ m.sender }}</span>
-      <span class="mail-summary">{{ m.summary }}</span>
-    </div>
-    {% if m.attachments %}
-    <div class="mail-files">
-      {% for f in m.attachments %}<span class="file-tag">📎 {{ f }}</span>{% endfor %}
-    </div>
-    {% endif %}
-    <div class="mail-body" id="mail-{{ loop.index }}" hidden>{{ m.body }}</div>
-
-    <div class="mail-tools" id="tools-{{ loop.index }}" hidden>
-      <button type="button" class="btn btn-mini js-translate" data-index="{{ loop.index }}">
-        🌐 번역 <span class="tool-src">MyMemory API</span>
-      </button>
-      <button type="button" class="btn btn-mini js-summarize" data-index="{{ loop.index }}">
-        ✂️ 요약 <span class="tool-src">자체 처리</span>
-      </button>
-      <span class="tool-hint" id="tool-hint-{{ loop.index }}"></span>
-    </div>
-
-    <div class="mail-ai" id="ai-{{ loop.index }}" hidden></div>
   </div>
-  {% endfor %}
+
+  <form class="log-form" method="post"
+        action="{{ url_for('customer_log', customer_id=c.id) }}">
+    <div class="log-form-row">
+      <select class="select select-inline" name="contact_id" aria-label="담당자">
+        <option value="">담당자 (선택)</option>
+        {% for p in c.contacts %}
+        {% if p.is_active %}
+        <option value="{{ p.id }}">{{ p.name }}{% if p.title %} · {{ p.title }}{% endif %}</option>
+        {% endif %}
+        {% endfor %}
+      </select>
+      <select class="select select-inline" name="channel" aria-label="연락 방법">
+        {% for ch in log_channels %}
+        <option value="{{ ch.value }}">{{ ch.icon }} {{ ch.label }}</option>
+        {% endfor %}
+      </select>
+      <select class="select select-inline" name="direction" aria-label="방향">
+        <option value="out">보냄</option>
+        <option value="in">받음</option>
+      </select>
+      <input class="input input-date" type="date" name="at" value="{{ today }}"
+             max="{{ today }}" aria-label="연락한 날">
+    </div>
+    <div class="log-form-row">
+      <input class="input" type="text" name="memo" maxlength="400"
+             placeholder="무슨 얘기였나요? (예: 레티놀 농도 EU 기준 문의, 단가 조정 폭도 같이 물어봄)">
+      <button type="submit" class="btn btn-primary">기록 남기기</button>
+    </div>
+  </form>
+
+  <div class="log-list">
+    {% for row in c.log %}
+    <div class="log-row">
+      <div class="log-meta">
+        <span class="log-date">{{ row.at }}</span>
+        <span class="log-ch">{{ row.channel_meta.icon }} {{ row.channel_meta.label }}</span>
+        <span class="mail-dir {{ row.direction_meta.css }}">{{ row.direction_meta.label }}</span>
+        {% if row.person %}
+        <span class="log-person">{{ row.person }}{% if row.role %}
+          <span class="text-gray">· {{ row.role }}</span>{% endif %}</span>
+        {% else %}
+        <span class="log-person text-gray">담당자 미기재</span>
+        {% endif %}
+      </div>
+      <div class="log-memo">{{ row.memo }}</div>
+      <form class="log-del" method="post" action="{{ url_for('customer_log', customer_id=c.id) }}">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="log_id" value="{{ row.id }}">
+        <button type="submit" class="part-del" aria-label="기록 삭제">✕</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="empty-row">
+      아직 연락 기록이 없습니다. 통화 한 통, 메일 한 통도 한 줄로 남겨 두면
+      다음 담당자가 이어받을 수 있습니다.
+    </p>
+    {% endfor %}
+  </div>
 </section>
+
+{% if c.emails %}
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">예전 메일 {{ c.emails|length }}건</h2>
+      <p class="card-desc no-margin">
+        건별로 묶기 전에 쌓여 있던 메일입니다. 제목만 둡니다 —
+        본문·번역·요약은 그 건의 <strong>바이어 연락</strong>에서 봅니다.
+      </p>
+    </div>
+    <span class="vstate v-example" title="시연용으로 깔아 둔 값입니다">예시 데이터</span>
+  </div>
+  <div class="log-list">
+    {% for m in c.emails %}
+    <div class="log-row plain">
+      <div class="log-meta">
+        <span class="log-date">{{ m.date }}</span>
+        <span class="log-ch">✉️ 이메일</span>
+        <span class="mail-dir {{ m.direction }}">{{ '받음' if m.direction == 'in' else '보냄' }}</span>
+        <span class="log-person">{{ m.sender }}</span>
+      </div>
+      <div class="log-memo">{{ m.subject }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 
 {% elif tab == 'projects' %}
 <section class="card">
@@ -348,110 +417,8 @@
 {% block scripts %}
 <script>
 (function () {
-  document.querySelectorAll('.mail-row').forEach(function (row) {
-    row.addEventListener('click', function (e) {
-      if (e.target.closest('.mail-tools') || e.target.closest('.mail-ai')) { return; }
-      var idx = row.dataset.index;
-      var body = document.getElementById('mail-' + idx);
-      if (!body) { return; }
-      var open = !body.hidden;
-      body.hidden = open;
-      document.getElementById('tools-' + idx).hidden = open;
-      row.classList.toggle('open', !open);
-    });
-  });
-
-  /* ---------- 메일 번역·요약 ---------- */
-  var STATUS = { ok: '적합', warn: '주의', ban: '사용 불가' };
-  var CSS = { ok: 'confirmed', warn: 'check', ban: 'danger' };
-
-  function esc(text) {
-    return String(text == null ? '' : text)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  function bodyText(index) {
-    var el = document.getElementById('mail-' + index);
-    return el ? el.textContent : '';
-  }
-
-  function busy(index, message) {
-    document.getElementById('tool-hint-' + index).textContent = message;
-  }
-
-  function showPanel(index, html) {
-    var box = document.getElementById('ai-' + index);
-    box.innerHTML = html;
-    box.hidden = false;
-  }
-
-  document.querySelectorAll('.js-translate').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var index = btn.dataset.index;
-      busy(index, '번역 중…');
-      btn.disabled = true;
-
-      fetch('{{ url_for("api_translate") }}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: bodyText(index) })
-      }).then(function (r) { return r.json(); }).then(function (d) {
-        busy(index, d.failed
-          ? d.failed + '개 문장 번역 실패 (원문 유지)'
-          : '문장 ' + d.segments.length + '개 · 캐시 ' + d.cached + '개');
-        var rows = d.segments.map(function (s) {
-          return '<div class="tr-row' + (s.ok ? '' : ' failed') + '">' +
-                   '<div class="tr-src">' + esc(s.source) + '</div>' +
-                   '<div class="tr-dst">' + esc(s.translated) + '</div>' +
-                 '</div>';
-        }).join('');
-        showPanel(index,
-          '<div class="ai-head">🌐 번역 <span class="ai-src">' + esc(d.provider) +
-            ' · ' + esc(d.source_lang) + ' → ' + esc(d.target_lang) + '</span></div>' + rows);
-      }).catch(function () {
-        busy(index, '번역에 실패했습니다.');
-      }).then(function () { btn.disabled = false; });
-    });
-  });
-
-  document.querySelectorAll('.js-summarize').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var index = btn.dataset.index;
-      busy(index, '요약 중…');
-
-      fetch('{{ url_for("api_summarize") }}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: bodyText(index) })
-      }).then(function (r) { return r.json(); }).then(function (d) {
-        busy(index, '문장 ' + d.total_sentences + '개 → ' + d.sentences.length + '개로 요약');
-
-        var html = '<div class="ai-head">✂️ 요약 <span class="ai-src">자체 처리 (외부 전송 없음)</span></div>';
-        html += '<ul class="ai-list">' + d.sentences.map(function (s) {
-          return '<li>' + esc(s.text) + '</li>';
-        }).join('') + '</ul>';
-
-        if (d.facts.length) {
-          html += '<div class="ai-facts">' + d.facts.map(function (f) {
-            return '<span class="ai-fact"><b>' + esc(f.label) + '</b> ' + esc(f.value) + '</span>';
-          }).join('') + '</div>';
-        }
-        if (d.ingredients.length) {
-          html += '<div class="ai-reg"><div class="ai-reg-head">🇪🇺 EU 규제 대조</div>' +
-            d.ingredients.map(function (r) {
-              return '<div class="ai-reg-row">' +
-                '<span class="status-badge ' + (CSS[r.status] || 'confirmed') + '">' +
-                  (STATUS[r.status] || r.status) + '</span> ' +
-                '<b>' + esc(r.name) + ' ' + esc(r.amount) + '</b>' +
-                '<div class="ai-reg-note">' + esc(r.limit) + ' · ' + esc(r.rule) + '</div></div>';
-            }).join('') + '</div>';
-        }
-        showPanel(index, html);
-      }).catch(function () {
-        busy(index, '요약에 실패했습니다.');
-      });
-    });
-  });
+  /* 메일 열기·번역·요약은 프로젝트의 '바이어 연락' 으로 옮겼습니다.
+     이 화면에는 메일 본문이 없습니다 */
 
   var mailBtn = document.querySelector('.js-mail');
   if (mailBtn) {

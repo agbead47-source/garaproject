@@ -14,6 +14,7 @@ from flask import (Flask, jsonify, redirect, render_template, request,
 
 import beauty_rank_store
 import chat_bot
+import contact_log_store
 import contact_store
 import customer_excel
 import customer_store
@@ -45,6 +46,9 @@ contact_store.seed_from_profiles(dummy_data.get_customer_profiles())
 
 # 엑셀로 올린 고객사 저장소 (더미 카드에 없는 회사가 여기 담긴다)
 customer_store.init_db()
+
+# 고객사 연락 기록 (SQLite. 누구와 무슨 연락을 했는지 한 줄 메모)
+contact_log_store.init_db()
 
 # 포장재 가격 동향 (SQLite. 화면은 받아 둔 값만 읽는다)
 packaging_store.init_db()
@@ -963,11 +967,18 @@ def customer_detail(customer_id):
     if profile is None:
         return redirect(url_for("customers"))
 
+    profile = _with_contacts(profile)
+    # 연락 기록은 담당자 목록에서 고르게 한다. 이름을 매번 타이핑하면
+    # 철자가 조금씩 달라져서 나중에 사람별로 묶이지 않는다.
+    profile["log"] = contact_log_store.of_customer(customer_id)
+
     return render_template(
         "customer_detail.html",
         page_title=profile["name"],
         active_menu="customers",
-        c=_with_contacts(profile),
+        c=profile,
+        log_channels=contact_log_store.channels(),
+        today=contact_log_store.today_iso(),
         tab=request.args.get("tab", "requests"),
         grade_meta=dummy_data.CUSTOMER_GRADE_META,
         request_meta=dummy_data.REQUEST_TYPE_META,
@@ -976,6 +987,41 @@ def customer_detail(customer_id):
         contact_roles=contact_store.ROLES,
         edit_contact=request.args.get("edit", type=int),
     )
+
+
+@app.route("/customers/<customer_id>/log", methods=["POST"])
+def customer_log(customer_id):
+    """고객사 연락 기록 한 줄. (누구와 · 어떤 방법으로 · 무슨 얘기)
+
+    메일 원문은 여기 두지 않는다. 그건 그 건(프로젝트)에서 본다.
+    여기는 "이 회사와 최근에 무슨 얘기가 오갔나" 를 한눈에 보는 자리다.
+    """
+    if _find_profile(customer_id) is None:
+        return redirect(url_for("customers"))
+
+    back = url_for("customer_detail", customer_id=customer_id, tab="log")
+    form = request.form.to_dict()
+
+    if form.get("action") == "delete":
+        contact_log_store.remove(request.form.get("log_id", type=int), customer_id)
+        session["contact_msg"] = ("ok", "기록을 지웠습니다.")
+        return redirect(back)
+
+    # 담당자를 목록에서 골랐으면 그때의 이름·역할을 같이 적어 둔다.
+    # 나중에 그 담당자가 명단에서 빠져도 기록은 남아야 한다.
+    contact_id = request.form.get("contact_id", type=int)
+    if contact_id:
+        for row in contact_store.list_contacts(customer_id):
+            if row["id"] == contact_id:
+                form["person"] = row["name"]
+                form["role"] = row["role_meta"]["label"]
+                break
+
+    form["owner"] = session.get("user", DEFAULT_USER)
+    ok = contact_log_store.add(customer_id, form)
+    session["contact_msg"] = (("ok", "연락 기록을 남겼습니다.") if ok
+                               else ("error", "무슨 얘기였는지 한 줄 적어 주세요."))
+    return redirect(back)
 
 
 # ---------------------------------------------------------------------------
@@ -1294,17 +1340,66 @@ def project_quotes(project_id):
     )
 
 
-@app.route("/projects/<int:project_id>/contacts", methods=["POST"])
+def _project_people(project):
+    """이 건의 고객사 담당자. 연락 기록에서 고르게 내려준다."""
+    if not project or not project.get("customer_id"):
+        return []
+    return [row for row in contact_store.list_contacts(project["customer_id"])
+            if row["is_active"]]
+
+
+@app.route("/projects/<int:project_id>/contacts", methods=["GET", "POST"])
 def project_contacts(project_id):
-    """바이어 연락 이력과 다음 연락일."""
-    if _project_or_404(project_id) is None:
+    """바이어 연락.
+
+    연락 기록(누구와 · 어떻게 · 무슨 얘기)과 주고받은 메일이 같이 있다.
+    고객사 화면에는 한 줄 메모만 두고, 메일 원문은 그 건인 여기서 읽는다.
+    """
+    project = _project_or_404(project_id)
+    if project is None:
         return redirect(url_for("projects"))
 
-    ok = project_store.add_contact(project_id, request.form.to_dict())
-    session["project_msg"] = (("ok", "연락 이력을 남겼습니다.") if ok
-                              else ("error", "내용을 적어 주세요."))
-    return redirect(request.form.get("back")
-                    or url_for("project_hub", project_id=project_id))
+    back = url_for("project_contacts", project_id=project_id)
+
+    if request.method == "POST":
+        if request.form.get("action") == "delete":
+            project_store.remove_contact(project_id,
+                                         request.form.get("log_id", type=int))
+            session["project_msg"] = ("ok", "기록을 지웠습니다.")
+            return redirect(request.form.get("back") or back)
+
+        form = request.form.to_dict()
+        contact_id = request.form.get("contact_id", type=int)
+        if contact_id:
+            for row in _project_people(project):
+                if row["id"] == contact_id:
+                    form["person"] = row["name"]
+                    form["role"] = row["role_meta"]["label"]
+                    break
+        form["owner"] = session.get("user", DEFAULT_USER)
+
+        ok = project_store.add_contact(project_id, form)
+        session["project_msg"] = (("ok", "연락 기록을 남겼습니다.") if ok
+                                  else ("error", "무슨 얘기였는지 한 줄 적어 주세요."))
+        return redirect(request.form.get("back") or back)
+
+    profile = _project_profile(project)
+    return render_template(
+        "project_contacts.html",
+        page_title="바이어 연락",
+        active_menu="projects",
+        p=project,
+        progress=project_store.progress(project_id),
+        contacts=project_store.contacts_of(project_id),
+        people=_project_people(project),
+        # 메일 이력은 아직 고객사 예시 데이터다. 화면에 그렇게 적는다
+        mails=(profile or {}).get("emails") or [],
+        profile=profile,
+        channels=[dict(project_store.CONTACT_CHANNELS[k], value=k)
+                  for k in project_store.CONTACT_CHANNEL_ORDER],
+        today=project_store.today_iso(),
+        msg=session.pop("project_msg", None),
+    )
 
 
 # ---------------------------------------------------------------------------

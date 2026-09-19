@@ -302,7 +302,11 @@
 
     <!-- 후속 연락 -->
     <section class="card">
-      <h2 class="card-title">바이어 연락</h2>
+      <div class="result-head">
+        <div><h2 class="card-title no-margin">바이어 연락</h2></div>
+        <a class="btn btn-mini"
+           href="{{ url_for('project_contacts', project_id=p.id) }}">전체 보기</a>
+      </div>
       {% if d.next_contact %}
       <div class="next-contact {% if d.next_contact.overdue %}overdue{% endif %}">
         <div class="next-date">
@@ -318,23 +322,35 @@
         <div class="contact-row">
           <span class="contact-date">{{ c.at }}</span>
           <span class="contact-dir {{ c.direction_meta.css }}">{{ c.channel_meta.icon }} {{ c.direction_meta.label }}</span>
-          <span class="contact-summary">{{ c.summary }}</span>
+          <span class="contact-summary">
+            {% if c.person %}<b>{{ c.person }}</b> · {% endif %}{{ c.summary }}
+          </span>
         </div>
         {% else %}
         <p class="card-desc no-margin">아직 연락 이력이 없습니다.</p>
         {% endfor %}
       </div>
 
+      {# 급할 때 한 줄만 남기는 자리. 담당자·다음 할 일까지 적으려면 전체 보기로 간다 #}
       <form class="contact-form" method="post"
             action="{{ url_for('project_contacts', project_id=p.id) }}">
+        <input type="hidden" name="back" value="{{ url_for('project_hub', project_id=p.id) }}">
         <input class="input" type="text" name="summary" placeholder="무엇을 주고받았나요?" maxlength="400">
         <div class="contact-form-row">
-          <select class="select select-inline" name="direction">
+          <select class="select select-inline" name="contact_id" aria-label="담당자">
+            <option value="">담당자 (선택)</option>
+            {% for person in contacts %}
+            {% if person.is_active %}
+            <option value="{{ person.id }}">{{ person.name }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+          <select class="select select-inline" name="direction" aria-label="방향">
             <option value="out">보냄</option>
             <option value="in">받음</option>
           </select>
-          <select class="select select-inline" name="channel">
-            {% for key, meta in [('email','이메일'), ('call','전화'), ('meeting','미팅·화상'), ('sample','샘플 발송'), ('other','기타')] %}
+          <select class="select select-inline" name="channel" aria-label="연락 방법">
+            {% for key, meta in [('email','이메일'), ('call','전화'), ('meeting','미팅·화상'), ('message','메신저'), ('sample','샘플 발송'), ('other','기타')] %}
             <option value="{{ key }}">{{ meta }}</option>
             {% endfor %}
           </select>

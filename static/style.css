@@ -3829,3 +3829,72 @@ a.rank-title:hover { color: var(--point); text-decoration: underline; }
   line-height: 1.85;
 }
 .cap-missing li { margin-bottom: 2px; }
+
+/* 연락 기록 - 누구와 · 어떻게 · 무슨 얘기 */
+.log-form {
+  margin: 12px 0 16px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #FAFBFC;
+}
+.log-form-row {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 7px;
+  flex-wrap: wrap;
+}
+.log-form-row:last-child { margin-bottom: 0; }
+.log-form-row .input { flex: 1 1 200px; min-width: 0; }
+.log-form-row .select-inline { flex: 0 1 auto; min-width: 0; }
+.log-form-row .btn { flex: none; }
+.input-date { flex: 0 1 150px; }
+
+.log-list { display: flex; flex-direction: column; }
+.log-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  gap: 4px 8px;
+  padding: 11px 2px;
+  border-bottom: 1px solid #F1F2F4;
+}
+.log-row:last-child { border-bottom: none; }
+/* 삭제 폼이 격자 칸을 차지하면 메모가 26px 칸으로 밀린다.
+   폼을 오른쪽 칸에 못 박아 둔다 */
+.log-del { grid-column: 2; grid-row: 1 / span 3; align-self: start; }
+.log-row.plain { grid-template-columns: minmax(0, 1fr); }
+
+.log-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--text-sub);
+  min-width: 0;
+}
+.log-date { font-weight: 600; }
+.log-ch { color: var(--gray); }
+.log-person { font-weight: 600; color: var(--text); }
+.log-memo {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+  word-break: break-word;
+}
+.log-next {
+  font-size: 11.5px;
+  color: var(--text-sub);
+}
+.log-next.overdue { color: var(--red); font-weight: 600; }
+
+.log-person-row {
+  display: flex;
+  gap: 9px;
+  padding: 9px 0;
+  border-bottom: 1px solid #F1F2F4;
+  font-size: 12px;
+}
+.log-person-row:last-of-type { border-bottom: none; }
+.log-person-main { min-width: 0; }
+.log-person-name { font-weight: 600; font-size: 12.5px; color: var(--text); }

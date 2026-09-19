@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% from "_state.html" import project_head %}
+
+{% block content %}
+{{ project_head(p, progress) }}
+
+{% if msg %}
+<p class="flash {{ 'error' if msg[0] == 'error' else 'ok' }}">{{ msg[1] }}</p>
+{% endif %}
+
+<div class="proj-grid">
+  <div class="proj-main">
+
+    <!-- 연락 기록 -->
+    <section class="card">
+      <div class="result-head">
+        <div>
+          <h2 class="card-title no-margin">
+            연락 기록 <span class="count-chip">{{ contacts|length }}</span>
+          </h2>
+          <p class="card-desc no-margin">
+            누구와 · 어떤 방법으로 · 무슨 얘기를 했는지 남깁니다.
+            다음 연락일을 같이 적으면 놓치지 않습니다.
+          </p>
+        </div>
+      </div>
+
+      <form class="log-form" method="post">
+        <div class="log-form-row">
+          <select class="select select-inline" name="contact_id" aria-label="담당자">
+            <option value="">담당자 (선택)</option>
+            {% for person in people %}
+            <option value="{{ person.id }}">{{ person.name }}{% if person.title %} · {{ person.title }}{% endif %}</option>
+            {% endfor %}
+          </select>
+          <select class="select select-inline" name="channel" aria-label="연락 방법">
+            {% for ch in channels %}
+            <option value="{{ ch.value }}">{{ ch.icon }} {{ ch.label }}</option>
+            {% endfor %}
+          </select>
+          <select class="select select-inline" name="direction" aria-label="방향">
+            <option value="out">보냄</option>
+            <option value="in">받음</option>
+          </select>
+          <input class="input input-date" type="date" name="at" value="{{ today }}"
+                 max="{{ today }}" aria-label="연락한 날">
+        </div>
+        <div class="log-form-row">
+          <input class="input" type="text" name="summary" maxlength="400"
+                 placeholder="무슨 얘기였나요?">
+        </div>
+        <div class="log-form-row">
+          <input class="input input-date" type="date" name="next_date"
+                 aria-label="다음 연락 예정일" title="다음 연락 예정일">
+          <input class="input" type="text" name="next_action" maxlength="200"
+                 placeholder="다음 할 일 (예: 개정 견적 회신)">
+          <button type="submit" class="btn btn-primary">기록 남기기</button>
+        </div>
+      </form>
+
+      {% if not people %}
+      <p class="field-hint">
+        이 건에 연결된 고객사 담당자가 없습니다.
+        {% if p.customer_id %}
+        <a href="{{ url_for('customer_detail', customer_id=p.customer_id, tab='contacts') }}">담당자 등록</a>
+        {% else %}고객사를 먼저 연결해 주세요.{% endif %}
+      </p>
+      {% endif %}
+
+      <div class="log-list">
+        {% for row in contacts %}
+        <div class="log-row">
+          <div class="log-meta">
+            <span class="log-date">{{ row.at }}</span>
+            <span class="log-ch">{{ row.channel_meta.icon }} {{ row.channel_meta.label }}</span>
+            <span class="mail-dir {{ row.direction_meta.css }}">{{ row.direction_meta.label }}</span>
+            {% if row.person %}
+            <span class="log-person">{{ row.person }}{% if row.role %}<span class="text-gray"> · {{ row.role }}</span>{% endif %}</span>
+            {% else %}
+            <span class="log-person text-gray">담당자 미기재</span>
+            {% endif %}
+          </div>
+          <div class="log-memo">{{ row.summary }}</div>
+          {% if row.next_date or row.next_action %}
+          <div class="log-next {% if row.overdue %}overdue{% endif %}">
+            {% if row.next_date %}다음 {{ row.next_date }}{% if row.overdue %} · 지남{% endif %}
+            {% else %}다음 <span class="text-gray">날짜 미정</span>{% endif %}
+            {%- if row.next_action %} — {{ row.next_action }}{% endif %}
+          </div>
+          {% endif %}
+          <form class="log-del" method="post">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="log_id" value="{{ row.id }}">
+            <button type="submit" class="part-del" aria-label="기록 삭제">&#10005;</button>
+          </form>
+        </div>
+        {% else %}
+        <p class="empty-row">아직 연락 기록이 없습니다.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- 주고받은 메일 -->
+    <section class="card">
+      <div class="result-head">
+        <div>
+          <h2 class="card-title no-margin">
+            주고받은 메일 <span class="count-chip">{{ mails|length }}</span>
+          </h2>
+          <p class="card-desc no-margin">
+            제목을 누르면 본문이 열립니다. 본문을 번역하거나 요약할 수 있습니다.
+          </p>
+        </div>
+        <span class="vstate v-example" title="시연용으로 깔아 둔 값입니다">예시 데이터</span>
+      </div>
+
+      {% for m in mails %}
+      <div class="mail-row" data-index="{{ loop.index }}">
+        <div class="mail-head">
+          <span class="mail-dir {{ m.direction }}">{{ '받음' if m.direction == 'in' else '보냄' }}</span>
+          <span class="mail-subject">{{ m.subject }}</span>
+          <span class="mail-status {% if m.status == '확인 필요' %}warn{% endif %}">{{ m.status }}</span>
+          <span class="mail-date">{{ m.date }}</span>
+        </div>
+        <div class="mail-sub">
+          <span class="mail-sender">{{ m.sender }}</span>
+          <span class="mail-summary">{{ m.summary }}</span>
+        </div>
+        {% if m.attachments %}
+        <div class="mail-files">
+          {% for f in m.attachments %}<span class="file-tag">&#128206; {{ f }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        <div class="mail-body" id="mail-{{ loop.index }}" hidden>{{ m.body }}</div>
+
+        <div class="mail-tools" id="tools-{{ loop.index }}" hidden>
+          <button type="button" class="btn btn-mini js-translate" data-index="{{ loop.index }}">
+            &#127760; 번역 <span class="tool-src">MyMemory API</span>
+          </button>
+          <button type="button" class="btn btn-mini js-summarize" data-index="{{ loop.index }}">
+            &#9986; 요약 <span class="tool-src">자체 처리</span>
+          </button>
+          <span class="tool-hint" id="tool-hint-{{ loop.index }}"></span>
+        </div>
+
+        <div class="mail-ai" id="ai-{{ loop.index }}" hidden></div>
+      </div>
+      {% else %}
+      <p class="empty-row">
+        {% if p.customer_id %}이 고객사에 쌓인 메일이 없습니다.
+        {% else %}고객사를 연결하면 그 회사와 주고받은 메일이 여기 뜹니다.{% endif %}
+      </p>
+      {% endfor %}
+    </section>
+  </div>
+
+  <aside class="proj-side">
+    <section class="card">
+      <h2 class="card-title">이 건의 담당자</h2>
+      <p class="card-desc">
+        {% if p.customer_name %}{{ p.customer_name }}{% else %}고객사 미연결{% endif %}
+      </p>
+      {% for person in people %}
+      <div class="log-person-row">
+        <span class="role-chip">{{ person.role_meta.icon }} {{ person.role_meta.label }}</span>
+        <div class="log-person-main">
+          <div class="log-person-name">
+            {{ person.name }}{% if person.is_primary %} <span class="count-chip">대표</span>{% endif %}
+          </div>
+          {% if person.title %}<div class="text-gray">{{ person.title }}</div>{% endif %}
+          {% if person.email %}<div class="text-gray">{{ person.email }}</div>{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <p class="empty-row">등록된 담당자가 없습니다.</p>
+      {% endfor %}
+      {% if p.customer_id %}
+      <a class="btn full" href="{{ url_for('customer_detail', customer_id=p.customer_id, tab='contacts') }}">
+        고객사 담당자 관리
+      </a>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">어디에 무엇을 남기나</h2>
+      <p class="card-desc no-margin">
+        <strong>여기(프로젝트)</strong>는 이 건의 연락입니다. 메일 원문·첨부·번역·요약이
+        같이 있습니다.<br><br>
+        <strong>고객사 관리</strong>는 회사 단위의 한 줄 메모입니다. 건과 상관없이
+        "이 회사와 최근에 무슨 얘기가 오갔나" 를 봅니다.
+      </p>
+    </section>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('.mail-row').forEach(function (row) {
+    row.addEventListener('click', function (e) {
+      if (e.target.closest('.mail-tools') || e.target.closest('.mail-ai')) { return; }
+      var idx = row.dataset.index;
+      var body = document.getElementById('mail-' + idx);
+      if (!body) { return; }
+      var open = !body.hidden;
+      body.hidden = open;
+      document.getElementById('tools-' + idx).hidden = open;
+      row.classList.toggle('open', !open);
+    });
+  });
+
+  /* ---------- 메일 번역·요약 ---------- */
+  var STATUS = { ok: '적합', warn: '주의', ban: '사용 불가' };
+  var CSS = { ok: 'confirmed', warn: 'check', ban: 'danger' };
+
+  function esc(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function bodyText(index) {
+    var el = document.getElementById('mail-' + index);
+    return el ? el.textContent : '';
+  }
+
+  function busy(index, message) {
+    document.getElementById('tool-hint-' + index).textContent = message;
+  }
+
+  function showPanel(index, html) {
+    var box = document.getElementById('ai-' + index);
+    box.innerHTML = html;
+    box.hidden = false;
+  }
+
+  document.querySelectorAll('.js-translate').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var index = btn.dataset.index;
+      busy(index, '번역 중…');
+      btn.disabled = true;
+
+      fetch('{{ url_for("api_translate") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: bodyText(index) })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        busy(index, d.failed
+          ? d.failed + '개 문장 번역 실패 (원문 유지)'
+          : '문장 ' + d.segments.length + '개 · 캐시 ' + d.cached + '개');
+        var rows = d.segments.map(function (s) {
+          return '<div class="tr-row' + (s.ok ? '' : ' failed') + '">' +
+                   '<div class="tr-src">' + esc(s.source) + '</div>' +
+                   '<div class="tr-dst">' + esc(s.translated) + '</div>' +
+                 '</div>';
+        }).join('');
+        showPanel(index,
+          '<div class="ai-head">🌐 번역 <span class="ai-src">' + esc(d.provider) +
+            ' · ' + esc(d.source_lang) + ' → ' + esc(d.target_lang) + '</span></div>' + rows);
+      }).catch(function () {
+        busy(index, '번역에 실패했습니다.');
+      }).then(function () { btn.disabled = false; });
+    });
+  });
+
+  document.querySelectorAll('.js-summarize').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var index = btn.dataset.index;
+      busy(index, '요약 중…');
+
+      fetch('{{ url_for("api_summarize") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: bodyText(index) })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        busy(index, '문장 ' + d.total_sentences + '개 → ' + d.sentences.length + '개로 요약');
+
+        var html = '<div class="ai-head">✂️ 요약 <span class="ai-src">자체 처리 (외부 전송 없음)</span></div>';
+        html += '<ul class="ai-list">' + d.sentences.map(function (s) {
+          return '<li>' + esc(s.text) + '</li>';
+        }).join('') + '</ul>';
+
+        if (d.facts.length) {
+          html += '<div class="ai-facts">' + d.facts.map(function (f) {
+            return '<span class="ai-fact"><b>' + esc(f.label) + '</b> ' + esc(f.value) + '</span>';
+          }).join('') + '</div>';
+        }
+        if (d.ingredients.length) {
+          html += '<div class="ai-reg"><div class="ai-reg-head">🇪🇺 EU 규제 대조</div>' +
+            d.ingredients.map(function (r) {
+              return '<div class="ai-reg-row">' +
+                '<span class="status-badge ' + (CSS[r.status] || 'confirmed') + '">' +
+                  (STATUS[r.status] || r.status) + '</span> ' +
+                '<b>' + esc(r.name) + ' ' + esc(r.amount) + '</b>' +
+                '<div class="ai-reg-note">' + esc(r.limit) + ' · ' + esc(r.rule) + '</div></div>';
+            }).join('') + '</div>';
+        }
+        showPanel(index, html);
+      }).catch(function () {
+        busy(index, '요약에 실패했습니다.');
+      });
+    });
+  });
+
+})();
+</script>
+{% endblock %}
