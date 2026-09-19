@@ -5,7 +5,7 @@
   <div class="filter-field grow">
     <label class="field-label" for="q">고객사 검색</label>
     <input class="input" type="text" name="q" id="q" value="{{ selected.q }}"
-           placeholder="회사명, 바이어명, 국가로 검색">
+           placeholder="회사명, 담당자 이름·이메일, 국가로 검색">
   </div>
 
   <div class="filter-field">
@@ -24,7 +24,7 @@
   </div>
 </form>
 
-<div class="summary-grid">
+<div class="summary-grid summary-grid-5">
   <div class="summary-card">
     <div class="summary-label">등록 고객사</div>
     <div class="summary-value">{{ summary.total }}곳</div>
@@ -36,6 +36,10 @@
   <div class="summary-card">
     <div class="summary-label">진행 중인 건</div>
     <div class="summary-value">{{ summary.active }}건</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">등록 담당자</div>
+    <div class="summary-value">{{ summary.contacts }}명</div>
   </div>
   <div class="summary-card warn">
     <div class="summary-label">확인 필요 메일</div>
@@ -56,9 +60,16 @@
     </div>
 
     <div class="cust-buyer">
-      <span class="cust-buyer-name">{{ c.buyer.name }}</span>
-      <span class="cust-buyer-title">{{ c.buyer.title }}</span>
-      <div class="cust-buyer-mail">✉️ {{ c.buyer.email }}</div>
+      {% if c.primary_contact %}
+      <span class="cust-buyer-name">{{ c.primary_contact.name }}</span>
+      <span class="cust-buyer-title">{{ c.primary_contact.title }}</span>
+      {% if c.active_contacts|length > 1 %}
+      <span class="pill soft">외 {{ c.active_contacts|length - 1 }}명</span>
+      {% endif %}
+      <div class="cust-buyer-mail">✉️ {{ c.primary_contact.email or '이메일 미등록' }}</div>
+      {% else %}
+      <span class="cust-buyer-title">담당자가 등록되지 않았습니다</span>
+      {% endif %}
     </div>
 
     <div class="cust-tags">
@@ -68,6 +79,7 @@
     <div class="cust-stats">
       <div class="cust-stat"><span class="cust-stat-num">{{ c.stats.orders }}</span><span class="cust-stat-label">누적 발주</span></div>
       <div class="cust-stat"><span class="cust-stat-num">{{ c.stats.active }}</span><span class="cust-stat-label">진행 중</span></div>
+      <div class="cust-stat"><span class="cust-stat-num">{{ c.active_contacts|length }}</span><span class="cust-stat-label">담당자</span></div>
       <div class="cust-stat"><span class="cust-stat-num">{{ c.requests|length }}</span><span class="cust-stat-label">요청사항</span></div>
       <div class="cust-stat"><span class="cust-stat-num">{{ c.stats.avg_reply }}</span><span class="cust-stat-label">평균 회신</span></div>
     </div>

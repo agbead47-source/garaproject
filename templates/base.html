@@ -75,6 +75,9 @@
       {% endif %}
 
       <main class="content">
+        {% if flash_msg %}
+        <p class="flash {{ 'error' if flash_msg[0] == 'error' else 'ok' }}">{{ flash_msg[1] }}</p>
+        {% endif %}
         {% block content %}{% endblock %}
       </main>
     </div>
