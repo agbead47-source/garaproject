@@ -3666,3 +3666,38 @@ a.rank-title:hover { color: var(--point); text-decoration: underline; }
   color: var(--text-sub);
   line-height: 1.55;
 }
+
+/* AI 분석 (데모) */
+.ai-card { border-color: #DCE4F2; background: linear-gradient(180deg, #FBFCFE 0%, var(--white) 120px); }
+.ai-kind {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #EAF2FB;
+  border: 1px solid #CFE0F2;
+  color: #2E6DA8;
+  font-size: 10.5px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.ai-findings { display: grid; gap: 10px; margin: 14px 0; }
+.ai-finding {
+  display: flex;
+  gap: 11px;
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+}
+.ai-icon { font-size: 17px; line-height: 1.3; flex: none; }
+.ai-body { flex: 1 1 auto; min-width: 0; }
+.ai-title { font-size: 13px; font-weight: 700; }
+.ai-text {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-line;
+  word-break: break-word;
+}
+.ai-source { margin-top: 6px; font-size: 10.5px; color: var(--gray); }

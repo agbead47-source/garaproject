@@ -768,6 +768,7 @@ def trends():
         trade_rows=trade_rows,
         trade_pager=trade_pager,
         rank=beauty_rank_store.rank_board(rank_cat, rank_day or None),
+        brief=beauty_rank_store.brief(rank_cat),
         rank_articles=beauty_rank_store.articles(12),
         rank_sources=beauty_rank_store.status_summary(),
         trade_msg=session.pop("trade_msg", None),

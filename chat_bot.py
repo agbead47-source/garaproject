@@ -30,6 +30,7 @@ GREETING = {
              "지금 이 화면들이 들고 있는 값에서 찾아 답합니다. "
              "모르는 건 모른다고 말씀드립니다.").format(BOT_NAME),
     "chips": [
+        "아마존 순위 요약해줘",
         "미국 수출 얼마나 늘었어?",
         "판지값 올랐어?",
         "레티놀 EU 기준이 어떻게 돼?",
@@ -529,6 +530,57 @@ _PACK_RE = re.compile(r"포장|용기|부자재|단상자|판지|펄프|유리|�
 _REG_RE = re.compile(r"규제|허용|기준|배합|금지|사용 가능|annex|cpnp|mocra")
 _CUST_RE = re.compile(r"고객사|바이어|담당자|연락처|이메일 주소|거래처")
 _TREND_RE = re.compile(r"트렌드|뜨는|인기|관심도|성분 추천")
+_RANK_RE = re.compile(r"아마존|amazon|베스트셀러|순위|랭킹|잘 팔|많이 팔")
+
+
+def _answer_rank(text):
+    """아마존 순위. 분석(데모)까지 같이 돌려준다."""
+    import beauty_rank_store as store
+
+    cat = "beauty"
+    for row in store.AMAZON_CATEGORIES:
+        if row["label"].replace(" ", "") in text.replace(" ", ""):
+            cat = row["key"]
+            break
+
+    data = store.brief(cat)
+    board = store.rank_board(cat)
+    link = {"label": "아마존 순위 열기", "endpoint": "trends",
+            "args": {"view": "rank", "cat": cat}}
+
+    if not data["ready"]:
+        if not board["enabled"]:
+            return _reply(
+                "아마존 순위를 아직 받아 두지 않았습니다.\n"
+                "아마존 이용약관이 자동 수집을 제한해서 기본을 꺼 뒀습니다. "
+                ".env 에 AMAZON_RANK_ENABLED=1 을 넣으면 켜집니다.",
+                links=[link])
+        return _reply("아마존 순위를 아직 받아 두지 않았습니다. "
+                      "트렌드 화면에서 '지금 수집'을 눌러 주세요.", links=[link])
+
+    lines = [data["headline"], ""]
+    for row in board["rows"][:5]:
+        mark = ""
+        if row["move"] == "new":
+            mark = " NEW"
+        elif row["move"] in ("up", "down"):
+            mark = " {}{}".format(row["move_meta"]["label"], row["delta"])
+        lines.append("#{}{} {}{}".format(row["rank"], mark,
+                                         "🇰🇷 " if row["k_brand"] else "",
+                                         row["title"][:56]))
+
+    lines.append("")
+    for item in data["findings"][:2]:
+        lines.append("{} {}".format(item["icon"], item["title"]))
+
+    lines.append("")
+    lines.append("미국 아마존 한 채널의 순위입니다. 분석은 규칙 기반 데모고 "
+                 "근거는 화면에 같이 적혀 있습니다.")
+
+    return _reply("\n".join(lines),
+                  chips=["스킨케어 순위는?", "요즘 뜨는 성분 뭐야"],
+                  links=[link],
+                  source="아마존 베스트셀러 · {} 수집".format(data["day"]))
 
 
 _PROJECT_RE = re.compile(
@@ -642,7 +694,8 @@ def answer(question, project_id=None):
     if re.search(r"(뭐|무엇|뭘).*(할 수|가능|해줘|할수)|도움말|help|사용법", text):
         return _reply(
             "이런 것들을 찾아 드립니다.\n"
-            "· 국가별 수출입 실적 (UN Comtrade 실데이터)\n"
+            "· 아마존 화장품 순위와 요약 (규칙 기반 분석 데모)\n"
+        "· 국가별 수출입 실적 (UN Comtrade 실데이터)\n"
             "· 포장재 소재값 추세 (미국 BLS 생산자물가지수)\n"
             "· 성분별 국가 규제 (EU 는 실제 법령)\n"
             "· 고객사 담당자와 요청사항\n"
@@ -652,7 +705,8 @@ def answer(question, project_id=None):
             chips=GREETING["chips"])
 
     # 용어 질문은 다른 것과 섞여도 먼저 잡는다 ("FOB 단가가 뭐야")
-    for handler, pattern in ((_answer_trade, _TRADE_RE),
+    for handler, pattern in ((_answer_rank, _RANK_RE),
+                             (_answer_trade, _TRADE_RE),
                              (_answer_packaging, _PACK_RE),
                              (_answer_regulation, _REG_RE),
                              (_answer_customer, _CUST_RE),

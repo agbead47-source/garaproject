@@ -484,6 +484,47 @@
   {% endif %}
 </section>
 
+<!-- AI 분석 (데모) - 규칙 기반이라고 밝히고, 근거를 한 줄씩 단다 -->
+{% if brief.ready %}
+<section class="card ai-card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        🤖 AI 분석 <span class="ai-kind">{{ brief.kind }}</span>
+      </h2>
+      <p class="card-desc no-margin">{{ brief.headline }}</p>
+    </div>
+    <button type="button" class="btn btn-mini" id="brief-copy">📋 요약 복사</button>
+  </div>
+
+  <p class="live-caveat">
+    LLM 이 아니라 <strong>규칙 기반</strong>입니다. 대신 말을 지어내지 않고
+    이 프로젝트가 들고 있는 자료를 맞대 봅니다 —
+    {% for b in brief.basis %}{{ b }}{% if not loop.last %} · {% endif %}{% endfor %}.
+    (<code>TODO: 실제 연동</code> — LLM 을 붙이더라도 근거 줄은 그대로 답니다)
+  </p>
+
+  <div class="ai-findings">
+    {% for f in brief.findings %}
+    <div class="ai-finding">
+      <span class="ai-icon">{{ f.icon }}</span>
+      <div class="ai-body">
+        <div class="ai-title">{{ f.title }}</div>
+        <div class="ai-text">{{ f.body }}</div>
+        <div class="ai-source">근거: {{ f.source }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <h3 class="sub-title">바이어에게 보낼 영문 요약</h3>
+  <p class="card-desc">
+    미리 적어 둔 문장에 값을 채웠습니다. 메일에 붙이기 전에 한 번 읽어 보세요.
+  </p>
+  <pre class="draft-body" id="brief-en">{{ brief.english }}</pre>
+</section>
+{% endif %}
+
 <!-- 업계 소식 -->
 <section class="card">
   <div class="result-head">
@@ -686,6 +727,24 @@
 
 {% block scripts %}
 <script>
+(function () {
+  /* AI 분석의 영문 요약 복사 */
+  var briefBtn = document.getElementById('brief-copy');
+  if (briefBtn) {
+    briefBtn.addEventListener('click', function () {
+      var text = document.getElementById('brief-en').textContent;
+      function done(ok) {
+        window.showToast(ok ? '📋 영문 요약을 복사했습니다.' : '복사에 실패했습니다.',
+                         ok ? '' : 'error');
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { done(true); },
+                                                 function () { done(false); });
+      } else { done(false); }
+    });
+  }
+})();
+
 (function () {
   document.querySelectorAll('.js-brief').forEach(function (btn) {
     btn.addEventListener('click', function () {

@@ -94,22 +94,34 @@ MAGAZINE_MAP = {row["key"]: row for row in MAGAZINES}
 # 상위권 제목에서 세어 보는 낱말.
 #   ODM 영업이 "요즘 뭘 내세우나"를 볼 때 쓰는 각도다.
 KEYWORDS = [
-    {"key": "retinol", "label": "레티놀", "words": ["retinol", "retinal"]},
-    {"key": "niacinamide", "label": "나이아신아마이드", "words": ["niacinamide"]},
-    {"key": "vitaminc", "label": "비타민C", "words": ["vitamin c", "ascorbic"]},
-    {"key": "hyaluronic", "label": "히알루론산", "words": ["hyaluronic", "hyaluron"]},
-    {"key": "ceramide", "label": "세라마이드", "words": ["ceramide"]},
-    {"key": "peptide", "label": "펩타이드", "words": ["peptide"]},
-    {"key": "salicylic", "label": "살리실릭", "words": ["salicylic", "bha"]},
-    {"key": "collagen", "label": "콜라겐", "words": ["collagen"]},
-    {"key": "spf", "label": "자외선차단", "words": ["spf", "sunscreen", "sun screen"]},
-    {"key": "fragrance_free", "label": "무향", "words": ["fragrance free", "fragrance-free",
-                                                       "unscented"]},
-    {"key": "serum", "label": "세럼", "words": ["serum"]},
-    {"key": "cleanser", "label": "클렌저", "words": ["cleanser", "cleansing", "face wash"]},
-    {"key": "mask", "label": "마스크·패치", "words": ["mask", "patch"]},
-    {"key": "moisturizer", "label": "모이스처라이저", "words": ["moisturizer",
-                                                            "moisturizing", "lotion"]},
+    {"key": "retinol", "label": "레티놀", "en": "Retinol",
+     "words": ["retinol", "retinal"]},
+    {"key": "niacinamide", "label": "나이아신아마이드", "en": "Niacinamide",
+     "words": ["niacinamide"]},
+    {"key": "vitaminc", "label": "비타민C", "en": "Vitamin C",
+     "words": ["vitamin c", "ascorbic"]},
+    {"key": "hyaluronic", "label": "히알루론산", "en": "Hyaluronic acid",
+     "words": ["hyaluronic", "hyaluron"]},
+    {"key": "ceramide", "label": "세라마이드", "en": "Ceramide",
+     "words": ["ceramide"]},
+    {"key": "peptide", "label": "펩타이드", "en": "Peptide",
+     "words": ["peptide"]},
+    {"key": "salicylic", "label": "살리실릭", "en": "Salicylic acid / BHA",
+     "words": ["salicylic", "bha"]},
+    {"key": "collagen", "label": "콜라겐", "en": "Collagen",
+     "words": ["collagen"]},
+    {"key": "spf", "label": "자외선차단", "en": "Sun protection",
+     "words": ["spf", "sunscreen", "sun screen"]},
+    {"key": "fragrance_free", "label": "무향", "en": "Fragrance-free",
+     "words": ["fragrance free", "fragrance-free", "unscented"]},
+    {"key": "serum", "label": "세럼", "en": "Serum",
+     "words": ["serum"]},
+    {"key": "cleanser", "label": "클렌저", "en": "Cleanser",
+     "words": ["cleanser", "cleansing", "face wash"]},
+    {"key": "mask", "label": "마스크·패치", "en": "Mask / patch",
+     "words": ["mask", "patch"]},
+    {"key": "moisturizer", "label": "모이스처라이저", "en": "Moisturiser",
+     "words": ["moisturizer", "moisturizing", "lotion"]},
 ]
 
 # K-뷰티 브랜드. 제목에 이 이름이 들어가면 한국 브랜드로 센다(추정).
@@ -637,6 +649,275 @@ def status_summary():
         "magazine_list": ["{} {}".format(m["region"], m["label"]) for m in MAGAZINES],
         "every": "하루 1회",
     }
+
+
+# ---------------------------------------------------------------------------
+# AI 분석 (데모)
+# ---------------------------------------------------------------------------
+#   LLM 이 아니다. 규칙 기반이고 화면에 그렇게 적는다.
+#   대신 **말을 지어내지 않는다.** 이 프로젝트가 이미 들고 있는 네 가지 자료를
+#   맞대 보고, 근거를 한 줄씩 같이 적는다.
+#
+#     아마존 순위     - 신규 진입 · 급상승 · 한국 브랜드 비중 · 제목 낱말
+#     성분 관심도     - 위키백과 조회수 (15번)
+#     EU 규제        - 법령 실데이터 (13번)
+#     매거진 소식     - RSS 제목 (28번)
+#
+#   TODO: 실제 연동 (LLM 요약). 붙이더라도 근거 줄은 그대로 달아야 한다.
+
+# 낱말 -> 규제·관심도에서 찾을 INCI 이름
+_KEYWORD_INCI = {
+    "retinol": "Retinol",
+    "niacinamide": "Niacinamide",
+    "salicylic": "Salicylic Acid",
+    "hyaluronic": "Sodium Hyaluronate",
+    "ceramide": "Ceramide NP",
+}
+
+BRIEF_KIND = "규칙 기반 데모"
+
+
+def _josa(word, pair="이/가"):
+    """받침에 맞는 조사. "히알루론산 가" 처럼 나오면 읽는 사람이 걸린다."""
+    a, b = pair.split("/")
+    last = (word or "").strip()[-1:]
+    if not last:
+        return b
+    code = ord(last)
+    if 0xAC00 <= code <= 0xD7A3:
+        return a if (code - 0xAC00) % 28 else b
+    # 영문·숫자는 소리대로 대충 맞춘다 (완벽할 필요는 없다)
+    return b if last.lower() in "aeiouy0123456789" else a
+
+
+def _trend_growth(inci):
+    """성분 관심도(15번)에서 그 성분의 최근 증감률. 없으면 None."""
+    try:
+        import trend_store
+        data = trend_store.get_ingredient_trends(auto_refresh=False)
+    except Exception:                                 # noqa: BLE001
+        return None
+    for row in data.get("rows", []):
+        if row.get("status") == "pending":
+            continue
+        if row.get("inci", "").lower() == (inci or "").lower():
+            return row
+    return None
+
+
+def _eu_limit(inci):
+    """EU 규제(13번)에서 한 줄. 실데이터가 없으면 None."""
+    try:
+        import reg_store
+        return reg_store.judge(inci, inci=inci)
+    except Exception:                                 # noqa: BLE001
+        return None
+
+
+def _news_keywords(rows, top=4):
+    """매거진 제목에 자주 나온 낱말."""
+    counter = Counter()
+    for row in rows:
+        low = (row.get("title") or "").lower()
+        for kw in KEYWORDS:
+            if any(w in low for w in kw["words"]):
+                counter[kw["key"]] += 1
+    out = []
+    for key, count in counter.most_common(top):
+        label = next((k["label"] for k in KEYWORDS if k["key"] == key), key)
+        out.append({"key": key, "label": label, "count": count})
+    return out
+
+
+def brief(category="beauty"):
+    """순위 한 장을 읽고 시사점을 뽑는다. (규칙 기반 데모)
+
+    값이 없으면 없다고 적는다. 비교할 어제가 없으면 변동 이야기를 만들지 않는다.
+    """
+    board = rank_board(category)
+    rows = board["rows"]
+    kind = {"kind": BRIEF_KIND, "category": board["category"]}
+
+    if not rows:
+        return dict(kind, ready=False, headline="아직 읽을 순위가 없습니다.",
+                    findings=[], english="", basis=[])
+
+    findings = []
+    basis = ["아마존 {} 상위 {}개 ({} 수집)".format(
+        board["category"]["label"], len(rows), board["day"])]
+
+    # 1) 순위 변동 - 비교할 날이 있을 때만
+    if board["prev_day"]:
+        fresh = [r for r in rows if r["move"] == "new"]
+        risers = sorted([r for r in rows if r["move"] == "up"],
+                        key=lambda r: -r["delta"])[:3]
+        fallers = sorted([r for r in rows if r["move"] == "down"],
+                         key=lambda r: -r["delta"])[:2]
+
+        lines = []
+        if fresh:
+            lines.append("신규 진입 {}개: {}".format(
+                len(fresh), " / ".join(r["title"][:42] for r in fresh[:3])))
+        if risers:
+            lines.append("가장 많이 오른 것: " + " / ".join(
+                "{} (▲{})".format(r["title"][:36], r["delta"]) for r in risers))
+        if fallers:
+            lines.append("많이 내린 것: " + " / ".join(
+                "{} (▼{})".format(r["title"][:36], r["delta"]) for r in fallers))
+
+        findings.append({
+            "icon": "🔀", "title": "어제와 달라진 것",
+            "body": "\n".join(lines) or "순위가 거의 그대로입니다.",
+            "source": "{} → {} 스냅샷 비교".format(board["prev_day"], board["day"]),
+        })
+        basis.append("{} 스냅샷과 비교".format(board["prev_day"]))
+    else:
+        findings.append({
+            "icon": "🔀", "title": "어제와 달라진 것",
+            "body": "비교할 이전 수집이 없어 변동을 말할 수 없습니다. "
+                    "내일 한 번 더 받으면 순위 변동이 나옵니다.",
+            "source": "스냅샷 1회",
+        })
+
+    # 2) 한국 브랜드
+    k_rows = [r for r in rows if r["k_brand"]]
+    if k_rows:
+        findings.append({
+            "icon": "🇰🇷", "title": "한국 브랜드 {}개가 상위 {}위 안에".format(
+                len(k_rows), len(rows)),
+            "body": " / ".join("#{} {}".format(r["rank"], r["title"][:44])
+                               for r in k_rows[:4]),
+            "source": "제품명에서 찾은 추정값 — 사람이 확인해야 합니다",
+        })
+    else:
+        findings.append({
+            "icon": "🇰🇷", "title": "한국 브랜드가 상위 {}위 안에 없습니다".format(len(rows)),
+            "body": "이 카테고리는 현지·글로벌 브랜드가 잡고 있습니다. "
+                    "진입하려면 가격대나 카테고리를 다시 볼 필요가 있습니다.",
+            "source": "제품명에서 찾은 추정값",
+        })
+
+    # 3) 자주 나온 낱말 + 성분 관심도 + EU 규제를 맞대 본다
+    for kw in board["keywords"][:3]:
+        inci = _KEYWORD_INCI.get(kw["key"])
+        parts = ["상위 {}개 중 {}개 제품이 제목에 내세웠습니다.".format(
+            len(rows), kw["count"])]
+        sources = ["아마존 제품명"]
+
+        row = _trend_growth(inci) if inci else None
+        if row:
+            parts.append("위키백과 관심도는 최근 2주 {}{:.1f}%입니다.".format(
+                "+" if row["growth"] > 0 else "", row["growth"]))
+            sources.append("성분 관심도(Wikimedia)")
+            if row["growth"] > 10 and kw["count"] >= 2:
+                parts.append("팔리는 쪽과 찾아보는 쪽이 같이 올라 "
+                             "지금 제안하기 좋은 소재입니다.")
+            elif row["growth"] < -10 and kw["count"] >= 2:
+                parts.append("상위권에는 있지만 관심도는 내려가는 중이라 "
+                             "신제품 축으로 밀기엔 이릅니다.")
+
+        judged = _eu_limit(inci) if inci else None
+        if judged and judged.get("status") in ("warn", "ban"):
+            parts.append("EU 기준: {} ({}).".format(
+                judged.get("limit", ""), judged.get("rule", "")))
+            parts.append("EU 확장 계획이 있으면 배합 한도를 먼저 확인해야 합니다.")
+            sources.append("EU 화장품 규정 실데이터")
+
+        findings.append({
+            "icon": "🧪", "title": "{} — 상위권 {}건".format(kw["label"], kw["count"]),
+            "body": " ".join(parts),
+            "source": " · ".join(sources),
+        })
+
+    # 4) 업계 소식에서 겹치는 낱말
+    news = articles(24)
+    if news:
+        news_kw = _news_keywords(news)
+        if news_kw:
+            overlap = [k for k in news_kw
+                       if k["key"] in {x["key"] for x in board["keywords"]}]
+            body = "매거진 기사 {}건에서 {} 가 자주 나왔습니다.".format(
+                len(news), " · ".join("{}({})".format(k["label"], k["count"])
+                                      for k in news_kw))
+            if overlap:
+                names = " · ".join(k["label"] for k in overlap)
+                body += " 이 중 {}{} 아마존 상위권에도 같이 올라 있습니다.".format(
+                    names, _josa(names, "은/는"))
+            else:
+                body += " 다만 아마존 상위권 낱말과 겹치는 것은 없습니다."
+        else:
+            body = ("매거진 기사 {}건에는 상위권 낱말이 안 보입니다. "
+                    "브랜드 소식·행사 기사가 많습니다.".format(len(news)))
+        findings.append({
+            "icon": "📰", "title": "업계 소식과 겹치는 것",
+            "body": body,
+            "source": "매거진 RSS {}곳".format(len(MAGAZINES)),
+        })
+        basis.append("매거진 기사 {}건".format(len(news)))
+
+    # 머리말 한 줄
+    head_bits = []
+    if board["prev_day"]:
+        new_n = sum(1 for r in rows if r["move"] == "new")
+        if new_n:
+            head_bits.append("신규 진입 {}개".format(new_n))
+    if k_rows:
+        head_bits.append("한국 브랜드 {}개".format(len(k_rows)))
+    if board["keywords"]:
+        top_kw = board["keywords"][0]["label"]
+        head_bits.append("{}{} 가장 많이 걸림".format(top_kw, _josa(top_kw, "이/가")))
+
+    headline = "{} 상위 {}개 — {}".format(
+        board["category"]["label"], len(rows),
+        " · ".join(head_bits) if head_bits else "특이 사항 없음")
+
+    return dict(kind, ready=True, headline=headline, findings=findings,
+                english=_brief_english(board, k_rows), basis=basis,
+                day=board["day"], prev_day=board["prev_day"])
+
+
+def _brief_english(board, k_rows):
+    """바이어에게 그대로 붙일 수 있는 영문 요약.
+
+    미리 적어 둔 문장을 값으로 채운다. 번역기가 아니다.
+    """
+    rows = board["rows"]
+    lines = ["Amazon US - {} Best Sellers, top {} (captured {})".format(
+        board["category"]["label_en"], len(rows), board["day"])]
+    lines.append("")
+
+    top3 = rows[:3]
+    lines.append("Current top 3:")
+    for row in top3:
+        lines.append("  {}. {}".format(row["rank"], row["title"][:96]))
+
+    if board["prev_day"]:
+        fresh = [r for r in rows if r["move"] == "new"]
+        risers = sorted([r for r in rows if r["move"] == "up"],
+                        key=lambda r: -r["delta"])[:2]
+        lines.append("")
+        lines.append("Since {}: {} new entries, {} climbers.".format(
+            board["prev_day"], len(fresh), len(risers)))
+        for row in risers:
+            lines.append("  up {} places: {}".format(row["delta"], row["title"][:80]))
+
+    if board["keywords"]:
+        lines.append("")
+        lines.append("Most repeated claims in the top {}: {}.".format(
+            len(rows), ", ".join("{} ({})".format(k.get("en") or k["label"],
+                                                  k["count"])
+                                 for k in board["keywords"][:4])))
+
+    if k_rows:
+        lines.append("")
+        lines.append("Korean brands in the ranking: {}.".format(
+            ", ".join(sorted({r["k_brand"].title() for r in k_rows}))))
+
+    lines.append("")
+    lines.append("Source: Amazon Best Sellers page, collected by us on {}. "
+                 "Rank movement is measured against our own previous snapshot, "
+                 "not supplied by Amazon.".format(board["day"]))
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
