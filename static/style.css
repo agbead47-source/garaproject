@@ -3580,3 +3580,89 @@ a { color: inherit; text-decoration: none; }
   .proj-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .handoff-row { grid-template-columns: 1fr; }
 }
+
+/* ---------------------------------------------------------------------------
+   아마존 화장품 순위
+   --------------------------------------------------------------------------- */
+.warn-box { background: #FFF8EC; border-color: #F5DDB8; }
+
+.rank-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 16px 0 10px;
+}
+.rank-bar .tabs { flex-wrap: wrap; }
+.rank-bar .tab { font-size: 12.5px; padding: 7px 12px; }
+
+.rank-keywords {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #FAFBFC;
+}
+.rank-kw-head { font-size: 11.5px; color: var(--text-sub); margin-right: 4px; }
+
+.rank-table .col-move { width: 62px; text-align: center; }
+.rank-table .col-kw { width: 190px; }
+.rank-table td { vertical-align: top; }
+.rank-title {
+  font-size: 12.5px;
+  color: var(--text);
+  text-decoration: none;
+  display: inline-block;
+  margin-right: 5px;
+}
+a.rank-title:hover { color: var(--point); text-decoration: underline; }
+
+.kw-chip {
+  display: inline-block;
+  margin: 0 3px 3px 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #F4F5F7;
+  border: 1px solid var(--line);
+  font-size: 10.5px;
+  color: var(--text-sub);
+  white-space: nowrap;
+}
+
+.rank-news {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.rank-news .news-card {
+  display: block;
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--white);
+  text-decoration: none;
+  color: var(--text);
+}
+.rank-news .news-card:hover { border-color: var(--point); background: var(--point-soft); }
+.rank-news .news-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.rank-news .news-tag { font-size: 10.5px; font-weight: 700; color: var(--text-sub); }
+.rank-news .news-date { font-size: 10px; color: var(--gray); white-space: nowrap; }
+.rank-news .news-title { font-size: 12.5px; font-weight: 600; line-height: 1.5; }
+.rank-news .news-summary {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-sub);
+  line-height: 1.55;
+}

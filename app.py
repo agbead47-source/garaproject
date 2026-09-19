@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from flask import (Flask, jsonify, redirect, render_template, request,
                    send_file, session, url_for)
 
+import beauty_rank_store
 import chat_bot
 import contact_store
 import customer_excel
@@ -103,7 +104,7 @@ def paginate(rows, page, size=PAGE_SIZE, window=2):
 
 
 # 오늘의 트렌드 화면의 묶음 (한 번에 하나씩 본다)
-TREND_VIEWS = ("ingredient", "trade", "sns")
+TREND_VIEWS = ("ingredient", "trade", "rank", "sns")
 
 # 처리 이력 기간 필터 (value: 조회 일수)
 PERIODS = [
@@ -701,6 +702,8 @@ def trends():
     force = request.args.get("refresh") == "1"
     hs = request.args.get("hs", "all")
     trade_year = request.args.get("trade_year", type=int)
+    rank_cat = request.args.get("cat", "beauty")
+    rank_day = request.args.get("day", "")
 
     # 한 화면에 다 쌓으면 끝없이 내려야 한다. 묶음 하나씩 본다.
     view = request.args.get("view", "ingredient")
@@ -710,9 +713,26 @@ def trends():
     trade_page = request.args.get("trade_page", type=int)
 
     keep = {"view": view, "category": category, "hs": hs,
-            "trade_year": trade_year}
+            "trade_year": trade_year, "cat": rank_cat}
 
     # 수출입 통계 수집 - 한 번에 6블록씩 받는다. (24블록이면 네 번)
+    # 화장품 랭킹·업계 소식 수집 (아마존은 .env 에서 켜야 돈다)
+    if request.args.get("collect") == "rank":
+        result = beauty_rank_store.collect(force=request.args.get("force") == "1")
+        amazon, magazine = result["amazon"], result["magazine"]
+        parts = []
+        if amazon.get("skipped"):
+            parts.append("아마존 건너뜀({})".format(amazon.get("reason", "")))
+        elif amazon.get("blocked"):
+            parts.append("아마존이 자동 수집을 막아 멈췄습니다")
+        else:
+            parts.append("아마존 순위 {}건".format(amazon.get("rows", 0)))
+        parts.append("업계 소식 새 글 {}건".format(magazine.get("new", 0))
+                     if not magazine.get("skipped")
+                     else "소식 건너뜀({})".format(magazine.get("reason", "")))
+        session["trade_msg"] = ("ok", " / ".join(parts))
+        return redirect(url_for("trends", **keep))
+
     if request.args.get("collect") == "trade":
         result = trade_store.collect()
         info = trade_store.status()
@@ -747,6 +767,9 @@ def trends():
         trade=trade,
         trade_rows=trade_rows,
         trade_pager=trade_pager,
+        rank=beauty_rank_store.rank_board(rank_cat, rank_day or None),
+        rank_articles=beauty_rank_store.articles(12),
+        rank_sources=beauty_rank_store.status_summary(),
         trade_msg=session.pop("trade_msg", None),
     )
 
