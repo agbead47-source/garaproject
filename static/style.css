@@ -2888,3 +2888,146 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 760px) {
   .export-cols { grid-template-columns: 1fr; }
 }
+
+/* ---------------------------------------------------------------------------
+   포장재 가격 동향
+   --------------------------------------------------------------------------- */
+.pack-head .collect-msg { background: var(--point-soft); border-color: #F2C6CC; }
+
+.pack-src-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.pack-src {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #FAFBFC;
+}
+.pack-src-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pack-src-name { font-size: 13px; font-weight: 700; }
+.pack-src-line { font-size: 12px; color: var(--text-sub); line-height: 1.7; }
+
+/* 포장 구성 고르기 */
+.pack-parts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.pack-part {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--white);
+}
+.pack-part:hover { border-color: #D3D7DE; background: #FAFBFC; }
+.pack-part.on { border-color: var(--point); background: var(--point-soft); }
+.pack-part-icon { font-size: 16px; line-height: 1.3; }
+.pack-part-label { display: block; font-size: 12.5px; font-weight: 600; }
+.pack-part-mats { display: block; margin-top: 2px; font-size: 11px; color: var(--text-sub); }
+.pack-parts-foot { grid-column: 1 / -1; margin-top: 4px; }
+
+/* 소재 카드 */
+.pack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.pack-card { margin-bottom: 0; }
+.pack-card.needs_key, .pack-card.unsupported, .pack-card.empty { background: #FAFBFC; }
+
+.pack-card-head { display: flex; align-items: flex-start; gap: 10px; }
+.pack-icon { font-size: 22px; line-height: 1.2; }
+.pack-title-box { flex: 1 1 auto; min-width: 0; }
+.pack-name { margin: 0 0 5px; font-size: 15px; font-weight: 700; }
+.pack-parts-of { display: flex; flex-wrap: wrap; gap: 4px; }
+.pack-parts-of .pill { font-size: 10.5px; }
+
+.pack-value { margin: 16px 0 6px; display: flex; align-items: baseline; gap: 6px; }
+.pack-number { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pack-unit { font-size: 12px; color: var(--text-sub); }
+
+.pack-changes { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-sub); }
+.pack-change .growth { margin-left: 3px; }
+
+.pack-chart { width: 100%; height: 64px; margin: 14px 0 4px; display: block; }
+.pack-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--gray);
+}
+
+.pack-meta { margin: 14px 0 0; font-size: 11.5px; }
+.pack-meta > div { display: flex; gap: 8px; padding: 3px 0; }
+.pack-meta dt { width: 76px; color: var(--text-sub); flex: none; }
+.pack-meta dd { margin: 0; color: var(--text); }
+
+.pack-note { margin: 12px 0 0; font-size: 11.5px; color: var(--text-sub); line-height: 1.6; }
+.pack-empty { margin-top: 16px; display: grid; gap: 6px; }
+
+/* 같이 보기 - 공통 시작 100 */
+.compare-box { margin: 14px 0 10px; }
+.compare-chart {
+  width: 100%;
+  height: 170px;
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #FAFBFC;
+}
+.compare-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--gray);
+  margin-top: 4px;
+}
+.cmp-line { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.cmp-base {
+  stroke: #C9CDD5;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+.cmp-0 { stroke: #E4697A; }
+.cmp-1 { stroke: #4A90D9; }
+.cmp-2 { stroke: #2E7D4F; }
+.cmp-3 { stroke: #B26A00; }
+.cmp-4 { stroke: #7B5EA7; }
+.cmp-5 { stroke: #3F8F8F; }
+
+.compare-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.cmp-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
+.cmp-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.cmp-dot.cmp-0 { background: #E4697A; }
+.cmp-dot.cmp-1 { background: #4A90D9; }
+.cmp-dot.cmp-2 { background: #2E7D4F; }
+.cmp-dot.cmp-3 { background: #B26A00; }
+.cmp-dot.cmp-4 { background: #7B5EA7; }
+.cmp-dot.cmp-5 { background: #3F8F8F; }
+.cmp-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-item .growth { margin-left: auto; }
+
+@media (max-width: 900px) {
+  .pack-src-grid { grid-template-columns: 1fr; }
+}

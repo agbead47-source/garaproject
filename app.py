@@ -17,6 +17,7 @@ import customer_store
 import doc_edit_store
 import dummy_data
 import mail_ai
+import packaging_store
 import regnews_store
 import trade_store
 import trend_store
@@ -38,6 +39,9 @@ contact_store.seed_from_profiles(dummy_data.get_customer_profiles())
 
 # 엑셀로 올린 고객사 저장소 (더미 카드에 없는 회사가 여기 담긴다)
 customer_store.init_db()
+
+# 포장재 가격 동향 (SQLite. 화면은 받아 둔 값만 읽는다)
+packaging_store.init_db()
 
 # 올린 엑셀을 잠시 두는 자리. 미리보기 -> 확인 사이에만 쓴다
 IMPORT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -629,6 +633,48 @@ def trends():
         trade_pager=trade_pager,
         trade_msg=session.pop("trade_msg", None),
     )
+
+
+@app.route("/packaging")
+def packaging():
+    """포장재 가격 동향.
+
+    화면을 열 때마다 외부 API 를 부르지 않는다. 서버가 주기대로 받아 둔 값을
+    모두가 같이 본다. 수집은 아래 `?collect=1` 이나 `python packaging_store.py`.
+    """
+    parts = [p for p in request.args.getlist("part")
+             if p in packaging_store.PART_MAP]
+    preset = request.args.get("preset", "")
+    keep = {"preset": preset} if preset and not parts else {}
+
+    if request.args.get("collect") == "1":
+        result = packaging_store.collect(force=request.args.get("force") == "1")
+        session["packaging_msg"] = _collect_message(result)
+        return redirect(url_for("packaging", part=parts, **keep))
+
+    return render_template(
+        "packaging.html",
+        page_title="포장재 가격 동향",
+        active_menu="packaging",
+        board=packaging_store.board(parts=parts, preset=preset),
+        status_meta=packaging_store.STATUS_META,
+        collect_msg=session.pop("packaging_msg", None),
+    )
+
+
+def _collect_message(result):
+    """수집 결과를 한 줄로. (키 값은 절대 넣지 않는다)"""
+    parts = []
+    for name, key in (("BLS 지수", "bls"), ("알루미늄", "metals")):
+        item = result.get(key, {})
+        if item.get("skipped"):
+            parts.append("{} 건너뜀({})".format(name, item.get("reason", "")))
+        elif item.get("error"):
+            parts.append("{} 실패".format(name))
+        else:
+            parts.append("{} 새 값 {}개 · 수정 {}개".format(
+                name, item.get("new", 0), item.get("revised", 0)))
+    return ("ok", " / ".join(parts))
 
 
 @app.route("/sample", methods=["GET", "POST"])

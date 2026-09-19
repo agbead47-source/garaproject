@@ -40,6 +40,9 @@
         <a class="menu-item {% if active_menu == 'trends' %}active{% endif %}" href="{{ url_for('trends') }}">
           <span class="menu-icon">📈</span><span>오늘의 트렌드</span>
         </a>
+        <a class="menu-item {% if active_menu == 'packaging' %}active{% endif %}" href="{{ url_for('packaging') }}">
+          <span class="menu-icon">📦</span><span>포장재 가격 동향</span>
+        </a>
         <a class="menu-item {% if active_menu == 'history' %}active{% endif %}" href="{{ url_for('history') }}">
           <span class="menu-icon">🕘</span><span>처리 이력</span>
         </a>

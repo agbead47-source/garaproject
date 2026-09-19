@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block content %}
+{# 목적을 먼저 못 박는다. 이 화면은 납품가 계산기가 아니다 #}
+<section class="card pack-head">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        포장재 가격 동향 <span class="data-badge live">실데이터</span>
+      </h2>
+      <p class="card-desc no-margin">
+        용기·포장 소재값이 오르는지 내리는지 보는 화면입니다.
+        <strong>용기 납품가를 계산하는 기능이 아닙니다</strong> —
+        실제 납품가는 금형·수량·도장·후가공·물류가 섞여 정해집니다.
+      </p>
+    </div>
+    <a class="btn btn-mini" href="{{ url_for('packaging', collect='1', preset=board.preset) }}">지금 수집</a>
+  </div>
+
+  {% if collect_msg %}
+  <p class="live-caveat collect-msg">{{ collect_msg[1] }}</p>
+  {% endif %}
+
+  <div class="pack-src-grid">
+    {% set bls = board.sources.bls %}
+    <div class="pack-src">
+      <div class="pack-src-top">
+        <span class="pack-src-name">미국 노동통계국(BLS) 생산자물가지수</span>
+        <span class="fill-badge {{ bls.meta.css }}">{{ bls.meta.label }}</span>
+      </div>
+      <div class="pack-src-line">
+        갱신 주기 <strong>{{ bls.every }}</strong> ·
+        접속 {{ bls.endpoint or '—' }} ·
+        API 키 {{ '설정됨' if bls.has_key else '없음(선택 사항)' }}
+      </div>
+      <div class="pack-src-line">
+        서버 수집 시각 <strong>{{ bls.last_ok or '아직 없음' }}</strong>
+        {% if bls.message %}<span class="text-gray">· {{ bls.message }}</span>{% endif %}
+      </div>
+    </div>
+
+    {% set met = board.sources.metals %}
+    <div class="pack-src">
+      <div class="pack-src-top">
+        <span class="pack-src-name">Metals.Dev 알루미늄</span>
+        <span class="fill-badge {{ met.meta.css }}">{{ met.meta.label }}</span>
+      </div>
+      <div class="pack-src-line">
+        갱신 주기 <strong>{{ met.every }}</strong> ·
+        이번 달 호출 {{ met.quota.used }}/{{ met.quota.cap }}회
+        <span class="text-gray">(무료 한도 100회, 재시도 포함해 {{ met.quota.cap }}회까지만 씁니다)</span>
+      </div>
+      <div class="pack-src-line">
+        서버 수집 시각 <strong>{{ met.last_ok or '아직 없음' }}</strong>
+        {% if met.message %}<span class="text-gray">· {{ met.message }}</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <p class="live-caveat">
+    BLS 지수는 <strong>미국 시장 참고지수</strong>이고 화장품 전용 지수가 아닙니다.
+    가격이 아니라 지수라서 단위가 없고, 월 단위로 발표된 뒤 넉 달까지 수정될 수 있습니다.
+    국내 용기 단가와 바로 이어지지 않습니다.
+  </p>
+</section>
+
+<!-- 포장 구성으로 좁히기 -->
+<section class="card pack-filter">
+  <h2 class="card-title">포장 구성</h2>
+  <p class="card-desc">
+    만드는 포장에 들어가는 부품을 고르면 관련 소재만 봅니다.
+    안 고르면 전부 보여 줍니다.
+  </p>
+
+  <div class="export-presets">
+    <span class="export-label">자주 쓰는 구성</span>
+    {% for p in board.presets %}
+    <a class="btn btn-mini {% if board.preset == p.key %}btn-ghost{% endif %}"
+       href="{{ url_for('packaging', preset=p.key) }}">{{ p.label }}</a>
+    {% endfor %}
+    {% if board.selected_parts %}
+    <a class="btn btn-mini" href="{{ url_for('packaging') }}">전체 보기</a>
+    {% endif %}
+  </div>
+
+  <form class="pack-parts" method="get" action="{{ url_for('packaging') }}">
+    {% for part in board.parts %}
+    <label class="pack-part {% if part.key in board.selected_parts %}on{% endif %}">
+      <input type="checkbox" name="part" value="{{ part.key }}"
+             {% if part.key in board.selected_parts %}checked{% endif %}>
+      <span class="pack-part-icon">{{ part.icon }}</span>
+      <span>
+        <span class="pack-part-label">{{ part.label }}</span>
+        <span class="pack-part-mats">
+          {%- for m in part.materials %}{{ board.cards|selectattr('key','equalto',m)|map(attribute='name')|first|default(m) }}{% if not loop.last %} · {% endif %}{% endfor -%}
+        </span>
+      </span>
+    </label>
+    {% endfor %}
+    <div class="pack-parts-foot">
+      <button type="submit" class="btn btn-primary">고른 부품만 보기</button>
+    </div>
+  </form>
+</section>
+
+<!-- 소재 카드 -->
+<div class="pack-grid">
+  {% for card in board.cards %}
+  <section class="card pack-card {{ card.status }}">
+    <div class="pack-card-head">
+      <span class="pack-icon">{{ card.icon }}</span>
+      <div class="pack-title-box">
+        <h3 class="pack-name">{{ card.name }}</h3>
+        <div class="pack-parts-of">
+          {%- for part in board.parts if card.key in part.materials -%}
+          <span class="pill soft">{{ part.icon }} {{ part.label }}</span>
+          {%- endfor -%}
+        </div>
+      </div>
+      <span class="fill-badge {{ card.status_meta.css }}">{{ card.status_meta.label }}</span>
+    </div>
+
+    {% if card.latest %}
+    <div class="pack-value">
+      <span class="pack-number">
+        {%- if card.kind == 'price' -%}
+        {{ '{:,.2f}'.format(card.latest.value) }}
+        {%- else -%}
+        {{ '{:,.1f}'.format(card.latest.value) }}
+        {%- endif -%}
+      </span>
+      <span class="pack-unit">{{ card.unit }}</span>
+      {% if card.latest.preliminary %}
+      <span class="flag-badge check" title="발표 후 넉 달까지 수정될 수 있습니다">잠정치</span>
+      {% endif %}
+    </div>
+
+    <div class="pack-changes">
+      {% for ch in card.changes %}
+      <span class="pack-change">
+        {{ ch.label }}
+        <span class="growth {% if ch.pct > 0.05 %}up{% elif ch.pct < -0.05 %}down{% else %}flat{% endif %}">
+          {% if ch.pct > 0 %}+{% endif %}{{ '%.1f'|format(ch.pct) }}%
+        </span>
+      </span>
+      {% else %}
+      <span class="text-gray">비교할 기준값이 아직 없습니다</span>
+      {% endfor %}
+    </div>
+
+    {% if card.spark %}
+    <svg class="pack-chart" viewBox="0 0 260 64" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="{{ card.spark }}" class="spark-line"/>
+    </svg>
+    <div class="pack-axis">
+      <span>{{ card.series[0].period }}</span>
+      <span>최근 {{ card.series|length }}개월</span>
+      <span>{{ card.series[-1].period }}</span>
+    </div>
+    {% else %}
+    <p class="card-desc">값이 한 개뿐이라 아직 추세를 그릴 수 없습니다.</p>
+    {% endif %}
+
+    <dl class="pack-meta">
+      <div><dt>출처</dt><dd>{{ card.market }}</dd></div>
+      <div><dt>데이터 기준일</dt><dd>{{ card.latest.ref_time }}</dd></div>
+      <div><dt>서버 수집</dt><dd>{{ card.fetched_at or '—' }}</dd></div>
+      <div><dt>갱신 주기</dt><dd>{{ card.cadence }}</dd></div>
+      {% if card.collected_from != card.series[0].period %}
+      <div><dt>보유 자료</dt><dd>{{ card.collected_from }} ~ (차트는 최근 {{ card.series|length }}개월)</dd></div>
+      {% endif %}
+      {% if card.latest.revised_at %}
+      <div><dt>수정 반영</dt><dd>{{ card.latest.revised_at }}</dd></div>
+      {% endif %}
+    </dl>
+
+    {% else %}
+    <div class="pack-empty">
+      <p class="card-desc no-margin">{{ card.note }}</p>
+      {% if card.status == 'needs_key' %}
+      <p class="card-desc no-margin">
+        <code>.env</code> 에 <code>METALS_DEV_API_KEY</code> 를 넣고 다시 수집하세요.
+        (<code>.env.example</code> 참고 · 무료 플랜 월 100회)
+      </p>
+      {% elif card.status == 'error' %}
+      <p class="card-desc no-margin text-red">{{ card.message }}</p>
+      {% elif card.status == 'empty' %}
+      <p class="card-desc no-margin">아직 수집하지 않았습니다. 위 <strong>지금 수집</strong>을 눌러 주세요.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if card.latest %}
+    <p class="pack-note">{{ card.note }}</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+{% if board.compare %}
+<!-- 단위가 서로 달라 값을 겹쳐 그릴 수 없다. 공통 시작을 100 으로 맞춘다 -->
+<section class="card">
+  <h2 class="card-title">같이 보기 <span class="count-chip">{{ board.compare.lines|length }}</span></h2>
+  <p class="card-desc">
+    지수와 시세는 단위가 달라 값을 그대로 겹쳐 그릴 수 없습니다.
+    <strong>{{ board.compare.base_month }} = 100</strong> 으로 맞춰 그 뒤로 얼마나 움직였는지만 비교합니다.
+  </p>
+
+  <div class="compare-box">
+    <svg class="compare-chart" viewBox="0 0 {{ board.compare.width }} {{ board.compare.height }}"
+         preserveAspectRatio="none" aria-hidden="true">
+      {# 기준달 = 100. 이 선 위면 올랐고 아래면 내렸다 #}
+      <line x1="0" y1="{{ board.compare.baseline_y }}"
+            x2="{{ board.compare.width }}" y2="{{ board.compare.baseline_y }}"
+            class="cmp-base"/>
+      {% for line in board.compare.lines %}
+      <polyline points="{{ line.spark }}" class="cmp-line cmp-{{ loop.index0 % 6 }}"/>
+      {% endfor %}
+    </svg>
+    <div class="compare-axis">
+      <span>{{ board.compare.months[0] }} (=100)</span>
+      <span class="text-gray">세로 눈금 {{ board.compare.low }} ~ {{ board.compare.high }}</span>
+      <span>{{ board.compare.months[-1] }}</span>
+    </div>
+  </div>
+
+  <div class="compare-legend">
+    {% for line in board.compare.lines %}
+    <div class="cmp-item">
+      <span class="cmp-dot cmp-{{ loop.index0 % 6 }}"></span>
+      <span class="cmp-name">{{ line.icon }} {{ line.name }}</span>
+      <span class="growth {% if line.last > 100.05 %}up{% elif line.last < 99.95 %}down{% else %}flat{% endif %}">
+        {{ line.last }}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="card-desc no-margin">
+    소재마다 용기에서 차지하는 비중이 다릅니다.
+    <strong>이 숫자들을 평균 내어 "포장비 몇 % 인상" 으로 쓰지 마세요.</strong>
+  </p>
+</section>
+{% endif %}
+{% endblock %}
