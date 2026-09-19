@@ -56,8 +56,10 @@
     <div class="doc-row">
       <dt class="doc-label">영업 담당자 코멘트</dt>
       <dd class="doc-value">
-        <span class="doc-text" data-value=""
-              data-placeholder="이 건에서 특히 알아둘 점을 적어 주세요 (클릭해서 입력)"></span>
+        <span class="doc-text {% if doc.comment %}edited{% endif %}"
+              data-doc="{{ doc.edit_key }}" data-field="_comment"
+              data-value="{{ doc.comment }}"
+              data-placeholder="이 건에서 특히 알아둘 점을 적어 주세요 (클릭해서 입력)">{{ doc.comment }}</span>
       </dd>
     </div>
   </dl>
@@ -75,7 +77,9 @@
         {% if row.flag == 'missing' %}<span class="flag-badge missing">누락</span>{% endif %}
       </dt>
       <dd class="doc-value">
-        <span class="doc-text" data-value="{{ row.value }}">{{ row.value }}</span>
+        <span class="doc-text {% if row.edited %}edited{% endif %}"
+              data-doc="{{ doc.edit_key }}" data-field="{{ row.key }}"
+              data-value="{{ row.value }}">{{ row.value }}</span>
         {% if row.source %}
         <div class="doc-source" hidden>원문: {{ row.source }}</div>
         {% endif %}
@@ -95,7 +99,12 @@
   </div>
 
   <div class="convert-tools">
-    <span class="convert-hint">값을 클릭하면 고칠 수 있습니다</span>
+    <span class="convert-hint">값을 클릭하면 고칠 수 있고, 고친 값은 저장됩니다</span>
+    <button type="button" class="btn btn-mini" id="reset-edits"
+            data-docs='{{ [lab_doc.edit_key, factory_doc.edit_key, sales_doc.edit_key]|tojson }}'
+            {% if not edited_count %}hidden{% endif %}>
+      ↺ 수정 되돌리기 <span class="count-chip" id="edit-count">{{ edited_count }}</span>
+    </button>
     <label class="toggle">
       <input type="checkbox" id="source-toggle"> 원문 대비 보기
     </label>
@@ -135,7 +144,11 @@
         {% if row.flag == 'check' %}<span class="flag-badge check">확인 필요</span>{% endif %}
         {% if row.flag == 'missing' %}<span class="flag-badge missing">누락</span>{% endif %}
       </dt>
-      <dd class="doc-value"><span class="doc-text" data-value="{{ row.value }}">{{ row.value }}</span></dd>
+      <dd class="doc-value">
+        <span class="doc-text {% if row.edited %}edited{% endif %}"
+              data-doc="{{ sales_doc.edit_key }}" data-field="{{ row.key }}"
+              data-value="{{ row.value }}">{{ row.value }}</span>
+      </dd>
     </div>
     {% endfor %}
     {% endfor %}
@@ -220,6 +233,37 @@
   // 언어 전환: 선택한 언어의 더미 텍스트로 다시 그린다 (탭 유지)
   langSelect.addEventListener('change', function () {
     window.location.href = '?lang=' + langSelect.value + '&tab=' + currentTab();
+  });
+
+  /* 수정 되돌리기: 고친 값을 모두 지우고 자동 변환 결과로 돌아간다.
+     저장이 되는 순간부터는 원래 값으로 돌아갈 길이 있어야 한다. */
+  var resetBtn = document.getElementById('reset-edits');
+  var editCount = document.getElementById('edit-count');
+
+  function refreshEditCount() {
+    var n = document.querySelectorAll('.doc-text.edited').length;
+    editCount.textContent = n;
+    resetBtn.hidden = (n === 0);
+  }
+
+  document.addEventListener('doc-edit-saved', refreshEditCount);
+
+  resetBtn.addEventListener('click', function () {
+    if (!window.confirm('이 문서에서 고친 값을 모두 되돌립니다. 계속할까요?')) { return; }
+
+    resetBtn.classList.add('is-busy');
+    fetch('/api/doc-edit/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ docs: JSON.parse(resetBtn.dataset.docs) })
+    }).then(function (res) {
+      return res.ok ? res.json() : Promise.reject(res.status);
+    }).then(function () {
+      window.location.reload();
+    }).catch(function () {
+      resetBtn.classList.remove('is-busy');
+      showToast('되돌리지 못했습니다. 다시 시도해 주세요.', 'error');
+    });
   });
 
   // 원문 대비 보기

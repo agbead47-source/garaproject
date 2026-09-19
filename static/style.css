@@ -680,6 +680,12 @@ a { color: inherit; text-decoration: none; }
 .doc-text.empty { color: var(--gray); }
 .doc-text.edited { background: #FFF8E3; box-shadow: inset 0 0 0 1px #F0DCA8; }
 .convert-hint { color: var(--text-sub); font-size: 11.5px; }
+/* 도구 줄에 되돌리기 버튼이 하나 더 있어서, 글자가 줄바꿈되지 않게 묶어 둔다 */
+.convert-tools { gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.convert-tools .convert-hint,
+.convert-tools .toggle,
+.convert-tools #reset-edits { white-space: nowrap; }
+#reset-edits .count-chip { margin-left: 2px; }
 
 /* 고객사 소개 - 받는 쪽은 고객사를 모른다 */
 .brief-section { background: #FAFBFC; border-radius: 10px; padding: 16px 18px; }

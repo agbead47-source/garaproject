@@ -44,9 +44,11 @@ project/
 ├── schedule_store.py   # 일정관리 저장소 (19번 참고)
 ├── schedule_routes.py  # 일정관리 Blueprint
 ├── contact_store.py    # 고객사 담당자 저장소 (20번 참고)
+├── doc_edit_store.py   # 전달 문서에서 고친 값 저장소 (6-3 참고)
 ├── data/prospecting.db #   SQLite (gitignore)
 ├── data/schedule.db    #   일정관리 SQLite (gitignore)
 ├── data/contacts.db    #   고객사 담당자 SQLite (gitignore)
+├── data/doc_edits.db   #   전달 문서 수정값 SQLite (gitignore)
 ├── regdata/
 │   ├── sync_eu.py      # EU 법령 수집 스크립트
 │   └── regulation.db   # 수집 결과 SQLite (gitignore, 재생성 가능)
@@ -160,7 +162,17 @@ project/
 고치는 자리는 여기 한 곳입니다 — 분석 결과(6-2)는 원문을 읽어낸 기록이라 손대지 않습니다.
 자동 변환이 문장을 어색하게 만들거나, 영업이 한 줄 덧붙여야 할 때가 있기 때문입니다.
 고친 값은 노란색으로 표시되고, 복사·전달에 그대로 반영됩니다.
-(가안이라 새로고침하면 사라집니다 — 저장은 `TODO: 실제 연동`)
+
+고친 값은 **실제로 저장됩니다** (`doc_edit_store.py` → `data/doc_edits.db`).
+새로고침해도 남고, 도구 줄의 **↺ 수정 되돌리기**를 누르면 자동 변환 값으로 돌아갑니다.
+
+- 저장 단위는 `원본파일|문서종류|언어` 입니다. 한국어 문서에 적은 문장이
+  영문 문서에 끼어들면 안 되기 때문에 언어까지 키에 넣습니다
+- 연구소 문서와 공장 문서는 서로 다른 문서라, 코멘트도 따로 답니다
+- 고친 값만 저장합니다. 원래 값은 저장하지 않습니다 —
+  변환 결과가 바뀌면 그 위에 다시 덮이면 되고, 되돌리기는 저장한 줄을 지우는 것입니다
+- 저장 경로: `POST /api/doc-edit` (한 칸), `POST /api/doc-edit/reset` (문서 단위 되돌리기).
+  빈 값으로 저장하면 그 칸은 자동 변환 값으로 돌아갑니다
 
 #### 공장에 왜 보내나 — 그리고 무엇을 안 보내나
 "공장은 생산인데 개발요청서를 왜 받나"는 당연한 의문이라 여기 적어 둡니다.

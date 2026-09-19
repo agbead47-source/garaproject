@@ -10,6 +10,7 @@ from flask import (Flask, jsonify, redirect, render_template, request,
                    session, url_for)
 
 import contact_store
+import doc_edit_store
 import dummy_data
 import mail_ai
 import regnews_store
@@ -29,6 +30,9 @@ app.register_blueprint(schedule_bp)
 # 고객사 담당자 저장소 (SQLite 사용. 화면에서 넣은 담당자가 실제로 남는다)
 contact_store.init_db()
 contact_store.seed_from_profiles(dummy_data.get_customer_profiles())
+
+# 전달 문서에서 고친 값 저장소 (SQLite. 새로고침해도 수정이 남는다)
+doc_edit_store.init_db()
 
 # 로그인하지 않았을 때 쓰는 기본 사용자명 (가안용)
 DEFAULT_USER = "해외영업팀 홍길동"
@@ -255,6 +259,17 @@ def convert():
         "country": _item("target_country", analysis["customer_country"]),
     }
 
+    # 영업이 화면에서 고친 값을 자동 변환 결과 위에 덮는다
+    file_name = analysis["file_name"]
+
+    def _edited(doc, kind):
+        return doc_edit_store.apply_to(
+            doc, doc_edit_store.doc_key(file_name, kind, doc["lang"]))
+
+    lab_doc = _edited(dummy_data.convert_for_lab(analysis, lang, overrides), "lab")
+    factory_doc = _edited(dummy_data.convert_for_factory(analysis, lang, overrides), "factory")
+    sales_doc = _edited(dummy_data.sales_terms(analysis, lang, overrides), "sales")
+
     return render_template(
         "convert.html",
         handoff=handoff,
@@ -267,10 +282,36 @@ def convert():
         lang=lang,
         tab=tab,
         composed=bool(overrides),
-        lab_doc=dummy_data.convert_for_lab(analysis, lang, overrides),
-        factory_doc=dummy_data.convert_for_factory(analysis, lang, overrides),
-        sales_doc=dummy_data.sales_terms(analysis, lang, overrides),
+        lab_doc=lab_doc,
+        factory_doc=factory_doc,
+        sales_doc=sales_doc,
+        edited_count=(lab_doc["edited_count"] + factory_doc["edited_count"]
+                      + sales_doc["edited_count"]),
     )
+
+
+@app.route("/api/doc-edit", methods=["POST"])
+def api_doc_edit():
+    """전달 문서에서 고친 값 한 칸을 저장한다. (빈 값이면 자동 변환 값으로 되돌림)"""
+    payload = request.get_json(silent=True) or {}
+    saved = doc_edit_store.save_edit(
+        payload.get("doc"), payload.get("field"), payload.get("value"))
+
+    if saved is None:
+        return jsonify({"ok": False, "error": "저장할 수 없는 항목입니다."}), 400
+    return jsonify({"ok": True, "value": saved, "edited": bool(saved)})
+
+
+@app.route("/api/doc-edit/reset", methods=["POST"])
+def api_doc_edit_reset():
+    """문서에서 고친 값을 모두 지운다. 자동 변환 결과로 돌아간다."""
+    payload = request.get_json(silent=True) or {}
+    keys = payload.get("docs") or []
+    if not isinstance(keys, list):
+        return jsonify({"ok": False, "error": "잘못된 요청입니다."}), 400
+
+    removed = doc_edit_store.reset_docs(keys[:12])
+    return jsonify({"ok": True, "removed": removed})
 
 
 @app.route("/history")
