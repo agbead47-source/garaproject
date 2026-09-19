@@ -3802,3 +3802,30 @@ a.rank-title:hover { color: var(--point); text-decoration: underline; }
   color: var(--text-sub);
 }
 .part-from:focus { outline: none; border-color: var(--point); }
+
+/* 자사 역량 - 이 화면이 왜 있는지 */
+.cap-why { border-left: 3px solid var(--line); }
+.cap-why-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.cap-why-cell {
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--white);
+  min-width: 0;
+}
+.cap-why-label { font-size: 11.5px; font-weight: 600; color: var(--text-sub); }
+.cap-why-value { margin-top: 3px; font-size: 21px; font-weight: 700; letter-spacing: -.5px; }
+.cap-why-sub { margin-top: 2px; font-size: 10.5px; color: var(--gray); }
+
+.cap-missing {
+  margin: 0 0 4px;
+  padding-left: 17px;
+  font-size: 12.5px;
+  line-height: 1.85;
+}
+.cap-missing li { margin-bottom: 2px; }

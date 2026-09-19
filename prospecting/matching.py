@@ -161,6 +161,59 @@ _CHECKERS = {
 
 
 # ---------------------------------------------------------------------------
+# 자사 역량이 얼마나 채워졌나
+# ---------------------------------------------------------------------------
+#   "자사 역량을 왜 등록하나" 라는 물음에 대한 답이 여기 있다.
+#   적합도는 한쪽만으로 낼 수 없다. 바이어가 원하는 것과 우리가 할 수 있는 것을
+#   맞대야 나온다. 우리 쪽이 비면 그 기준은 판정 자체가 안 되고, 점수가 낮아지는
+#   게 아니라 **점수가 안 나온다.** 그 사실을 화면에 숫자로 보여 주려고 센다.
+
+# 기준 하나를 판정하려면 우리 쪽에서 무엇이 있어야 하는가
+CRITERION_NEEDS = {
+    "category": ("product_categories", "제조 가능 제품군"),
+    "spec": ("formulations", "개발 가능 제형·특징"),
+    "moq": ("moq", "제품군별 MOQ"),
+    "certification": ("certs", "보유 인증"),
+    "lead_time": ("mass_lead_time", "양산 납기"),
+}
+
+
+def _filled(capabilities, field):
+    value = (capabilities or {}).get(field)
+    if isinstance(value, list):
+        return bool(value)
+    return bool((value or "").strip())
+
+
+def readiness(capabilities):
+    """지금 등록된 역량으로 판정할 수 있는 기준과 못 하는 기준.
+
+    가중치까지 같이 돌려준다. "100점 중 몇 점어치를 판정할 수 없는지" 가
+    비어 있는 칸을 채울 이유로는 제일 알아듣기 쉽다.
+    """
+    capabilities = capabilities or {}
+    rows = []
+    for criterion in models.CRITERIA:
+        field, label = CRITERION_NEEDS[criterion["key"]]
+        rows.append({
+            "key": criterion["key"],
+            "label": criterion["label"],
+            "needs": label,
+            "filled": _filled(capabilities, field),
+            "oem": criterion["oem"],
+            "odm": criterion["odm"],
+        })
+
+    out = {"rows": rows, "registered": bool(capabilities)}
+    for mode in ("oem", "odm"):
+        total = sum(row[mode] for row in rows)
+        ready = sum(row[mode] for row in rows if row["filled"])
+        out[mode] = {"total": total, "ready": ready, "lost": total - ready}
+    out["missing"] = [row for row in rows if not row["filled"]]
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 점수
 # ---------------------------------------------------------------------------
 

@@ -7,10 +7,10 @@ import json
 import secrets
 
 from flask import (Blueprint, Response, abort, redirect, render_template,
-                   request, session, url_for)
+                   request, send_file, session, url_for)
 
 from . import (analytics, collectors, matching, models, pipeline, proposals,
-               repository, seed_demo)
+               report, repository, seed_demo)
 
 bp = Blueprint("prospecting", __name__)
 
@@ -498,11 +498,24 @@ def capabilities():
         _flash("자사 역량을 저장하고 후보 점수를 다시 계산했습니다.", "info")
         return redirect(url_for("prospecting.capabilities"))
 
+    cap = repository.get_capabilities()
+    data_mode = current_mode()
+    prospects = repository.list_prospects(data_mode)
+    scores = repository.all_scores(current_fit_mode())
+
     return render_template(
         "prospecting/capabilities.html",
         page_title="자사 역량",
         active_menu="prospecting",
-        cap=repository.get_capabilities(),
+        cap=cap,
+        # 이 화면이 왜 있는지를 숫자로 보여 준다
+        ready=matching.readiness(cap),
+        fit_mode=current_fit_mode(),
+        data_mode=data_mode,
+        prospect_count=len(prospects),
+        scored_count=sum(
+            1 for row in prospects
+            if (scores.get(row["id"]) or {}).get("fit_score") is not None),
         flash=_take_flash(),
     )
 
@@ -676,13 +689,20 @@ def followup_reschedule(followup_id):
 # 4.6 분석
 # ---------------------------------------------------------------------------
 
+def current_days():
+    """집계 기간. 화면과 내려받기가 같은 값을 써야 한다."""
+    try:
+        days = int(request.args.get("days", 90))
+    except (TypeError, ValueError):
+        days = 90
+    return days if days in (30, 90, 180, 365) else 90
+
+
 @bp.route("/prospects/analytics")
 def analytics_view():
     data_mode = current_mode()
     fit_mode = current_fit_mode()
-    days = int(request.args.get("days", 90))
-    if days not in (30, 90, 180, 365):
-        days = 90
+    days = current_days()
 
     return render_template(
         "prospecting/analytics.html",
@@ -693,6 +713,26 @@ def analytics_view():
         days=days,
         flash=_take_flash(),
     )
+
+
+@bp.route("/prospects/analytics.xlsx")
+def analytics_export():
+    """분석 화면 그대로를 엑셀로. 회사에 보고할 때 쓴다.
+
+    숫자만 옮겨 적히지 않게 집계 조건과 지표 정의를 같은 파일에 담는다.
+    화면에서 고른 기간·기준·데이터 구분을 그대로 따른다.
+    """
+    data_mode = current_mode()
+    fit_mode = current_fit_mode()
+    days = current_days()
+
+    data = analytics.overview(repository, data_mode, days, fit_mode)
+    buffer = io.BytesIO(report.build_analytics(data, fit_mode))
+    return send_file(
+        buffer, as_attachment=True,
+        download_name=report.analytics_filename(data_mode, days),
+        mimetype="application/vnd.openxmlformats-officedocument."
+                 "spreadsheetml.sheet")
 
 
 # ---------------------------------------------------------------------------

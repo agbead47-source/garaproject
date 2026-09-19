@@ -10,13 +10,27 @@
        href="{{ url_for('prospecting.analytics_view', days=d, mode=fit_mode) }}">최근 {{ d }}일</a>
     {% endfor %}
   </div>
-  <div class="tabs small">
-    {% for m in M.MODES %}
-    <a class="tab {% if fit_mode == m.value %}active{% endif %}"
-       href="{{ url_for('prospecting.analytics_view', days=days, mode=m.value) }}">{{ m.label }} 기준</a>
-    {% endfor %}
+  <div class="pros-toolbar-right">
+    <div class="tabs small">
+      {% for m in M.MODES %}
+      <a class="tab {% if fit_mode == m.value %}active{% endif %}"
+         href="{{ url_for('prospecting.analytics_view', days=days, mode=m.value) }}">{{ m.label }} 기준</a>
+      {% endfor %}
+    </div>
+    {# 보고용. 화면에서 고른 기간·기준 그대로 받는다 #}
+    <a class="btn" href="{{ url_for('prospecting.analytics_export', days=days, mode=fit_mode) }}">
+      ⬇ 엑셀로 내려받기
+    </a>
   </div>
 </div>
+
+<p class="field-hint no-top">
+  내려받은 파일에는 지금 화면의 <strong>최근 {{ days }}일 · {{ fit_mode|upper }} 기준 ·
+  {{ '실제' if data.data_mode == 'real' else '데모' }} 데이터</strong> 집계가 담깁니다.
+  요약 · 발굴 경로별 · 국가별 적합도 · <strong>지표 정의</strong> 네 장입니다.
+  숫자만 옮겨 적히면 다음 회의에서 다시 설명하게 되므로 정의를 같이 넣었습니다.
+  후보 목록 자체는 <a href="{{ url_for('prospecting.csv_export', mode=fit_mode) }}">CSV</a> 로 받으세요.
+</p>
 
 <p class="live-caveat">
   <strong>{{ '실제' if data.data_mode == 'real' else '데모' }} 데이터만</strong> 집계합니다. 실제와 데모는 섞지 않습니다.
