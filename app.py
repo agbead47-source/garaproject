@@ -28,6 +28,7 @@ import schedule_store
 import regnews_store
 import trade_store
 import trend_store
+import us_reg_store
 
 app = Flask(__name__)
 app.secret_key = "todo-trade-dev-only-secret"  # 가안용 임시 키
@@ -513,6 +514,12 @@ def regulation():
         regnews_store.collect()
         return redirect(url_for("regulation"))
 
+    # 미국 연방규정집(eCFR) 조문 받아오기. 화면을 열 때는 부르지 않는다
+    if request.args.get("collect") == "us":
+        out = us_reg_store.collect(force=True)
+        session["contact_msg"] = (("ok" if out["ok"] else "error"), out["message"])
+        return redirect(url_for("regulation"))
+
     # 파일을 올리기 전에는 업로드 화면만 보여준다
     if request.args.get("ready") != "1":
         session.pop("reg_file", None)
@@ -529,6 +536,7 @@ def regulation():
             countries=countries,
             preset_country=preset,
             reg_source=dummy_data.get_reg_source(),
+            us_source=dummy_data.get_us_reg_source(),
             news=regnews_store.get_news(),
         )
 
@@ -554,6 +562,7 @@ def regulation():
         countries=dummy_data.get_reg_countries(),
         status_meta=dummy_data.REG_STATUS_META,
         reg_source=dummy_data.get_reg_source(),
+        us_source=dummy_data.get_us_reg_source(),
         selected={"country": country, "q": keyword, "status": status},
         country_detail=dummy_data.get_reg_country(country),
         counts={

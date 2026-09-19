@@ -46,23 +46,61 @@
 
   <div class="reg-side">
   <section class="card">
-    {% if reg_source %}
+    {% if reg_source or us_source %}
     <h2 class="card-title">규제 데이터 출처 <span class="data-badge live">실데이터</span></h2>
-    <p class="card-desc">EU는 실제 법령으로 판정합니다. 나머지 국가는 아직 더미입니다.</p>
+    <p class="card-desc">
+      EU와 미국은 실제 법령으로 판정합니다. 나머지 국가는 아직 더미입니다.
+    </p>
+
+    {% if reg_source %}
     <div class="info-row">
       <span class="info-label">🇪🇺 EU</span>
       <span class="info-value">{{ reg_source.name }}<br>
-        <span class="source-sub">통합본 {{ reg_source.celex }} · 기준일 {{ reg_source.version_date }} · 성분 {{ reg_source.count }}건</span>
+        <span class="source-sub">통합본 {{ reg_source.celex }} · 기준일 {{ reg_source.version_date }} · 성분 {{ reg_source.count }}건</span><br>
+        <span class="source-sub">{{ reg_source.fetched_at }} 수집 · <code class="source-cmd">python regdata/sync_eu.py --refresh</code></span>
+      </span>
+    </div>
+    {% endif %}
+
+    {% if us_source %}
+    <div class="info-row">
+      <span class="info-label">🇺🇸 미국</span>
+      <span class="info-value">{{ us_source.name }}<br>
+        <span class="source-sub">
+          {{ us_source.parts }}<br>
+          조문 {{ us_source.count }}건 ·
+          {% for k in us_source.kinds %}{{ k.label }} {{ k.count }}{% if not loop.last %} · {% endif %}{% endfor %}
+        </span><br>
+        <span class="source-sub">
+          연방규정집 기준일 {{ us_source.cfr_date }} · 마지막 개정 {{ us_source.amended_on }}<br>
+          우리가 받아 온 시각 {{ us_source.fetched_at }}
+        </span>
       </span>
     </div>
     <div class="info-row">
-      <span class="info-label">수집일</span>
-      <span class="info-value">{{ reg_source.fetched_at }} · <code class="source-cmd">python regdata/sync_eu.py --refresh</code> 로 갱신</span>
+      <span class="info-label">미국 갱신</span>
+      <span class="info-value">
+        <a class="btn btn-mini" href="{{ url_for('regulation', collect='us') }}">지금 받아오기</a>
+        <span class="source-sub">
+          eCFR API · 키 불필요 · <code class="source-cmd">python us_reg_store.py --force</code>
+        </span>
+      </span>
     </div>
+    <p class="live-caveat">
+      <strong>미국은 EU와 판정 방식이 반대입니다.</strong>
+      일반 성분은 사전 허가 목록이 없어서 <b>목록에 없다고 적합이 아닙니다</b> —
+      MoCRA에 따라 안전성 입증 책임이 제조사에 있습니다.
+      반대로 <b>색소는 포지티브 리스트</b>라 21 CFR 73·74에 등재되지 않으면 쓸 수 없고,
+      Part 74 색소는 FDA 배치 인증을 받은 로트만 쓸 수 있습니다.
+      자외선차단 성분은 화장품이 아니라 <b>OTC 의약품</b>으로 갈립니다.
+    </p>
+    {% endif %}
+
     <div class="info-row">
       <span class="info-label">미연동</span>
       <span class="info-value">
-        <span class="pill soft">🇺🇸 미국</span><span class="pill soft">🇨🇳 중국</span><span class="pill soft">🇯🇵 일본</span><span class="pill soft">🇻🇳 베트남</span>
+        {% if not us_source %}<span class="pill soft">🇺🇸 미국</span>{% endif %}
+        <span class="pill soft">🇨🇳 중국</span><span class="pill soft">🇯🇵 일본</span><span class="pill soft">🇻🇳 베트남</span>
       </span>
     </div>
     {% else %}
@@ -221,6 +259,9 @@
     {% if reg_source %}
     <span class="ai-chip live">🇪🇺 EU 실데이터 · 기준일 {{ reg_source.version_date }}</span>
     {% endif %}
+    {% if us_source %}
+    <span class="ai-chip live">🇺🇸 미국 실데이터 · 21 CFR {{ us_source.cfr_date }}</span>
+    {% endif %}
   </div>
 </section>
 
@@ -330,7 +371,9 @@
               <div class="reg-detail-item">
                 <span class="reg-detail-label">데이터 출처</span>
                 <span>
-                  {%- if row.live %}EU 법령 통합본 {{ reg_source.celex }} (자동 수집)
+                  {%- if row.live and row.country_code == 'us' %}
+                  미국 연방규정집 21 CFR (eCFR API 자동 수집)
+                  {%- elif row.live %}EU 법령 통합본 {{ reg_source.celex }} (자동 수집)
                   {%- else %}가안 더미 — 이 국가는 아직 실데이터에 연결되지 않았습니다{% endif %}
                 </span>
               </div>

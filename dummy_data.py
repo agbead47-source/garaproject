@@ -13,6 +13,7 @@ import zlib
 from datetime import date
 
 import reg_store
+import us_reg_store
 
 # ---------------------------------------------------------------------------
 # 고객사 / 출력 언어
@@ -1244,6 +1245,8 @@ def search_regulations(country="all", keyword="", status="all"):
     codes = [country] if country != "all" else [row["code"] for row in _REG_COUNTRIES]
     eu_live = reg_store.is_available()
     eu_version = (reg_store.get_meta() or {}).get("version_date", "") if eu_live else ""
+    us_live = us_reg_store.is_available()
+    us_version = (us_reg_store.get_meta() or {}).get("cfr_date", "") if us_live else ""
 
     rows = []
     for item in _REG_INGREDIENTS:
@@ -1252,11 +1255,18 @@ def search_regulations(country="all", keyword="", status="all"):
             continue
 
         for code in codes:
+            version = ""
             if code == "eu" and eu_live:
                 rule = reg_store.judge(
                     item["name"], item["inci"], item.get("cas"), item["requested"]
                 )
-                live = True
+                live, version = True, eu_version
+            elif code == "us" and us_live:
+                # 미국은 연방규정집(eCFR) 원문으로 판정한다
+                rule = us_reg_store.judge(
+                    item["name"], item["inci"], item.get("cas"), item["requested"]
+                )
+                live, version = True, us_version
             else:
                 rule = item["rules"].get(code)
                 live = False
@@ -1274,7 +1284,7 @@ def search_regulations(country="all", keyword="", status="all"):
                     "inci": item["inci"],
                     "category": item["category"],
                     "requested": item["requested"],
-                    "updated": eu_version if live else item["updated"],
+                    "updated": version if live else item["updated"],
                     "country_code": code,
                     "country_name": country_row.get("name", code),
                     "country_flag": country_row.get("flag", ""),
@@ -1288,6 +1298,25 @@ def search_regulations(country="all", keyword="", status="all"):
             )
 
     return rows
+
+
+def get_us_reg_source():
+    """미국 규제 출처. (받아 둔 조문이 없으면 None)"""
+    meta = us_reg_store.get_meta()
+    if not meta:
+        return None
+    counted = us_reg_store.counts()
+    return {
+        "name": meta["source"],
+        "url": meta["source_url"],
+        "cfr_date": meta["cfr_date"],
+        "amended_on": meta["amended_on"],
+        "fetched_at": (meta["fetched_at"] or "")[:16].replace("T", " "),
+        "count": meta["section_count"],
+        "parts": meta["parts"],
+        "kinds": [{"label": us_reg_store.KIND_LABEL.get(k, k), "count": n}
+                  for k, n in sorted(counted.items())],
+    }
 
 
 def get_reg_source():
