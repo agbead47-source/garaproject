@@ -1073,6 +1073,7 @@ a { color: inherit; text-decoration: none; }
 .regnews-sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .regnews-sources .pill { text-decoration: none; }
 .regnews-sources .pill.check { background: #FFF6E5; color: #A8701A; }
+.regnews-sources .pill.off { color: var(--gray); text-decoration: line-through; }
 .regnews-sources .pill:hover { background: var(--point-soft); color: var(--point); }
 
 /* ---------- 오늘의 트렌드 ---------- */
