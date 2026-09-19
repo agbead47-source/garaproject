@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pager.html" import pager as pager_bar %}
 
 {% block content %}
 {% if not ready %}
@@ -274,11 +275,14 @@
 </div>
 
 <div class="reg-grid">
-  <section class="card">
-    <h2 class="card-title">성분별 규제 판정 <span class="count-chip">{{ rows|length }}</span></h2>
+  <section class="card" id="reg-list">
+    <h2 class="card-title">성분별 규제 판정 <span class="count-chip">{{ pager.total }}</span></h2>
     <p class="card-desc">
       올린 성분표({{ parsed.file_name }})에서 읽어낸 함량을 기준으로 대조한 결과입니다.
       행을 클릭하면 근거 규정과 메모를 볼 수 있습니다.
+      {% if pager.pages > 1 %}
+      한 쪽에 {{ pager.size }}건씩 끊어 보여 줍니다 ({{ pager.pages }}쪽).
+      {% endif %}
     </p>
 
     <table class="item-table reg-table">
@@ -343,6 +347,10 @@
         {% endfor %}
       </tbody>
     </table>
+
+    {{ pager_bar('regulation', pager,
+             {'ready': '1', 'country': selected.country, 'q': selected.q,
+              'status': selected.status}, anchor='reg-list') }}
   </section>
 
   <aside class="reg-side">

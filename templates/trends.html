@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_switch.html" import view_switch %}
+{% from "_pager.html" import pager as pager_bar %}
 
 {% block content %}
 {# 세 묶음을 한 화면에 쌓으면 6화면을 내려야 한다. 하나씩 본다. #}
@@ -241,7 +242,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for row in trade.rows %}
+      {% for row in trade_rows %}
       <tr>
         <td class="col-rank2">{{ row.rank }}</td>
         <td>
@@ -303,9 +304,13 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pager_bar('trends', trade_pager,
+               {'view': 'trade', 'category': selected_category,
+                'hs': trade.hs, 'trade_year': trade.year},
+               unit='개국', param='trade_page') }}
+
   <p class="card-desc">
-    상위 {{ trade.rows|length }}곳만 보여 줍니다 (집계 {{ trade.row_total }}곳).
-    비중은 {{ trade.year }}년 수출 총액 기준입니다.
+    수출 실적이 큰 순서입니다. 비중은 {{ trade.year }}년 수출 총액 기준입니다.
   </p>
 
   <!-- 결측치를 어떻게 다뤘는지 화면에서 밝힌다 -->

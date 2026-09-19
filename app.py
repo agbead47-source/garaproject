@@ -41,6 +41,43 @@ DEFAULT_USER = "해외영업팀 홍길동"
 # 로그인 없이 열 수 있는 엔드포인트
 PUBLIC_ENDPOINTS = {"login", "static"}
 
+# 표 한 쪽에 몇 줄씩 보여 줄지
+PAGE_SIZE = 20
+
+
+def paginate(rows, page, size=PAGE_SIZE, window=2):
+    """표를 끊어 준다. (그 쪽 행, 페이지 바에 필요한 값)
+
+    행이 100개면 화면을 묶음으로 나눠도 표는 그대로 길다. 표는 끊어야 한다.
+    합계·건수는 쪽이 아니라 **걸러낸 전체**를 기준으로 세야 한다.
+    """
+    total = len(rows)
+    pages = max((total + size - 1) // size, 1)
+    page = min(max(page or 1, 1), pages)
+    start = (page - 1) * size
+
+    # 1 … 4 5 [6] 7 8 … 20  - 양 끝과 현재 쪽 주변만
+    numbers, last = [], 0
+    for n in range(1, pages + 1):
+        if n == 1 or n == pages or abs(n - page) <= window:
+            if last and n - last > 1:
+                numbers.append(None)          # 사이가 비면 … 로 접는다
+            numbers.append(n)
+            last = n
+
+    return rows[start:start + size], {
+        "page": page,
+        "pages": pages,
+        "total": total,
+        "size": size,
+        "start": start + 1 if total else 0,
+        "end": min(start + size, total),
+        "numbers": numbers,
+        "has_prev": page > 1,
+        "has_next": page < pages,
+    }
+
+
 # 오늘의 트렌드 화면의 묶음 (한 번에 하나씩 본다)
 TREND_VIEWS = ("ingredient", "trade", "sns")
 
@@ -394,13 +431,18 @@ def regulation():
     parsed = dummy_data.analyze_ingredient_file(session.get("reg_file") or None)
     rows = dummy_data.search_regulations(country, keyword, status)
 
+    # 건수는 걸러낸 전체 기준, 표만 끊는다
+    # (검색 조건을 바꾸면 폼에 page 가 없어 1쪽으로 돌아온다)
+    page_rows, pager = paginate(rows, request.args.get("page", type=int))
+
     return render_template(
         "regulation.html",
         page_title="국가별 규제 검색",
         active_menu="regulation",
         ready=True,
         parsed=parsed,
-        rows=rows,
+        rows=page_rows,
+        pager=pager,
         countries=dummy_data.get_reg_countries(),
         status_meta=dummy_data.REG_STATUS_META,
         reg_source=dummy_data.get_reg_source(),
@@ -532,6 +574,8 @@ def trends():
     if view not in TREND_VIEWS:
         view = "ingredient"
 
+    trade_page = request.args.get("trade_page", type=int)
+
     keep = {"view": view, "category": category, "hs": hs,
             "trade_year": trade_year}
 
@@ -554,6 +598,10 @@ def trends():
     if force:
         return redirect(url_for("trends", **keep))
 
+    # 204개국을 상위 25곳만 잘라 보여 주면 정작 찾는 시장이 안 보인다. 끊어서 전부 준다.
+    trade = trade_store.get_trade(hs=hs, year=trade_year, top=0)
+    trade_rows, trade_pager = paginate(trade["rows"], trade_page)
+
     return render_template(
         "trends.html",
         page_title="오늘의 트렌드",
@@ -563,7 +611,9 @@ def trends():
         selected_category=category,
         view=view,
         trend_live=live,
-        trade=trade_store.get_trade(hs=hs, year=trade_year),
+        trade=trade,
+        trade_rows=trade_rows,
+        trade_pager=trade_pager,
         trade_msg=session.pop("trade_msg", None),
     )
 

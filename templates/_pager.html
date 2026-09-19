@@ -1,0 +1,45 @@
+{# 표를 끊어 보여 주는 페이지 바.
+
+   행이 100개면 묶음을 나눠도 표는 그대로 길다. 표는 끊어야 한다.
+   묶음 전환(_switch.html)과 같은 이유로 주소(?page=)에 남긴다 - 새로고침해도
+   보던 쪽이 유지되고, 링크를 그대로 건네줄 수 있다.
+
+   param: 쪽 번호를 담을 주소 이름. 한 화면에 표가 둘 이상이면 서로 다르게 준다
+          (오늘의 트렌드는 `trade_page`). #}
+
+{% macro pager(endpoint, info, keep={}, anchor=none, unit='건', param='page') -%}
+{% if info.pages > 1 %}
+<nav class="pager" aria-label="페이지">
+  <span class="pager-count">
+    {{ '{:,}'.format(info.total) }}{{ unit }} 중
+    <strong>{{ info.start }}–{{ info.end }}</strong>
+  </span>
+
+  <span class="pager-links">
+    {% if info.has_prev %}
+    <a class="pager-btn"
+       href="{{ url_for(endpoint, _anchor=anchor, **dict(keep, **{param: info.page - 1})) }}">‹ 이전</a>
+    {% else %}
+    <span class="pager-btn disabled" aria-disabled="true">‹ 이전</span>
+    {% endif %}
+
+    {% for n in info.numbers %}
+      {% if n %}
+      <a class="pager-num {% if n == info.page %}active{% endif %}"
+         href="{{ url_for(endpoint, _anchor=anchor, **dict(keep, **{param: n})) }}"
+         {% if n == info.page %}aria-current="page"{% endif %}>{{ n }}</a>
+      {% else %}
+      <span class="pager-gap">…</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if info.has_next %}
+    <a class="pager-btn"
+       href="{{ url_for(endpoint, _anchor=anchor, **dict(keep, **{param: info.page + 1})) }}">다음 ›</a>
+    {% else %}
+    <span class="pager-btn disabled" aria-disabled="true">다음 ›</span>
+    {% endif %}
+  </span>
+</nav>
+{% endif %}
+{%- endmacro %}
