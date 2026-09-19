@@ -14,6 +14,7 @@ import doc_edit_store
 import dummy_data
 import mail_ai
 import regnews_store
+import trade_store
 import trend_store
 
 app = Flask(__name__)
@@ -520,10 +521,28 @@ def trends():
     """
     category = request.args.get("category", "all")
     force = request.args.get("refresh") == "1"
+    hs = request.args.get("hs", "all")
+    trade_year = request.args.get("trade_year", type=int)
+
+    keep = {"category": category, "hs": hs, "trade_year": trade_year,
+            "_anchor": "trade"}
+
+    # 수출입 통계 수집 - 한 번에 6블록씩 받는다. (24블록이면 네 번)
+    if request.args.get("collect") == "trade":
+        result = trade_store.collect()
+        info = trade_store.status()
+        session["trade_msg"] = (
+            "수출입 통계 {}/{}건 수집{}. 남은 {}건은 한 번 더 누르면 됩니다.".format(
+                info["collected"], info["total"],
+                " · 미러 보완 {}건".format(result["mirrored"]) if result["mirrored"] else "",
+                result["remaining"])
+            if result["remaining"] else
+            "수출입 통계 {}건을 모두 받았습니다.".format(info["total"]))
+        return redirect(url_for("trends", **keep))
 
     live = trend_store.get_ingredient_trends(force=force)
     if force:
-        return redirect(url_for("trends", category=category))
+        return redirect(url_for("trends", **keep))
 
     return render_template(
         "trends.html",
@@ -533,6 +552,8 @@ def trends():
         categories=dummy_data.TREND_CATEGORIES,
         selected_category=category,
         trend_live=live,
+        trade=trade_store.get_trade(hs=hs, year=trade_year),
+        trade_msg=session.pop("trade_msg", None),
     )
 
 

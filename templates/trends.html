@@ -124,6 +124,198 @@
   </div>
 </section>
 
+<!-- ============ 국가별 화장품 수출입 (실데이터) ============ -->
+<section class="card live-head-card trade-card" id="trade">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        국가별 화장품 수출입 <span class="data-badge live">실데이터</span>
+      </h2>
+      <p class="card-desc no-margin">
+        {{ trade.source.name }} · {{ trade.source.reporter }} ·
+        HS {{ trade.hs_codes|map(attribute='code')|join(',') }} ·
+        수집일 {{ trade.progress.updated_at or '—' }}
+      </p>
+    </div>
+    <a class="btn btn-mini" href="{{ url_for('trends', category=selected_category, hs=trade.hs, collect='trade', _anchor='trade') }}">
+      통계 수집 <span class="count-chip">{{ trade.progress.collected }}/{{ trade.progress.total }}</span>
+    </a>
+  </div>
+
+  {% if trade_msg %}
+  <p class="live-caveat collect-msg">{{ trade_msg }}</p>
+  {% endif %}
+
+  {% if not trade.ready %}
+  <p class="card-desc">
+    아직 받아 둔 통계가 없습니다. <strong>통계 수집</strong>을 누르면 6블록씩 받아옵니다
+    (전부 {{ trade.progress.total }}블록 = 연도 3 × 수출입 2 × HS 4).
+    한 번에 다 받으려면 <code>python trade_store.py</code> 를 실행하세요.
+  </p>
+  {% else %}
+
+  <p class="live-caveat">
+    관세 <strong>통관 신고 실적</strong>입니다. 관심도(위 표)와 달리 대리 지표가 아닙니다.
+    {{ trade.source.note }}
+    {% if trade.truncated %}<span class="text-orange">· 500건에서 잘린 블록 {{ trade.truncated|length }}개</span>{% endif %}
+  </p>
+
+  <div class="summary-grid summary-grid-4 tight">
+    <div class="summary-card">
+      <div class="summary-label">{{ trade.year }}년 수출</div>
+      <div class="summary-value">{{ '{:,.0f}'.format(trade.totals.export / 1000000) }}<span class="unit">백만 USD</span></div>
+      <div class="summary-sub">
+        {% if trade.totals.export_growth is not none %}
+        <span class="growth {% if trade.totals.export_growth > 0 %}up{% else %}down{% endif %}">
+          {% if trade.totals.export_growth > 0 %}+{% endif %}{{ '%.1f'|format(trade.totals.export_growth) }}%
+        </span> 전년비
+        {% else %}비교할 연도 없음{% endif %}
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">{{ trade.year }}년 수입</div>
+      <div class="summary-value">{{ '{:,.0f}'.format(trade.totals['import'] / 1000000) }}<span class="unit">백만 USD</span></div>
+      <div class="summary-sub">{{ trade.hs_label }}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">무역수지</div>
+      <div class="summary-value text-green">+{{ '{:,.0f}'.format(trade.totals.balance / 1000000) }}<span class="unit">백만 USD</span></div>
+      <div class="summary-sub">수출 − 수입</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">집계 국가</div>
+      <div class="summary-value">{{ trade.totals.countries }}<span class="unit">곳</span></div>
+      <div class="summary-sub">집계 코드 {{ trade.skipped }}곳 제외</div>
+    </div>
+  </div>
+
+  <div class="trade-filters">
+    <div class="tabs">
+      <a class="tab {% if trade.hs == 'all' %}active{% endif %}"
+         href="{{ url_for('trends', category=selected_category, hs='all', trade_year=trade.year, _anchor='trade') }}">전체</a>
+      {% for h in trade.hs_codes %}
+      <a class="tab {% if trade.hs == h.code %}active{% endif %}"
+         href="{{ url_for('trends', category=selected_category, hs=h.code, trade_year=trade.year, _anchor='trade') }}">
+        {{ h.code }} {{ h.short }}
+      </a>
+      {% endfor %}
+    </div>
+    <div class="trade-years">
+      {% for y in trade.years %}
+      <a class="year-chip {% if y == trade.year %}active{% endif %}"
+         href="{{ url_for('trends', category=selected_category, hs=trade.hs, trade_year=y, _anchor='trade') }}">{{ y }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <table class="item-table live-table trade-table">
+    <thead>
+      <tr>
+        <th class="col-rank2">순위</th>
+        <th>국가</th>
+        <th class="col-money">수출 <span class="th-unit">백만 USD</span></th>
+        <th class="col-growth2">전년비</th>
+        <th class="col-share">비중</th>
+        <th class="col-unitp">kg당 <span class="th-unit">USD</span></th>
+        <th class="col-money">수입 <span class="th-unit">백만 USD</span></th>
+        <th class="col-money">수지 <span class="th-unit">백만 USD</span></th>
+        <th class="col-fill">데이터</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in trade.rows %}
+      <tr>
+        <td class="col-rank2">{{ row.rank }}</td>
+        <td>
+          <div class="trend-keyword">{{ row.flag }} {{ row.name }}</div>
+          <div class="trend-en">{{ row.name_en }}</div>
+        </td>
+        <td class="col-money">
+          {% if row.X.value is none %}<span class="text-gray">모름</span>
+          {% else %}{{ '{:,.1f}'.format(row.X.value / 1000000) }}{% endif %}
+        </td>
+        <td class="col-growth2">
+          {% if row.X.growth is none %}
+          <span class="text-gray" title="두 해 모두 실측일 때만 증감률을 냅니다">비교 불가</span>
+          {% else %}
+          <span class="growth {% if row.X.growth > 1 %}up{% elif row.X.growth < -1 %}down{% else %}flat{% endif %}">
+            {% if row.X.growth > 0 %}+{% endif %}{{ '%.1f'|format(row.X.growth) }}%
+          </span>
+          {% endif %}
+        </td>
+        <td class="col-share">
+          {% if row.share is none %}<span class="text-gray">—</span>
+          {% else %}{{ '%.1f'|format(row.share) }}%{% endif %}
+        </td>
+        <td class="col-unitp">
+          {% if row.X.unit_price %}{{ '%.1f'|format(row.X.unit_price) }}
+          {% else %}<span class="text-gray" title="신고 중량이 없어 계산할 수 없습니다">—</span>{% endif %}
+        </td>
+        <td class="col-money">
+          {% if row.M.value is none %}<span class="text-gray">모름</span>
+          {% else %}{{ '{:,.1f}'.format(row.M.value / 1000000) }}{% endif %}
+        </td>
+        <td class="col-money">
+          {% if row.balance is none %}<span class="text-gray">—</span>
+          {% else %}
+          <span class="{% if row.balance > 0 %}text-green{% elif row.balance < 0 %}text-red{% endif %}">
+            {% if row.balance > 0 %}+{% endif %}{{ '{:,.1f}'.format(row.balance / 1000000) }}
+          </span>
+          {% endif %}
+        </td>
+        <td class="col-fill">
+          {# 값을 어디서 얻었는지. 수출입 상태가 같으면 한 줄만 보여 준다 #}
+          <div class="fill-line">
+            <span class="fill-badge {{ row.X.meta.css }}"
+                  title="수출: {{ row.X.meta.desc }} / 연도별 {% for s in row.X.series %}{{ s.year }} {{ trade.fill_meta[s.status].label }}{% if not loop.last %} · {% endif %}{% endfor %}">
+              {{ row.X.meta.label }}
+            </span>
+            {% if row.X.est %}<span class="fill-badge warn" title="Comtrade 추정값이 섞여 있습니다">추정</span>{% endif %}
+          </div>
+          {% if row.M.status != row.X.status %}
+          <div class="fill-line">
+            <span class="fill-tag">수입</span>
+            <span class="fill-badge {{ row.M.meta.css }}" title="수입: {{ row.M.meta.desc }}">
+              {{ row.M.meta.label }}
+            </span>
+          </div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="card-desc">
+    상위 {{ trade.rows|length }}곳만 보여 줍니다 (집계 {{ trade.row_total }}곳).
+    비중은 {{ trade.year }}년 수출 총액 기준입니다.
+  </p>
+
+  <!-- 결측치를 어떻게 다뤘는지 화면에서 밝힌다 -->
+  <div class="fill-box">
+    <h3 class="sub-title no-margin">결측치 처리</h3>
+    <p class="card-desc">
+      무역 통계는 반드시 구멍이 납니다. 빈 칸을 0으로 덮으면 <strong>거래가 끊긴 나라</strong>처럼
+      보이지만, 실제로는 신고가 안 된 것뿐인 경우가 많습니다. 그래서 메운 칸은 메웠다고 표시합니다.
+      <strong>보간값은 합계와 증감률에서 뺍니다.</strong>
+    </p>
+    <div class="fill-rows">
+      {% for f in trade.fill_rows %}
+      <div class="fill-row">
+        <span class="fill-badge {{ f.css }}">{{ f.label }}</span>
+        <span class="fill-count">{{ f.count }}칸</span>
+        <span class="fill-desc">{{ f.desc }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="card-desc no-margin">
+      올해({{ trade.progress.years[-1] + 1 }}년) 실적은 연 단위로 아직 올라오지 않아
+      {{ trade.years[-1] }}년까지만 씁니다. 미러 확인 {{ trade.progress.mirror }}건 —
+      우리 통계에서 빠진 나라를 상대국 신고로 다시 확인한 횟수입니다.
+    </p>
+  </div>
+  {% endif %}
+</section>
+
 <h2 class="section-title">SNS·커머스 키워드 <span class="data-badge">더미</span></h2>
 <p class="card-desc">
   인스타·틱톡·커머스 언급량은 무료 공개 API가 없어 더미로 둡니다.

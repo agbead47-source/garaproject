@@ -16,3 +16,6 @@ newsdata/
 
 # 신규 바이어 발굴 · 일정관리 DB - 로컬 저장, 저장소 추적 제외
 data/
+
+# 수출입 통계 캐시 - python trade_store.py 로 다시 만든다
+tradedata/
