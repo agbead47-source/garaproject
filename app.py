@@ -41,6 +41,9 @@ DEFAULT_USER = "해외영업팀 홍길동"
 # 로그인 없이 열 수 있는 엔드포인트
 PUBLIC_ENDPOINTS = {"login", "static"}
 
+# 오늘의 트렌드 화면의 묶음 (한 번에 하나씩 본다)
+TREND_VIEWS = ("ingredient", "trade", "sns")
+
 # 처리 이력 기간 필터 (value: 조회 일수)
 PERIODS = [
     {"value": "all", "label": "전체 기간"},
@@ -524,8 +527,13 @@ def trends():
     hs = request.args.get("hs", "all")
     trade_year = request.args.get("trade_year", type=int)
 
-    keep = {"category": category, "hs": hs, "trade_year": trade_year,
-            "_anchor": "trade"}
+    # 한 화면에 다 쌓으면 끝없이 내려야 한다. 묶음 하나씩 본다.
+    view = request.args.get("view", "ingredient")
+    if view not in TREND_VIEWS:
+        view = "ingredient"
+
+    keep = {"view": view, "category": category, "hs": hs,
+            "trade_year": trade_year}
 
     # 수출입 통계 수집 - 한 번에 6블록씩 받는다. (24블록이면 네 번)
     if request.args.get("collect") == "trade":
@@ -540,7 +548,9 @@ def trends():
             "수출입 통계 {}건을 모두 받았습니다.".format(info["total"]))
         return redirect(url_for("trends", **keep))
 
-    live = trend_store.get_ingredient_trends(force=force)
+    # 보고 있지 않은 묶음 때문에 외부 API를 두드리지는 않는다
+    live = trend_store.get_ingredient_trends(
+        auto_refresh=(view == "ingredient"), force=force)
     if force:
         return redirect(url_for("trends", **keep))
 
@@ -551,6 +561,7 @@ def trends():
         data=dummy_data.get_trends(category),
         categories=dummy_data.TREND_CATEGORIES,
         selected_category=category,
+        view=view,
         trend_live=live,
         trade=trade_store.get_trade(hs=hs, year=trade_year),
         trade_msg=session.pop("trade_msg", None),

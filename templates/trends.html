@@ -1,6 +1,21 @@
 {% extends "base.html" %}
+{% from "_switch.html" import view_switch %}
 
 {% block content %}
+{# 세 묶음을 한 화면에 쌓으면 6화면을 내려야 한다. 하나씩 본다. #}
+{{ view_switch('trends', view, [
+     {'key': 'ingredient', 'icon': '🧪', 'label': '성분 관심도',
+      'desc': '어떤 성분이 뜨고 지는가',
+      'badge': trend_live.collected ~ '종', 'badge_css': 'live'},
+     {'key': 'trade', 'icon': '🌍', 'label': '국가별 수출입',
+      'desc': '어디로 얼마나 나가는가',
+      'badge': (trade.totals.countries ~ '개국') if trade.ready else '미수집',
+      'badge_css': 'live' if trade.ready else ''},
+     {'key': 'sns', 'icon': '💬', 'label': 'SNS·커머스 키워드',
+      'desc': '언급량 랭킹 (더미)', 'badge': '더미'},
+   ], {'category': selected_category, 'hs': trade.hs, 'trade_year': trade.year}) }}
+
+{% if view == 'ingredient' %}
 <!-- ============ 성분 관심도 (실데이터) ============ -->
 <section class="card live-head-card">
   <div class="result-head">
@@ -13,7 +28,7 @@
         최근 {{ trend_live.window_days }}일 · 수집일 {{ trend_live.updated_at or '—' }}
       </p>
     </div>
-    <a class="btn btn-mini" href="{{ url_for('trends', category=selected_category, refresh='1') }}">새로고침</a>
+    <a class="btn btn-mini" href="{{ url_for('trends', view='ingredient', category=selected_category, refresh='1') }}">새로고침</a>
   </div>
 
   <p class="live-caveat">
@@ -124,6 +139,9 @@
   </div>
 </section>
 
+{% endif %}
+
+{% if view == 'trade' %}
 <!-- ============ 국가별 화장품 수출입 (실데이터) ============ -->
 <section class="card live-head-card trade-card" id="trade">
   <div class="result-head">
@@ -137,7 +155,7 @@
         수집일 {{ trade.progress.updated_at or '—' }}
       </p>
     </div>
-    <a class="btn btn-mini" href="{{ url_for('trends', category=selected_category, hs=trade.hs, collect='trade', _anchor='trade') }}">
+    <a class="btn btn-mini" href="{{ url_for('trends', view='trade', category=selected_category, hs=trade.hs, collect='trade') }}">
       통계 수집 <span class="count-chip">{{ trade.progress.collected }}/{{ trade.progress.total }}</span>
     </a>
   </div>
@@ -192,10 +210,10 @@
   <div class="trade-filters">
     <div class="tabs">
       <a class="tab {% if trade.hs == 'all' %}active{% endif %}"
-         href="{{ url_for('trends', category=selected_category, hs='all', trade_year=trade.year, _anchor='trade') }}">전체</a>
+         href="{{ url_for('trends', view='trade', category=selected_category, hs='all', trade_year=trade.year) }}">전체</a>
       {% for h in trade.hs_codes %}
       <a class="tab {% if trade.hs == h.code %}active{% endif %}"
-         href="{{ url_for('trends', category=selected_category, hs=h.code, trade_year=trade.year, _anchor='trade') }}">
+         href="{{ url_for('trends', view='trade', category=selected_category, hs=h.code, trade_year=trade.year) }}">
         {{ h.code }} {{ h.short }}
       </a>
       {% endfor %}
@@ -203,7 +221,7 @@
     <div class="trade-years">
       {% for y in trade.years %}
       <a class="year-chip {% if y == trade.year %}active{% endif %}"
-         href="{{ url_for('trends', category=selected_category, hs=trade.hs, trade_year=y, _anchor='trade') }}">{{ y }}</a>
+         href="{{ url_for('trends', view='trade', category=selected_category, hs=trade.hs, trade_year=y) }}">{{ y }}</a>
       {% endfor %}
     </div>
   </div>
@@ -316,6 +334,9 @@
   {% endif %}
 </section>
 
+{% endif %}
+
+{% if view == 'sns' %}
 <h2 class="section-title">SNS·커머스 키워드 <span class="data-badge">더미</span></h2>
 <p class="card-desc">
   인스타·틱톡·커머스 언급량은 무료 공개 API가 없어 더미로 둡니다.
@@ -326,7 +347,7 @@
   <div class="tabs">
     {% for cat in categories %}
     <a class="tab {% if selected_category == cat.value %}active{% endif %}"
-       href="{{ url_for('trends', category=cat.value) }}">{{ cat.label }}</a>
+       href="{{ url_for('trends', view='sns', category=cat.value) }}">{{ cat.label }}</a>
     {% endfor %}
   </div>
   <div class="trend-meta">
@@ -470,6 +491,7 @@
     </section>
   </aside>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

@@ -1,0 +1,22 @@
+{# 화면 안에서 묶음을 하나씩 보는 전환 바.
+
+   한 화면에 다 쌓아 두면 끝없이 내려야 한다. 묶음 단위로 나눠 두고
+   고른 묶음만 그린다. 주소(?view=)에 남기기 때문에 새로고침·수집 후
+   돌아와도 보던 자리가 유지된다. #}
+
+{% macro view_switch(endpoint, current, items, keep={}) -%}
+<nav class="view-switch" aria-label="화면 전환">
+  {% for it in items %}
+  <a class="view-tab {% if current == it.key %}active{% endif %}"
+     href="{{ url_for(endpoint, view=it.key, **keep) }}"
+     {% if current == it.key %}aria-current="page"{% endif %}>
+    <span class="view-icon">{{ it.icon }}</span>
+    <span class="view-text">
+      <span class="view-label">{{ it.label }}</span>
+      <span class="view-desc">{{ it.desc }}</span>
+    </span>
+    {% if it.badge %}<span class="view-badge {{ it.badge_css or '' }}">{{ it.badge }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</nav>
+{%- endmacro %}
