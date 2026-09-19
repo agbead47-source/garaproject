@@ -44,6 +44,7 @@
       <div class="quote-party-head">{{ q.t.to }}</div>
       <div class="quote-party-name">{{ q.customer }}</div>
       {% if q.attn %}<div class="quote-party-row">{{ q.t.attn }} : {{ q.attn }}</div>{% endif %}
+      {% if q.attn_email %}<div class="quote-party-row mono">{{ q.t.attn_email }} : {{ q.attn_email }}</div>{% endif %}
       <div class="quote-party-row">{{ q.t.intro }}</div>
     </div>
     <div class="quote-party">

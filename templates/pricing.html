@@ -330,15 +330,39 @@
 
         <div class="quote-preview" id="quote-preview">—</div>
 
-        <div class="field-row">
-          <div class="field">
-            <label class="field-label" for="q-customer">수신 (고객사)</label>
-            <input class="input" type="text" name="customer" id="q-customer" value="{{ d.customer }}">
+        <div class="field">
+          <label class="field-label" for="q-customer-sel">수신 (고객사)</label>
+          <select class="select" id="q-customer-sel">
+            {% for cu in quote_customers %}
+            <option value="{{ cu.id }}" {% if cu.name == d.customer %}selected{% endif %}>
+              {{ cu.name }} · 담당자 {{ cu.contacts|length }}명
+            </option>
+            {% endfor %}
+            <option value="__custom__" {% if not quote_customers|selectattr('name', 'equalto', d.customer)|list %}selected{% endif %}>
+              직접 입력 (등록되지 않은 고객사)
+            </option>
+          </select>
+          <input class="input spaced-top" type="text" name="customer" id="q-customer"
+                 value="{{ d.customer }}" placeholder="견적서에 적을 회사명">
+          <p class="field-hint">
+            고객사를 고르면 <a href="{{ url_for('customers') }}" target="_blank">고객사 관리</a>에
+            등록된 담당자를 아래에서 고를 수 있습니다. 회사명은 그대로 고쳐도 됩니다.
+          </p>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="q-attn-sel">담당자 (Attn.)</label>
+          <select class="select" id="q-attn-sel"></select>
+          <div class="field-row spaced-top" id="q-attn-manual">
+            <div class="field no-margin">
+              <input class="input" type="text" name="attn" id="q-attn" placeholder="예) Ms. Jane Park">
+            </div>
+            <div class="field no-margin">
+              <input class="input" type="email" name="attn_email" id="q-attn-email"
+                     placeholder="담당자 이메일 (선택)">
+            </div>
           </div>
-          <div class="field">
-            <label class="field-label" for="q-attn">담당자 (Attn.)</label>
-            <input class="input" type="text" name="attn" id="q-attn" placeholder="예) Ms. Jane Park">
-          </div>
+          <p class="field-hint" id="q-attn-hint"></p>
         </div>
 
         <div class="field">
@@ -666,6 +690,87 @@
   /* --- 견적서 만들기 --- */
   var quoteModal = el('quote-modal');
 
+  /* 고객사별 담당자 (고객사 관리에 등록된 값) */
+  var CUSTOMERS = {{ quote_customers | tojson }};
+
+  function customerById(id) {
+    for (var i = 0; i < CUSTOMERS.length; i++) {
+      if (CUSTOMERS[i].id === id) { return CUSTOMERS[i]; }
+    }
+    return null;
+  }
+
+  /* 고객사를 고르면 회사명을 채우고 담당자 목록을 다시 만든다 */
+  function fillContacts(keepManual) {
+    var picked = customerById(el('q-customer-sel').value);
+    var sel = el('q-attn-sel');
+    var hint = el('q-attn-hint');
+
+    sel.innerHTML = '';
+    var none = document.createElement('option');
+    none.value = '';
+    none.textContent = '담당자 없이 회사 앞으로';
+    sel.appendChild(none);
+
+    (picked ? picked.contacts : []).forEach(function (c) {
+      var opt = document.createElement('option');
+      opt.value = String(c.id);
+      opt.textContent = c.name + (c.title ? ' · ' + c.title : '') + ' (' + c.role + ')';
+      opt.dataset.name = c.name;
+      opt.dataset.email = c.email || '';
+      sel.appendChild(opt);
+    });
+
+    var manual = document.createElement('option');
+    manual.value = '__custom__';
+    manual.textContent = '직접 입력';
+    sel.appendChild(manual);
+
+    if (!picked) {
+      sel.value = '__custom__';
+      hint.textContent = '등록되지 않은 고객사라 담당자는 직접 적어야 합니다.';
+    } else if (!picked.contacts.length) {
+      sel.value = '';
+      hint.innerHTML = '이 고객사에 등록된 담당자가 없습니다. ' +
+        '<a href="/customers/' + encodeURIComponent(picked.id) + '?tab=contacts" target="_blank">' +
+        '고객사 관리에서 추가</a>하거나 직접 적으세요.';
+    } else {
+      /* 대표 담당자가 맨 앞이라 기본값으로 쓴다 */
+      sel.value = String(picked.contacts[0].id);
+      hint.textContent = '';
+    }
+
+    if (!keepManual) { applyContact(); }
+  }
+
+  /* 고른 담당자를 문서에 들어갈 입력칸으로 옮긴다 */
+  function applyContact() {
+    var sel = el('q-attn-sel');
+    var opt = sel.selectedOptions[0];
+    var manual = sel.value === '__custom__';
+
+    /* 등록된 담당자를 골랐거나 '담당자 없이'면 입력칸은 감춘다 */
+    el('q-attn-manual').hidden = !manual;
+    if (manual) {
+      el('q-attn').value = '';
+      el('q-attn-email').value = '';
+      el('q-attn').focus();
+    } else if (sel.value === '') {
+      el('q-attn').value = '';
+      el('q-attn-email').value = '';
+    } else {
+      el('q-attn').value = opt.dataset.name || '';
+      el('q-attn-email').value = opt.dataset.email || '';
+    }
+  }
+
+  el('q-customer-sel').addEventListener('change', function () {
+    var picked = customerById(el('q-customer-sel').value);
+    if (picked) { el('q-customer').value = picked.name; }
+    fillContacts(false);
+  });
+  el('q-attn-sel').addEventListener('change', applyContact);
+
   function fillQuoteForm() {
     var qty = num('p-qty');
     var fx = num('p-fx') || 1;
@@ -697,6 +802,7 @@
 
   function openQuote() {
     fillQuoteForm();
+    if (!el('q-attn-sel').options.length) { fillContacts(false); }
     quoteModal.hidden = false;
   }
   function closeQuote() { quoteModal.hidden = true; }

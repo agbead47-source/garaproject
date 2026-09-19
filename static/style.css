@@ -1646,6 +1646,11 @@ a { color: inherit; text-decoration: none; }
 }
 .quote-preview-sub { display: block; color: var(--text-sub); font-size: 11.5px; margin-top: 3px; }
 
+/* 견적서 만들기 창 - 고객사·담당자 고르기 */
+.modal-wide .input.spaced-top { margin-top: 8px; }
+.modal-wide .field.no-margin { margin-bottom: 0; }
+.quote-party-row.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+
 /* 문서 화면 */
 .quote-toolbar {
   display: flex;
