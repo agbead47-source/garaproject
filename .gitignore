@@ -19,3 +19,4 @@ data/
 
 # 수출입 통계 캐시 - python trade_store.py 로 다시 만든다
 tradedata/
+

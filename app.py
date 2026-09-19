@@ -4,12 +4,16 @@
 3단계: 업로드 화면(6-1) + 로딩 연출까지.
 """
 
+import os
+import uuid
 from datetime import date, timedelta
 
 from flask import (Flask, jsonify, redirect, render_template, request,
-                   session, url_for)
+                   send_file, session, url_for)
 
 import contact_store
+import customer_excel
+import customer_store
 import doc_edit_store
 import dummy_data
 import mail_ai
@@ -31,6 +35,15 @@ app.register_blueprint(schedule_bp)
 # 고객사 담당자 저장소 (SQLite 사용. 화면에서 넣은 담당자가 실제로 남는다)
 contact_store.init_db()
 contact_store.seed_from_profiles(dummy_data.get_customer_profiles())
+
+# 엑셀로 올린 고객사 저장소 (더미 카드에 없는 회사가 여기 담긴다)
+customer_store.init_db()
+
+# 올린 엑셀을 잠시 두는 자리. 미리보기 -> 확인 사이에만 쓴다
+IMPORT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "data", "imports")
+# 명단 파일이 5MB 를 넘는 일은 없다
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
 # 전달 문서에서 고친 값 저장소 (SQLite. 새로고침해도 수정이 남는다)
 doc_edit_store.init_db()
@@ -464,7 +477,7 @@ def _quote_customers():
     """
     grouped = contact_store.contacts_by_customer()
     rows = []
-    for profile in dummy_data.get_customer_profiles():
+    for profile in _all_profiles():
         contacts = [c for c in grouped.get(profile["id"], []) if c["is_active"]]
         rows.append({
             "id": profile["id"],
@@ -657,6 +670,18 @@ def _with_contacts(profile, contacts=None):
     return profile
 
 
+def _all_profiles(keyword="", grade="all"):
+    """고객사 카드 = 더미 카드 + 엑셀로 올린 회사."""
+    return (dummy_data.get_customer_profiles(keyword, grade)
+            + customer_store.profiles(keyword, grade))
+
+
+def _find_profile(customer_id):
+    """고객사 한 곳. 더미에 없으면 엑셀로 올린 쪽에서 찾는다."""
+    return (dummy_data.get_customer_profile(customer_id)
+            or customer_store.profile(customer_id))
+
+
 @app.route("/customers")
 def customers():
     """8. 고객사 관리 - 목록. (UI 가안. 담당자는 실제 저장값)"""
@@ -665,7 +690,7 @@ def customers():
 
     grouped = contact_store.contacts_by_customer()
     rows = [_with_contacts(row, grouped.get(row["id"], []))
-            for row in dummy_data.get_customer_profiles("", grade)]
+            for row in _all_profiles("", grade)]
 
     # 회사명·국가뿐 아니라 담당자 이름·이메일로도 찾을 수 있어야 한다
     needle = (keyword or "").strip().lower()
@@ -677,6 +702,11 @@ def customers():
 
     summary = dummy_data.get_customer_summary()
     summary["contacts"] = sum(len(v) for v in grouped.values())
+    # 엑셀로 올린 회사도 고객사다. 요약 숫자에 같이 센다
+    imported = customer_store.profiles()
+    summary["total"] += len(imported)
+    summary["vip"] += sum(1 for row in imported if row["grade"] == "vip")
+    summary["imported"] = len(imported)
 
     return render_template(
         "customers.html",
@@ -692,7 +722,7 @@ def customers():
 @app.route("/customers/<customer_id>")
 def customer_detail(customer_id):
     """8-1. 고객사 관리 - 상세. (UI 가안. 담당자는 실제 저장값)"""
-    profile = dummy_data.get_customer_profile(customer_id)
+    profile = _find_profile(customer_id)
     if profile is None:
         return redirect(url_for("customers"))
 
@@ -711,6 +741,197 @@ def customer_detail(customer_id):
     )
 
 
+# ---------------------------------------------------------------------------
+# 고객사 엑셀 내보내기 / 가져오기
+# ---------------------------------------------------------------------------
+
+def _xlsx(buf, name):
+    return send_file(buf, as_attachment=True, download_name=name,
+                     mimetype="application/vnd.openxmlformats-officedocument."
+                              "spreadsheetml.sheet")
+
+
+def _export_options(args):
+    """내보내기 조건을 주소에서 읽는다. (아무것도 없으면 전부)"""
+    preset = customer_excel.PRESET_MAP.get(args.get("preset", ""))
+    cols = args.getlist("cols") or (preset["cols"] if preset else [])
+    return {
+        "columns": customer_excel.pick_columns(cols),
+        "keys": set(c["key"] for c in customer_excel.pick_columns(cols)),
+        "grade": args.get("grade", "all"),
+        "q": args.get("q", ""),
+        # 담당자가 아직 없는 회사도 넣을지
+        "include_empty": args.get("empty", "1") != "0",
+        # 그만둔 담당자(비활성)를 뺄지
+        "active_only": args.get("active", "0") == "1",
+        "guide": args.get("guide", "1") != "0",
+    }
+
+
+def _export_rows(opt):
+    grouped = contact_store.contacts_by_customer()
+    rows = customer_excel.export_rows(
+        _all_profiles(opt["q"], opt["grade"]), grouped,
+        include_empty=opt["include_empty"], active_only=opt["active_only"])
+
+    # 담당자 열을 하나도 안 골랐으면 회사 명단이다. 같은 회사를 여러 줄 내지 않는다
+    if not (opt["keys"] & customer_excel.CONTACT_KEYS):
+        rows = customer_excel.collapse_companies(rows)
+    return rows
+
+
+@app.route("/customers/export")
+def customers_export():
+    """고객사·담당자를 엑셀로 내려받는다. 어떤 값을 받을지 고를 수 있다.
+
+    아무 조건 없이 부르면 전부 받는다. (목록 화면의 '엑셀로 받기' 버튼)
+    """
+    opt = _export_options(request.args)
+    rows = _export_rows(opt)
+
+    label = "고객사" if not (opt["keys"] & customer_excel.CONTACT_KEYS) else "고객사_담당자"
+    name = "{}_{}.xlsx".format(label, date.today().strftime("%Y%m%d"))
+    return _xlsx(customer_excel.build_workbook(
+        rows, with_guide=opt["guide"], columns=opt["columns"]), name)
+
+
+@app.route("/customers/template")
+def customers_template():
+    """빈 양식. 예시 두 줄과 작성 안내가 들어 있다."""
+    return _xlsx(customer_excel.build_template(), "고객사_담당자_양식.xlsx")
+
+
+def _pending_import():
+    """미리보기 중인 파일 경로. 없으면 None."""
+    token = session.get("import_file")
+    if not token:
+        return None
+    path = os.path.join(IMPORT_DIR, token)
+    return path if os.path.exists(path) else None
+
+
+def _drop_import():
+    path = _pending_import()
+    if path:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    session.pop("import_file", None)
+
+
+def _plan_import(path):
+    """올린 파일을 읽어 한 줄씩 판정한다. (판정, 오류 메시지)"""
+    with open(path, "rb") as f:
+        rows, error = customer_excel.read_rows(f)
+    if error:
+        return [], error
+
+    grouped = contact_store.contacts_by_customer()
+    return customer_excel.plan(rows, _all_profiles(), grouped), ""
+
+
+@app.route("/customers/import", methods=["GET", "POST"])
+def customers_import():
+    """엑셀 명단을 올려 고객사·담당자를 한 번에 등록한다.
+
+    올리자마자 저장하지 않는다. 한 줄씩 무엇이 될지 보여 주고, 확인을 눌러야
+    들어간다. 명단은 잘못 들어가면 되돌리기가 번거롭다.
+    """
+    if request.method == "POST":
+        upload = request.files.get("file")
+        if upload is None or not upload.filename:
+            session["contact_msg"] = ("error", "엑셀 파일을 선택해 주세요.")
+            return redirect(url_for("customers_import"))
+
+        if not upload.filename.lower().endswith((".xlsx", ".xlsm")):
+            session["contact_msg"] = (
+                "error", "xlsx 파일만 읽을 수 있습니다. (xls 는 저장할 때 xlsx 로 바꿔 주세요)")
+            return redirect(url_for("customers_import"))
+
+        _drop_import()
+        os.makedirs(IMPORT_DIR, exist_ok=True)
+        token = "{}.xlsx".format(uuid.uuid4().hex)
+        upload.save(os.path.join(IMPORT_DIR, token))
+        session["import_file"] = token
+        session["import_name"] = upload.filename[:120]
+        return redirect(url_for("customers_import"))
+
+    path = _pending_import()
+    planned, error = _plan_import(path) if path else ([], "")
+    if error:
+        _drop_import()
+        session["contact_msg"] = ("error", error)
+        return redirect(url_for("customers_import"))
+
+    # 내보내기 칸에 지금 무엇이 몇 줄 받아지는지 같이 보여 준다
+    opt = _export_options(request.args)
+    preview = _export_rows(opt)
+
+    return render_template(
+        "customer_import.html",
+        page_title="고객사 엑셀 내보내기·가져오기",
+        active_menu="customers",
+        columns=customer_excel.COLUMNS,
+        contact_keys=customer_excel.CONTACT_KEYS,
+        presets=customer_excel.PRESETS,
+        planned=planned,
+        counts=customer_excel.summarize(planned) if planned else None,
+        plan_meta=customer_excel.PLAN_META,
+        file_name=session.get("import_name", "") if path else "",
+        export={
+            # 'keys' 라고 쓰면 템플릿에서 dict.keys 메서드로 잡힌다
+            "cols": opt["keys"],
+            "grade": opt["grade"],
+            "q": opt["q"],
+            "include_empty": opt["include_empty"],
+            "active_only": opt["active_only"],
+            "guide": opt["guide"],
+            "rows": len(preview),
+            "companies": len({r["customer_id"] for r in preview}),
+        },
+        grade_meta=dummy_data.CUSTOMER_GRADE_META,
+    )
+
+
+@app.route("/customers/import/confirm", methods=["POST"])
+def customers_import_confirm():
+    """미리보기에서 확인을 누르면 그때 저장한다."""
+    path = _pending_import()
+    if path is None:
+        session["contact_msg"] = ("error", "올린 파일이 없습니다. 다시 올려 주세요.")
+        return redirect(url_for("customers_import"))
+
+    if request.form.get("action") == "cancel":
+        _drop_import()
+        session["contact_msg"] = ("ok", "가져오기를 취소했습니다.")
+        return redirect(url_for("customers_import"))
+
+    # 미리보기 이후에 화면에서 담당자를 고쳤을 수 있으니 다시 판정하고 저장한다
+    planned, error = _plan_import(path)
+    if error:
+        _drop_import()
+        session["contact_msg"] = ("error", error)
+        return redirect(url_for("customers_import"))
+
+    result = customer_excel.apply(planned)
+    _drop_import()
+
+    parts = []
+    if result["companies"]:
+        parts.append("고객사 {}곳".format(result["companies"]))
+    if result["added"]:
+        parts.append("담당자 {}명 추가".format(result["added"]))
+    if result["updated"]:
+        parts.append("담당자 {}명 갱신".format(result["updated"]))
+    if result["skipped"]:
+        parts.append("오류 {}줄 건너뜀".format(result["skipped"]))
+
+    session["contact_msg"] = ("ok", "엑셀에서 " + ", ".join(parts or ["변경 없음"])
+                              + " 했습니다.")
+    return redirect(url_for("customers"))
+
+
 @app.route("/customers/<customer_id>/contacts", methods=["POST"])
 def customer_contacts(customer_id):
     """8-2. 고객사 담당자 등록·수정·삭제.
@@ -719,7 +940,7 @@ def customer_contacts(customer_id):
     메일을 누구에게 보내느냐로 회신 속도가 갈린다. 여기서 넣은 값은
     더미가 아니라 SQLite(data/contacts.db)에 실제로 저장된다.
     """
-    if dummy_data.get_customer_profile(customer_id) is None:
+    if _find_profile(customer_id) is None:
         return redirect(url_for("customers"))
 
     back = url_for("customer_detail", customer_id=customer_id, tab="contacts")

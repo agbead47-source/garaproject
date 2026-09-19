@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div class="bottom-actions top-bar">
+  <p class="card-desc no-margin">
+    명단을 엑셀로 들고 계시면 한 번에 올릴 수 있습니다.
+    {% if summary.imported %}
+    <span class="pill soft">엑셀로 등록 {{ summary.imported }}곳</span>
+    {% endif %}
+  </p>
+  <div class="action-group">
+    <a class="btn" href="{{ url_for('customers_export') }}">⬇️ 엑셀로 받기</a>
+    <a class="btn btn-primary" href="{{ url_for('customers_import') }}">📗 엑셀로 올리기</a>
+  </div>
+</div>
+
 <form class="card filter-bar" method="get" action="{{ url_for('customers') }}">
   <div class="filter-field grow">
     <label class="field-label" for="q">고객사 검색</label>

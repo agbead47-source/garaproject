@@ -54,7 +54,11 @@
         {% for t in c.tags %}<span class="pill soft">{{ t }}</span>{% endfor %}
       </div>
       <div class="profile-block-title spaced">최근 연락</div>
+      {% if c.emails %}
       <div class="profile-last">{{ c.last_contact }} · {{ c.emails[0].subject }}</div>
+      {% else %}
+      <div class="profile-last text-gray">주고받은 메일이 아직 없습니다</div>
+      {% endif %}
     </div>
   </div>
 </section>

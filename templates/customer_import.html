@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bottom-actions top-bar">
+  <a class="btn" href="{{ url_for('customers') }}">← 고객사 관리</a>
+  <div class="action-group">
+    <a class="btn" href="{{ url_for('customers_template') }}">📄 빈 양식 받기</a>
+  </div>
+</div>
+
+{% if not planned %}
+<section class="card" id="export">
+  <h2 class="card-title">엑셀로 받기</h2>
+  <p class="card-desc">
+    받을 값을 골라서 내려받습니다. 메일 발송용 명단에 거래 등급까지 들어갈 이유는 없고,
+    공장에 넘길 회사 목록에 개인 휴대폰이 섞이면 곤란합니다.
+    <strong>회사명은 늘 들어갑니다</strong> — 고쳐서 다시 올릴 수 있어야 하기 때문입니다.
+  </p>
+
+  <form class="export-form" method="get" action="{{ url_for('customers_export') }}" id="export-form">
+    <div class="export-presets">
+      <span class="export-label">자주 쓰는 조합</span>
+      {% for p in presets %}
+      <button type="button" class="btn btn-mini preset-btn"
+              data-cols="{{ p.cols|join(',') }}" title="{{ p.desc }}">{{ p.label }}</button>
+      {% endfor %}
+    </div>
+
+    <div class="export-cols">
+      <div class="export-group">
+        <div class="export-group-head">회사 정보</div>
+        {% for col in columns if col.key not in contact_keys %}
+        <label class="export-check {% if col.key == 'company' %}fixed{% endif %}">
+          <input type="checkbox" name="cols" value="{{ col.key }}"
+                 {% if col.key in export.cols %}checked{% endif %}
+                 {% if col.key == 'company' %}disabled{% endif %}>
+          <span>{{ col.header }}{% if col.key == 'company' %} <span class="text-gray">(고정)</span>{% endif %}</span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <div class="export-group">
+        <div class="export-group-head">담당자 정보</div>
+        {% for col in columns if col.key in contact_keys %}
+        <label class="export-check">
+          <input type="checkbox" name="cols" value="{{ col.key }}"
+                 {% if col.key in export.cols %}checked{% endif %}>
+          <span>{{ col.header }}</span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <div class="export-group">
+        <div class="export-group-head">범위</div>
+        <label class="export-field">
+          <span class="field-label">등급</span>
+          <select class="select select-inline" name="grade">
+            <option value="all" {% if export.grade == 'all' %}selected{% endif %}>전체 등급</option>
+            {% for key, meta in grade_meta.items() %}
+            <option value="{{ key }}" {% if export.grade == key %}selected{% endif %}>{{ meta.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="export-field">
+          <span class="field-label">검색어</span>
+          <input class="input" type="text" name="q" value="{{ export.q }}"
+                 placeholder="회사명·국가로 좁히기">
+        </label>
+        <label class="export-check">
+          <input type="checkbox" name="empty" value="0" {% if not export.include_empty %}checked{% endif %}>
+          <span>담당자 없는 회사는 빼기</span>
+        </label>
+        <label class="export-check">
+          <input type="checkbox" name="active" value="1" {% if export.active_only %}checked{% endif %}>
+          <span>그만둔 담당자는 빼기</span>
+        </label>
+        <label class="export-check">
+          <input type="checkbox" name="guide" value="0" {% if not export.guide %}checked{% endif %}>
+          <span>작성 안내 시트 빼기</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="export-foot">
+      <span class="export-count">
+        지금 조건이면 <strong>{{ export.companies }}곳 · {{ export.rows }}줄</strong>
+        <span class="text-gray">(열 <span id="col-count">{{ export.cols|length }}</span>개)</span>
+      </span>
+      <span class="action-group">
+        <button type="submit" class="btn" formaction="{{ url_for('customers_import') }}"
+                formtarget="_self">조건만 다시 세기</button>
+        <button type="submit" class="btn btn-primary">⬇️ 이 조건으로 받기</button>
+      </span>
+    </div>
+  </form>
+</section>
+
+
+<section class="card">
+  <h2 class="card-title">엑셀로 한 번에 등록</h2>
+  <p class="card-desc">
+    전시회에서 받아온 명함 정리표, 전임자에게 넘겨받은 목록을 그대로 올리면 됩니다.
+    <strong>한 줄이 담당자 한 명</strong>이고, 같은 회사에 여러 명이면 회사명을 반복해 적습니다.
+  </p>
+
+  <form class="import-form" method="post" action="{{ url_for('customers_import') }}"
+        enctype="multipart/form-data">
+    <label class="import-drop" for="import-file">
+      <span class="import-icon">📗</span>
+      <span class="import-text">
+        <strong>엑셀 파일 선택</strong>
+        <span class="import-sub" id="import-picked">.xlsx · 최대 5MB</span>
+      </span>
+      <input type="file" name="file" id="import-file" accept=".xlsx,.xlsm" hidden>
+    </label>
+    <button type="submit" class="btn btn-primary">올려서 확인하기</button>
+  </form>
+
+  <p class="card-desc">
+    올리자마자 저장하지 않습니다. 한 줄씩 무엇이 될지 먼저 보여 주고,
+    <strong>확인을 눌러야</strong> 들어갑니다.
+  </p>
+</section>
+
+<section class="card">
+  <h2 class="card-title">엑셀 열 <span class="count-chip">{{ columns|length }}</span></h2>
+  <p class="card-desc">
+    열 순서는 바꿔도 되고 모르는 열이 끼어 있어도 됩니다. <strong>머리글 이름</strong>으로 찾습니다.
+  </p>
+  <dl class="doc-rows">
+    {% for col in columns %}
+    <div class="doc-row">
+      <dt class="doc-label">
+        {{ col.header }}
+        {% if col.required %}<span class="flag-badge check">필수</span>{% endif %}
+      </dt>
+      <dd class="doc-value">{{ col.hint }}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+</section>
+
+{% else %}
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">올린 내용 확인 <span class="count-chip">{{ counts['total'] }}줄</span></h2>
+      <p class="card-desc no-margin">{{ file_name }} — 아직 저장하지 않았습니다.</p>
+    </div>
+    <form method="post" action="{{ url_for('customers_import_confirm') }}">
+      <input type="hidden" name="action" value="cancel">
+      <button type="submit" class="btn">취소</button>
+    </form>
+  </div>
+
+  <div class="summary-grid summary-grid-4 tight">
+    <div class="summary-card">
+      <div class="summary-label">새 고객사</div>
+      <div class="summary-value">{{ counts['companies'] }}<span class="unit">곳</span></div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">담당자 추가</div>
+      <div class="summary-value text-green">{{ counts['new'] }}<span class="unit">명</span></div>
+    </div>
+    <div class="summary-card {% if counts['update'] %}warn{% endif %}">
+      <div class="summary-label">담당자 갱신</div>
+      <div class="summary-value {% if counts['update'] %}text-orange{% endif %}">{{ counts['update'] }}<span class="unit">명</span></div>
+    </div>
+    <div class="summary-card {% if counts['error'] %}danger{% endif %}">
+      <div class="summary-label">오류</div>
+      <div class="summary-value {% if counts['error'] %}text-red{% endif %}">{{ counts['error'] }}<span class="unit">줄</span></div>
+      <div class="summary-sub">저장에서 빠집니다</div>
+    </div>
+  </div>
+
+  <table class="item-table import-table">
+    <thead>
+      <tr>
+        <th class="col-line">줄</th>
+        <th class="col-plan">판정</th>
+        <th>회사</th>
+        <th>담당자</th>
+        <th class="col-role">직급 · 역할</th>
+        <th>연락처</th>
+        <th>메모</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in planned %}
+      <tr class="{% if item.action == 'error' %}row-error{% endif %}">
+        <td class="col-line">{{ item.line }}</td>
+        <td class="col-plan">
+          <span class="fill-badge {{ plan_meta[item.action].css }}">{{ plan_meta[item.action].label }}</span>
+        </td>
+        <td>
+          <div class="reg-name">{{ item.company_name or item.row.company }}</div>
+          <div class="reg-inci">
+            {% if item.company_new %}<span class="text-orange">새 고객사</span>
+            {% else %}{{ item.customer_id }}{% endif %}
+            {% if item.row.country %} · {{ item.row.country }}{% endif %}
+          </div>
+        </td>
+        <td>
+          {% if item.row.name %}
+          <div class="reg-name">{{ item.row.name }}</div>
+          {% if item.row.is_primary %}<span class="flag-badge check">대표</span>{% endif %}
+          {% else %}<span class="text-gray">—</span>{% endif %}
+        </td>
+        <td class="col-role">
+          {{ item.row.title or '—' }}
+          {% if item.row.role %}<div class="reg-inci">{{ item.row.role }}</div>{% endif %}
+        </td>
+        <td>
+          {% if item.row.email %}<div>{{ item.row.email }}</div>{% endif %}
+          {% if item.row.phone %}<div class="reg-inci">{{ item.row.phone }}</div>{% endif %}
+          {% if not item.row.email and not item.row.phone %}<span class="text-gray">—</span>{% endif %}
+        </td>
+        <td class="col-reason">
+          {% if item.reason %}
+          <span class="{% if item.action == 'error' %}text-red{% else %}text-gray{% endif %}">{{ item.reason }}</span>
+          {% elif item.row.note %}<span class="text-gray">{{ item.row.note }}</span>
+          {% else %}<span class="text-gray">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="bottom-actions">
+    <form method="post" action="{{ url_for('customers_import_confirm') }}">
+      <input type="hidden" name="action" value="cancel">
+      <button type="submit" class="btn">취소하고 다시 올리기</button>
+    </form>
+    <form method="post" action="{{ url_for('customers_import_confirm') }}">
+      <button type="submit" class="btn btn-primary" {% if not counts['ok'] %}disabled{% endif %}>
+        {{ counts['ok'] }}줄 저장하기
+      </button>
+    </form>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  // 파일을 고르면 이름을 보여 준다. 무엇을 올리는지 모르고 누르게 두지 않는다
+  var input = document.getElementById('import-file');
+  if (input) {
+    var label = document.getElementById('import-picked');
+    input.addEventListener('change', function () {
+      label.textContent = input.files.length ? input.files[0].name : '.xlsx · 최대 5MB';
+    });
+  }
+
+  /* 내보내기 열 고르기. 조합 버튼은 체크만 바꾸고, 줄 수는 '다시 세기'로 서버에서 센다 */
+  var form = document.getElementById('export-form');
+  if (!form) { return; }
+
+  var boxes = form.querySelectorAll('input[name="cols"]');
+  var counter = document.getElementById('col-count');
+
+  function refresh() {
+    var n = 0;
+    boxes.forEach(function (b) { if (b.checked || b.disabled) { n += 1; } });
+    counter.textContent = n;
+  }
+
+  form.querySelectorAll('.preset-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var want = btn.dataset.cols.split(',');
+      boxes.forEach(function (b) { b.checked = want.indexOf(b.value) !== -1; });
+      refresh();
+    });
+  });
+
+  boxes.forEach(function (b) { b.addEventListener('change', refresh); });
+  refresh();
+})();
+</script>
+{% endblock %}

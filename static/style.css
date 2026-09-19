@@ -2779,3 +2779,98 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 720px) {
   .pager { justify-content: center; }
 }
+
+/* ---------------------------------------------------------------------------
+   고객사 엑셀 가져오기
+   --------------------------------------------------------------------------- */
+.bottom-actions.top-bar {
+  margin: 0 0 16px;
+  padding: 0;
+  border-top: 0;
+  align-items: center;
+}
+
+.import-form {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin: 14px 0;
+  flex-wrap: wrap;
+}
+
+.import-drop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 320px;
+  padding: 16px 18px;
+  border: 1px dashed #C9CDD5;
+  border-radius: 10px;
+  background: #FAFBFC;
+  cursor: pointer;
+}
+.import-drop:hover { border-color: var(--point); background: var(--point-soft); }
+.import-icon { font-size: 24px; }
+.import-text strong { display: block; font-size: 13.5px; }
+.import-sub { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-sub); }
+.import-form .btn { align-self: center; }
+
+.import-table td { vertical-align: top; }
+.import-table .col-line { width: 44px; color: var(--text-sub); font-variant-numeric: tabular-nums; }
+.import-table .col-plan { width: 104px; }
+.import-table .col-role { width: 150px; }
+.import-table .col-reason { width: 260px; font-size: 12px; }
+.import-table .row-error td { background: #FFFAFA; }
+
+.export-form { margin-top: 14px; }
+.export-presets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.export-label { font-size: 12px; color: var(--text-sub); margin-right: 4px; }
+
+.export-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.export-group {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #FAFBFC;
+}
+.export-group-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+  margin-bottom: 10px;
+}
+.export-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.export-check.fixed { color: var(--text-sub); cursor: default; }
+.export-field { display: block; margin-bottom: 8px; }
+.export-field .select, .export-field .input { width: 100%; }
+
+.export-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.export-count { font-size: 12.5px; color: var(--text-sub); }
+
+@media (max-width: 1100px) {
+  .export-cols { grid-template-columns: 1fr; }
+}
