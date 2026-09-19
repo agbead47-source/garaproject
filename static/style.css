@@ -1026,6 +1026,54 @@ a { color: inherit; text-decoration: none; }
 .link-card-main { font-weight: 700; color: #B8403C; font-size: 13px; }
 .link-card-sub { color: var(--text-sub); font-size: 12px; margin-top: 3px; }
 
+/* ---------- 최신 규제 소식 ---------- */
+.regnews-card { margin-top: 18px; }
+
+.regnews-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.regnews-head .btn { text-decoration: none; white-space: nowrap; }
+.regnews-head .card-title { margin-bottom: 6px; }
+
+.regnews-run {
+  padding: 9px 13px;
+  border-radius: 8px;
+  background: #FAFBFC;
+  color: var(--text-sub);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.regnews-list { border-top: 1px solid #F1F2F4; }
+
+.regnews-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid #F1F2F4;
+}
+.regnews-row:hover { background: #FAFBFC; }
+
+.regnews-flag { font-size: 17px; }
+.regnews-body { flex: 1; min-width: 0; }
+.regnews-title { display: block; font-size: 13.5px; font-weight: 600; line-height: 1.5; }
+.regnews-title .status-badge { margin-left: 6px; }
+.regnews-meta { display: block; color: var(--text-sub); font-size: 11.5px; margin-top: 3px; }
+.regnews-kw { color: var(--gray); }
+.regnews-go { color: var(--gray); font-size: 13px; }
+.regnews-row:hover .regnews-go { color: var(--point); }
+
+.btn.is-busy { opacity: .6; pointer-events: none; }
+
+.regnews-sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.regnews-sources .pill { text-decoration: none; }
+.regnews-sources .pill:hover { background: var(--point-soft); color: var(--point); }
+
 /* ---------- 오늘의 트렌드 ---------- */
 .trend-meta { text-align: right; }
 .trend-date { display: block; font-weight: 700; font-size: 13px; }

@@ -99,6 +99,89 @@
   </div>
 </form>
 
+<!-- 최신 규제 소식 - 성분 기준이 바뀌기 전에 공지가 먼저 뜬다 -->
+<section class="card regnews-card">
+  <div class="regnews-head">
+    <div>
+      <h2 class="card-title no-margin">
+        최신 규제 소식
+        {% if news.collected %}<span class="count-chip">{{ news.total }}</span>{% endif %}
+        <span class="data-badge {% if news.collected %}live{% endif %}">
+          {{ '수집한 공지' if news.collected else '미수집' }}
+        </span>
+      </h2>
+      <p class="card-desc no-margin">
+        규제기관 공지 페이지에서 <strong>제목에 화장품 키워드가 든 링크</strong>를 모읍니다.
+        성분 기준이 바뀌기 전에 공지가 먼저 뜨기 때문에, 판정보다 앞서 보는 자리입니다.
+      </p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('regulation', collect='1') }}"
+       id="regnews-collect">🔄 지금 수집</a>
+  </div>
+
+  {% if news.last_run %}
+  <div class="regnews-run">
+    마지막 수집 <b>{{ news.last_run.at }}</b> · 확인 {{ news.last_run.checked }}건 ·
+    신규 {{ news.last_run.new }}건
+    {% if news.last_run.failures %}
+    <span class="text-orange">
+      · 실패 {{ news.last_run.failures|length }}곳
+      ({% for f in news.last_run.failures %}{{ f.agency }}{% if not loop.last %}, {% endif %}{% endfor %})
+    </span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if news.last_run and news.last_run.failures %}
+  <div class="unmatched-box">
+    <div class="unmatched-head">수집하지 못한 곳</div>
+    {% for f in news.last_run.failures %}
+    <div class="unmatched-row"><strong>{{ f.region }} {{ f.agency }}</strong> — {{ f.error }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if news.rows %}
+  <div class="regnews-list">
+    {% for n in news.rows %}
+    <a class="regnews-row" href="{{ n.link }}" target="_blank" rel="noopener noreferrer">
+      <span class="regnews-flag">{{ n.flag }}</span>
+      <span class="regnews-body">
+        <span class="regnews-title">
+          {{ n.title }}
+          {% if n.is_new %}<span class="status-badge confirmed">신규</span>{% endif %}
+        </span>
+        <span class="regnews-meta">
+          {{ n.agency }} · 수집 {{ n.first_seen[:10] }} ·
+          <span class="regnews-kw">키워드 “{{ n.keyword }}”</span>
+        </span>
+      </span>
+      <span class="regnews-go">↗</span>
+    </a>
+    {% endfor %}
+  </div>
+  <p class="field-hint">
+    링크 제목에 키워드가 든 항목을 모은 것이라 <strong>메뉴·안내 링크가 섞일 수 있습니다.</strong>
+    공지 목록 페이지 주소로 바꾸면 훨씬 깨끗해집니다 —
+    <code class="source-cmd">regnews_store.py</code> 의 <code class="source-cmd">SOURCES</code>.
+  </p>
+  {% else %}
+  <p class="card-desc no-margin">
+    아직 수집한 공지가 없습니다. <strong>지금 수집</strong>을 누르거나
+    <code class="source-cmd">python regnews_store.py</code> 로 받아 오세요.
+    수집 결과는 <code class="source-cmd">{{ news.csv_path }}</code> 로도 떨어져 엑셀에서 열 수 있습니다.
+  </p>
+  {% endif %}
+
+  <div class="regnews-sources">
+    {% for s in news.sources %}
+    <a class="pill soft" href="{{ s.url }}" target="_blank" rel="noopener noreferrer">
+      {{ s.flag }} {{ s.agency }}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
 <div id="loading" class="loading-overlay" hidden>
   <div class="loading-box">
     <div class="spinner"></div>
@@ -324,6 +407,20 @@
 <script>
 (function () {
   var form = document.getElementById('reg-form');
+
+  /* 규제 공지 수집 - 사이트 3곳을 도느라 십여 초 걸린다. 눌린 걸 알려 준다 */
+  var collectBtn = document.getElementById('regnews-collect');
+  if (collectBtn) {
+    collectBtn.addEventListener('click', function () {
+      var overlay = document.getElementById('loading');
+      var text = document.getElementById('loading-text');
+      var sub = overlay ? overlay.querySelector('.loading-sub') : null;
+      if (text) { text.textContent = '규제기관 공지를 수집하는 중…'; }
+      if (sub) { sub.textContent = '사이트마다 3초씩 쉬면서 돕니다. 십여 초 걸립니다.'; }
+      if (overlay) { overlay.hidden = false; }
+      collectBtn.classList.add('is-busy');
+    });
+  }
 
   if (form) {
     var dropzone = document.getElementById('dropzone');

@@ -11,5 +11,8 @@ trenddata/
 # 번역 캐시 - 다시 호출하면 채워진다
 apicache/
 
+# 규제 공지 수집 결과 - python regnews_store.py 로 다시 만든다
+newsdata/
+
 # 신규 바이어 발굴 · 일정관리 DB - 로컬 저장, 저장소 추적 제외
 data/
