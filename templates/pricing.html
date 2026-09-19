@@ -323,8 +323,9 @@
     <form method="post" action="{{ url_for('pricing_quote') }}" id="quote-form">
       <div class="modal-body">
         <p class="modal-desc">
-          단가는 지금 화면에서 계산한 값이 그대로 들어갑니다.
-          문서에 적을 내용만 확인해 주세요.
+          단가는 지금 화면에서 계산한 값이 그대로 들어갑니다. 문서에 적을 내용만 확인해 주세요.
+          고객사로 나가는 <strong>영문 견적서</strong>가 먼저 열리고,
+          원화 환산·조건별 단가가 붙은 <strong>사내 보관용</strong>은 거기서 전환할 수 있습니다.
         </p>
 
         <div class="quote-preview" id="quote-preview">—</div>
@@ -341,22 +342,45 @@
         </div>
 
         <div class="field">
-          <label class="field-label" for="q-product">품목명</label>
+          <label class="field-label" for="q-product-en">품목명 (영문) · 고객 발송본에 들어갑니다</label>
+          <input class="input" type="text" name="product_en" id="q-product-en"
+                 value="{{ d.cost_sheet.product_en }}">
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="q-product">품목명 (국문) · 사내 보관용</label>
           <input class="input" type="text" name="product" id="q-product"
                  value="{{ d.handoff_product or d.cost_sheet.product }}">
         </div>
 
+        <div class="field">
+          <label class="field-label" for="q-issued-by-en">우리 담당자 (영문 · 공급자란)</label>
+          <input class="input" type="text" name="issued_by_en" id="q-issued-by-en"
+                 value="{{ d.quote_contact_en }}">
+          <p class="field-hint">
+            사내 계정명({{ current_user }})은 사내 보관용에만 쓰고, 고객 발송본에는 이 값이 들어갑니다.
+          </p>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="q-port">인도 장소 (도착항·인도지)</label>
+          <input class="input" type="text" name="port" id="q-port" value="{{ d.quote_port }}">
+          <p class="field-hint">거래조건 뒤에 붙습니다. 예) CIF <b>Los Angeles</b></p>
+        </div>
+
         {% for t in quote_terms %}
         <div class="field">
-          <label class="field-label" for="q-{{ t.key }}">{{ t.label }}</label>
+          <label class="field-label" for="q-{{ t.key }}">{{ t.label }} ({{ t.label_en }})</label>
           <input class="input" type="text" name="term_{{ t.key }}" id="q-{{ t.key }}" value="{{ t.value }}">
+          <p class="field-hint">{{ t.hint }} — 고객에게 그대로 나가는 문구라 영문으로 적습니다.</p>
         </div>
         {% endfor %}
 
         <div class="field">
           <label class="field-label" for="q-remark">비고 (선택)</label>
           <textarea class="input textarea" name="remark" id="q-remark" rows="2"
-                    placeholder="금형비·시험비 등 별도 협의 사항을 적어 두세요."></textarea>
+                    placeholder="Mould and testing fees to be quoted separately."></textarea>
+          <p class="field-hint">견적서에 그대로 실립니다. 고객 발송본에도 나오니 영문으로 적어 주세요.</p>
         </div>
       </div>
 
@@ -368,10 +392,11 @@
       <input type="hidden" name="price_krw" id="q-price-krw">
       <input type="hidden" name="target_usd" id="q-target-usd">
       <input type="hidden" name="terms" id="q-terms">
+      <input type="hidden" name="view" value="customer">
 
       <div class="modal-foot">
         <button type="button" class="btn" id="quote-cancel">취소</button>
-        <button type="submit" class="btn btn-primary">견적서 보기</button>
+        <button type="submit" class="btn btn-primary">견적서 보기 (영문)</button>
       </div>
     </form>
   </div>

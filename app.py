@@ -380,22 +380,53 @@ def pricing():
     )
 
 
-@app.route("/pricing/quote", methods=["POST"])
+# 견적서 세션에 담을 값 (쿠키 세션이라 필요한 것만, 길이도 잘라서 넣는다)
+QUOTE_FIELDS = {
+    "customer": 120, "attn": 80, "product": 160, "product_en": 160, "port": 60,
+    "qty": 16, "incoterm": 8, "fx": 16, "price_usd": 16, "price_krw": 16,
+    "target_usd": 16, "terms": 600, "remark": 400,
+    "issued_by": 60, "issued_by_en": 60,
+}
+
+
+@app.route("/pricing/quote", methods=["GET", "POST"])
 def pricing_quote():
     """6-1. 견적서.
 
     단가 계산 화면에서 뽑은 값을 그대로 받아 고객사로 나가는 견적서 모양으로
     보여준다. (계산은 화면에서 끝났으니 여기서는 문서로 옮겨 담기만 한다)
     문서 하단에는 회사 직인(static/seal.svg)이 찍힌다.
+
+    문서는 두 벌이다.
+      - 고객 발송용(customer) : 영문. 고객이 봐도 되는 값만
+      - 사내 보관용(internal) : 국문 + 원화 환산·견적환율·조건별 단가
+    화면에서 두 벌을 오갈 수 있게 값은 세션에 담고 GET 으로 넘긴다.
     """
-    form = request.form.to_dict()
-    form.setdefault("issued_by", session.get("user", DEFAULT_USER))
+    if request.method == "POST":
+        session["quote"] = {
+            key: (request.form.get(key) or "")[:limit]
+            for key, limit in QUOTE_FIELDS.items()
+        }
+        return redirect(url_for("pricing_quote", view=request.form.get("view", "customer")))
+
+    form = session.get("quote")
+    if not form:
+        # 계산 화면을 거치지 않고 주소로 바로 들어온 경우
+        return redirect(url_for("pricing"))
+
+    form = dict(form)
+    if not form.get("issued_by"):
+        form["issued_by"] = session.get("user", DEFAULT_USER)
+
+    view = request.args.get("view", "customer")
+    if view not in ("customer", "internal"):
+        view = "customer"
 
     return render_template(
         "quote.html",
         page_title="견적서",
         active_menu="pricing",
-        q=dummy_data.build_quote(form),
+        q=dummy_data.build_quote(form, view),
     )
 
 

@@ -1905,6 +1905,7 @@ _COST_SHEET = {
     "issued_by": "구매팀 이원가",
     "issued_at": "2026-09-15",
     "product": "비타민C 브라이트닝 세럼 30ml",
+    "product_en": "Vitamin C Brightening Serum 30ml",
     "quantity": 5000,
     "currency": "KRW",
     "lines": [
@@ -1996,6 +1997,8 @@ def get_pricing_defaults(file_name=None, handoff=None):
         "margin": 25,
         "margin_mode": "margin",
         "selected_incoterm": "CIF",
+        "quote_port": QUOTE_PORT,
+        "quote_contact_en": QUOTE_CONTACT_EN,
         "logistics": [dict(row) for row in _LOGISTICS],
         "insurance": dict(INSURANCE),
         "incoterms": [dict(row) for row in INCOTERMS],
@@ -2008,6 +2011,12 @@ def get_pricing_defaults(file_name=None, handoff=None):
 # 견적서 (영업단가 계산 -> 고객사로 나가는 문서)
 #   단가 계산은 화면(JS)에서 하므로, 여기서는 계산된 값을 받아
 #   문서 형식(공급자·수신처·품목·거래조건·직인)으로 옮겨 담기만 한다.
+#
+#   문서는 두 벌로 나온다.
+#     - 고객 발송용(customer) : 영문. 고객이 봐도 되는 값만 (USD 단가·합계)
+#     - 사내 보관용(internal) : 국문. 원화 환산·견적환율·조건별 단가까지
+#   원화 환산과 조건별 단가(EXW~CIF)는 우리 원가·마진이 드러나는 값이라
+#   고객 발송용에는 절대 넣지 않는다.
 # ---------------------------------------------------------------------------
 
 # 공급자(자사) 정보 - 견적서 머리말과 하단 직인 옆에 들어간다
@@ -2015,28 +2024,97 @@ SELLER = {
     "name": "주식회사 투두트레이드",
     "name_en": "TO-DO TRADE CO., LTD.",
     "ceo": "김무역",
+    "ceo_en": "Kim Moo-yeok",
     "biz_no": "123-45-67890",
     "address": "서울특별시 강남구 테헤란로 123, 8층",
+    "address_en": "8F, 123 Teheran-ro, Gangnam-gu, Seoul 06234, Republic of Korea",
     "tel": "+82-2-1234-5678",
     "email": "sales@todotrade.co.kr",
     # static/ 안의 직인 이미지. 실제 운영에서는 스캔한 법인 직인으로 바꾼다.
     "seal_file": "seal.svg",
 }
 
-# 견적 조건 기본값 - 견적서 만들기 창에서 그대로 고칠 수 있다
+# 견적 조건 기본값 - 견적서 만들기 창에서 그대로 고칠 수 있다.
+#   값은 고객에게 그대로 나가는 계약 문구라 영문으로 적고,
+#   화면에는 무슨 뜻인지 한글 설명(hint)을 같이 보여준다.
 QUOTE_TERMS = [
-    {"key": "validity", "label": "견적 유효기간", "value": "견적일로부터 30일"},
-    {"key": "payment", "label": "결제 조건", "value": "T/T 30% 선금, 잔금 선적 전"},
-    {"key": "delivery", "label": "납기", "value": "발주 확정 후 45일 이내 선적"},
-    {"key": "origin", "label": "원산지", "value": "대한민국 (Republic of Korea)"},
-    {"key": "packing", "label": "포장", "value": "수출 표준 포장 (Export carton)"},
+    {"key": "validity", "label": "견적 유효기간", "label_en": "Validity",
+     "value": "30 days from the date of this quotation",
+     "hint": "견적일로부터 30일"},
+    {"key": "payment", "label": "결제 조건", "label_en": "Payment",
+     "value": "T/T 30% with order, balance before shipment",
+     "hint": "T/T 30% 선금, 잔금 선적 전"},
+    {"key": "delivery", "label": "납기", "label_en": "Delivery",
+     "value": "Within 45 days after order confirmation",
+     "hint": "발주 확정 후 45일 이내 선적"},
+    {"key": "origin", "label": "원산지", "label_en": "Country of Origin",
+     "value": "Republic of Korea",
+     "hint": "대한민국"},
+    {"key": "packing", "label": "포장", "label_en": "Packing",
+     "value": "Export standard carton",
+     "hint": "수출 표준 포장"},
 ]
 
+# 인도 장소 - 견적서에는 조건만 적으면 안 되고 지명까지 적어야 한다 (CIF Los Angeles)
+QUOTE_PORT = "Los Angeles"
+
+# 고객 발송본 서명란의 담당자. 사내 계정명("해외영업팀 홍길동")을 그대로 쓰면
+# 영문 문서에 한글이 섞이므로, 영문 표기는 따로 받는다.
+QUOTE_CONTACT_EN = "Overseas Sales Team"
+
 # 문서 하단 안내 문구
-QUOTE_NOTES = [
-    "본 견적은 기재된 선적 조건·수량·환율을 전제로 하며, 조건이 바뀌면 단가도 달라집니다.",
-    "환율 변동분은 선적 시점 기준으로 재협의할 수 있습니다.",
-    "금형비·시험비 등 1회성 비용은 별도 협의 항목입니다.",
+QUOTE_NOTES = {
+    "en": [
+        "This quotation is based on the shipping terms and quantity stated above; "
+        "any change may affect the unit price.",
+        "Prices may be subject to review in case of significant currency fluctuation "
+        "at the time of shipment.",
+        "One-off costs such as mould and testing fees are quoted separately.",
+    ],
+    "ko": [
+        "본 견적은 기재된 선적 조건·수량·환율을 전제로 하며, 조건이 바뀌면 단가도 달라집니다.",
+        "환율 변동분은 선적 시점 기준으로 재협의할 수 있습니다.",
+        "금형비·시험비 등 1회성 비용은 별도 협의 항목입니다.",
+    ],
+}
+
+# 문서에 찍히는 고정 문구. 고객 발송용은 영문이라 라벨도 통째로 갈아 끼운다.
+QUOTE_LABELS = {
+    "en": {
+        "title": "QUOTATION", "sub_title": "견 적 서",
+        "no": "Quotation No.", "date": "Date",
+        "to": "To (Messrs.)", "from": "Supplier",
+        "attn": "Attn.", "intro": "We are pleased to quote you as follows.",
+        "biz_no": "Business Reg. No.", "contact": "Contact",
+        "th_no": "No", "th_desc": "Description", "th_term": "Terms",
+        "th_qty": "Q'ty", "th_price": "Unit Price (USD)", "th_amount": "Amount (USD)",
+        "unit": "pcs", "total": "Total Amount",
+        "conditions": "Terms & Conditions", "shipment": "Shipment",
+        "remark": "Remarks",
+        "sign_intro": "For and on behalf of", "ceo": "CEO", "seal": "(Seal)",
+    },
+    "ko": {
+        "title": "견 적 서", "sub_title": "QUOTATION",
+        "no": "견적번호", "date": "견적일자",
+        "to": "수신", "from": "공급자",
+        "attn": "담당", "intro": "아래와 같이 견적합니다.",
+        "biz_no": "사업자등록번호", "contact": "담당",
+        "th_no": "No", "th_desc": "품목", "th_term": "거래조건",
+        "th_qty": "수량", "th_price": "단가 (USD)", "th_amount": "금액 (USD)",
+        "unit": "개", "total": "합계 금액",
+        "conditions": "거래 조건", "shipment": "선적 조건",
+        "remark": "비고",
+        "sign_intro": "", "ceo": "대표이사", "seal": "(인)",
+        # 사내 보관용에만 나오는 것
+        "krw": "원화 환산", "fx_note": "견적환율",
+        "term_table": "조건별 단가", "term_table_sub": "사내 참고",
+    },
+}
+
+# 견적서 화면 (고객 발송용 / 사내 보관용)
+QUOTE_VIEWS = [
+    {"value": "customer", "label": "고객 발송용 (영문)", "lang": "en"},
+    {"value": "internal", "label": "사내 보관용 (국문)", "lang": "ko"},
 ]
 
 
@@ -2054,19 +2132,36 @@ def _quote_no(customer, product, today):
     return "QT-{}-{:04d}".format(today.strftime("%Y%m%d"), zlib.crc32(seed) % 10000)
 
 
-def build_quote(form):
+def build_quote(form, view="customer"):
     """견적서 화면에 쓸 값. (form: 단가 계산 화면이 POST 한 값)
 
     계산은 이미 화면에서 끝났고, 여기서는 받은 값을 검증·정리해서
     문서 모양으로 만든다. 값이 비면 화면 기본값으로 메운다.
+
+    view 가 'customer' 면 고객에게 나가는 영문 견적서,
+    'internal' 이면 원화 환산·조건별 단가까지 붙은 사내 보관용이다.
     """
     defaults = get_pricing_defaults()
+    sheet = defaults["cost_sheet"]
+
+    internal = view == "internal"
+    lang = "ko" if internal else "en"
+    t = dict(QUOTE_LABELS[lang])
 
     customer = (form.get("customer") or "").strip() or defaults["customer"]
-    product = (form.get("product") or "").strip() or defaults["cost_sheet"]["product"]
     attn = (form.get("attn") or "").strip()
 
-    qty = int(_quote_num(form.get("qty"), defaults["cost_sheet"]["quantity"])) or 1
+    # 품목명은 국문·영문을 따로 받는다. 고객 발송용에 국문 제품명이 나가면 안 된다.
+    product_ko = (form.get("product") or "").strip() or sheet["product"]
+    product_en = (form.get("product_en") or "").strip() or sheet.get("product_en", "")
+    product = (product_en or product_ko) if lang == "en" else (product_ko or product_en)
+    # 고객 발송용은 영문만 (국문 품목명이 같이 나가면 문서가 반쪽짜리가 된다).
+    # 사내 보관용에는 영문명을 같이 적어 둔다.
+    product_sub = "" if lang == "en" else product_en
+    if product_sub == product:
+        product_sub = ""
+
+    qty = int(_quote_num(form.get("qty"), sheet["quantity"])) or 1
     fx = _quote_num(form.get("fx"), defaults["fx"]) or 1
     target_usd = _quote_num(form.get("target_usd"), defaults["target_price_usd"])
 
@@ -2078,55 +2173,75 @@ def build_quote(form):
     incoterm = (form.get("incoterm") or "").strip() or defaults["selected_incoterm"]
     incoterm_label = next((i["label"] for i in INCOTERMS if i["code"] == incoterm), incoterm)
     incoterm_desc = next((i["desc"] for i in INCOTERMS if i["code"] == incoterm), "")
+    # 조건만 적으면 견적이 성립하지 않는다. 지명까지 붙인다 (CIF Los Angeles)
+    port = (form.get("port") or "").strip() or QUOTE_PORT
+    incoterm_full = "{} {}".format(incoterm, port).strip()
 
-    # 조건별 단가 (참고표) - 화면에서 만든 JSON 을 그대로 받는다
-    try:
-        terms = json.loads(form.get("terms") or "[]")
-    except ValueError:
-        terms = []
-    terms = [
-        {
-            "code": str(row.get("code", "")),
-            "usd": _quote_num(row.get("usd")),
-            "krw": _quote_num(row.get("krw")),
-        }
-        for row in terms if isinstance(row, dict)
-    ]
+    # 조건별 단가 (사내 참고용) - 화면에서 만든 JSON 을 그대로 받는다
+    terms = []
+    if internal:
+        try:
+            rows = json.loads(form.get("terms") or "[]")
+        except ValueError:
+            rows = []
+        terms = [
+            {
+                "code": str(row.get("code", "")),
+                "usd": _quote_num(row.get("usd")),
+                "krw": _quote_num(row.get("krw")),
+            }
+            for row in rows if isinstance(row, dict)
+        ]
 
     # 거래조건 - 창에서 고친 값이 있으면 그 값, 없으면 기본값
     conditions = [
-        {"key": row["key"], "label": row["label"],
+        {"key": row["key"],
+         "label": row["label_en"] if lang == "en" else row["label"],
          "value": (form.get("term_" + row["key"]) or "").strip() or row["value"]}
         for row in QUOTE_TERMS
     ]
 
     today = date.today()
+    seller = dict(SELLER)
     return {
-        "seller": dict(SELLER),
-        "no": _quote_no(customer, product, today),
+        "view": view,
+        "internal": internal,
+        "lang": lang,
+        "t": t,
+        "views": [dict(row) for row in QUOTE_VIEWS],
+        "seller": seller,
+        "seller_name": seller["name_en"] if lang == "en" else seller["name"],
+        "seller_name_sub": seller["name"] if lang == "en" else seller["name_en"],
+        "seller_ceo": seller["ceo_en"] if lang == "en" else seller["ceo"],
+        "seller_address": seller["address_en"] if lang == "en" else seller["address"],
+        "no": _quote_no(customer, product_ko, today),
         "issued_at": today.isoformat(),
-        "issued_by": form.get("issued_by") or "",
+        "issued_by": (form.get("issued_by_en") or QUOTE_CONTACT_EN) if lang == "en"
+                     else (form.get("issued_by") or ""),
         "customer": customer,
         "attn": attn,
         "product": product,
+        "product_sub": product_sub,
         "quantity": qty,
         "incoterm": incoterm,
+        "incoterm_full": incoterm_full,
         "incoterm_label": incoterm_label,
-        "incoterm_desc": incoterm_desc,
+        "incoterm_desc": incoterm_desc if internal else "",
+        "port": port,
         "currency": "USD",
-        "fx": fx,
         "unit_price_usd": price_usd,
-        "unit_price_krw": price_krw,
         "amount_usd": price_usd * qty,
-        "amount_krw": price_krw * qty,
-        "target_usd": target_usd,
-        "over_target": bool(target_usd and price_usd > target_usd),
+        # 아래 네 개는 사내 보관용에서만 쓴다 (환율·원가가 드러나는 값)
+        "fx": fx if internal else 0,
+        "unit_price_krw": price_krw if internal else 0,
+        "amount_krw": price_krw * qty if internal else 0,
+        "target_usd": target_usd if internal else 0,
+        "over_target": bool(internal and target_usd and price_usd > target_usd),
         "terms": terms,
         "conditions": conditions,
-        "notes": list(QUOTE_NOTES),
+        "notes": list(QUOTE_NOTES[lang]),
         "remark": (form.get("remark") or "").strip(),
     }
-
 
 # ---------------------------------------------------------------------------
 # 개발요청서 직접 작성 (해외영업 -> 사내 개발팀)
