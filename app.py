@@ -1056,6 +1056,7 @@ def projects():
         stages=project_store.STAGES,
         states=[project_store.state_meta(k) for k in project_store.STATE_ORDER],
         customers=_all_profiles(),
+        drops=project_store.drop_stats(),
         flash_msg=session.pop("project_msg", None),
     )
 
@@ -1126,6 +1127,10 @@ def project_hub(project_id):
         page_title=project["title"],
         active_menu="projects",
         d=data,
+        # 이 고객사와 지금까지 어땠는지. 한 건만 보면 안 보인다
+        signals=project_store.customer_signals(
+            project["customer_id"], project["customer_name"] or "",
+            skip_project_id=None),
         profile=profile,
         contacts=grouped.get(project["customer_id"], []),
         schedule=schedule,
@@ -1160,6 +1165,23 @@ def project_update(project_id):
             project_store.rebuild_questions(project_id, profile=profile)
             session["project_msg"] = ("ok", "{} 값을 고쳤습니다.".format(
                 project_store.FIELD_LABELS[key]))
+        return redirect(back)
+
+    if action == "close":
+        # 왜 안 갔는지를 안 적으면 내년에 같은 일을 처음부터 다시 한다
+        reason = request.form.get("reason", "")
+        if project_store.close_project(project_id, reason,
+                                       request.form.get("closed_note", "")):
+            session["project_msg"] = (
+                "ok", "{} 사유로 무산 처리했습니다. 지우지 않았으니 다시 열 수 있습니다."
+                .format(project_store.DROP_MAP[reason]["label"]))
+        else:
+            session["project_msg"] = ("error", "무산 사유를 골라 주세요.")
+        return redirect(back)
+
+    if action == "reopen":
+        project_store.reopen_project(project_id)
+        session["project_msg"] = ("ok", "다시 열었습니다. 무산 사유는 지웠습니다.")
         return redirect(back)
 
     if action == "parts":

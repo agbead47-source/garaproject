@@ -39,6 +39,77 @@
   </div>
 </section>
 
+{% if p.status == 'lost' %}
+<div class="drop-banner">
+  <div class="drop-banner-main">
+    <div class="drop-banner-head">
+      이 건은 진행하지 않기로 했습니다
+      {% if p.drop_meta %}<span class="drop-chip {% if p.drop_meta.signal %}signal{% endif %}">
+        {{ p.drop_meta.label }}</span>{% endif %}
+      {% if p.closed_at %}<span class="text-gray">· {{ p.closed_at }}</span>{% endif %}
+    </div>
+    {% if p.closed_note %}<div class="drop-banner-note">{{ p.closed_note }}</div>{% endif %}
+    <div class="drop-banner-sub">
+      지우지 않았습니다. 반년 뒤에 같은 고객사가 다시 오는 일이 흔합니다.
+    </div>
+  </div>
+  <form method="post" action="{{ url_for('project_update', project_id=p.id) }}">
+    <input type="hidden" name="action" value="reopen">
+    <button type="submit" class="btn">다시 열기</button>
+  </form>
+</div>
+{% endif %}
+
+{# 이 고객사와 지금까지 어땠는지. 한 건만 보면 안 보인다 #}
+{% if signals and signals.projects > 1 %}
+<section class="card sig-card sig-{{ signals.level_meta.css }}">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        {{ signals.customer_name or '이 고객사' }} 와의 이력
+        <span class="sig-badge sig-{{ signals.level_meta.css }}">{{ signals.level_meta.label }}</span>
+      </h2>
+      <p class="card-desc no-margin">{{ signals.why }}</p>
+    </div>
+  </div>
+
+  <div class="sig-nums">
+    <div class="sig-num"><b>{{ signals.projects }}</b><span>건</span></div>
+    <div class="sig-num"><b class="text-green">{{ signals.won }}</b><span>수주</span></div>
+    <div class="sig-num"><b>{{ signals.active }}</b><span>진행 중</span></div>
+    <div class="sig-num"><b class="{% if signals.lost %}text-red{% endif %}">{{ signals.lost }}</b><span>무산</span></div>
+    <div class="sig-num"><b>{{ signals.spent.samples }}</b><span>샘플</span></div>
+    <div class="sig-num"><b>{{ signals.spent.quotes }}</b><span>견적</span></div>
+  </div>
+
+  {% if signals.reasons %}
+  <div class="sig-reasons">
+    {% for r in signals.reasons %}
+    <span class="drop-chip {% if r.signal %}signal{% endif %}">{{ r.label }} {{ r.count }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="sig-rows">
+    {% for row in signals.rows %}
+    <a class="sig-row" href="{{ url_for('project_hub', project_id=row.id) }}">
+      <span class="fill-badge {{ row.status_meta.css }}">{{ row.status_meta.label }}</span>
+      <span class="sig-row-title">{{ row.title }}</span>
+      {% if row.drop_meta %}<span class="text-gray">{{ row.drop_meta.label }}</span>{% endif %}
+      <span class="text-gray">{{ row.closed_at }}</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <p class="field-hint">
+    <strong>체리피커라고 단정하지 않습니다.</strong> 한 건 무산은 흔한 일이고,
+    단가가 안 맞아 무산된 건 정상적인 협상 결과입니다.
+    여기서는 숫자와 사유만 보여 드리고 판단은 담당자가 합니다.
+    빨간 칩은 <b>연락 두절 · 정보만 받아감 · 샘플만 반복 수령</b> 세 가지뿐입니다.
+  </p>
+</section>
+{% endif %}
+
 <div class="proj-grid">
   <!-- ============ 왼쪽 ============ -->
   <div class="proj-main">
@@ -439,6 +510,49 @@
         <button type="submit" class="btn full">저장</button>
       </form>
     </section>
+
+    {# 안 가는 건을 그냥 두면 진행 중인 것처럼 보인다. 사유를 남기고 접는다 #}
+    {% if p.status != 'lost' %}
+    <section class="card">
+      <h2 class="card-title">이 건을 접기</h2>
+      <p class="card-desc">
+        진행하지 않기로 했다면 <strong>사유를 남기고</strong> 접어 주세요.
+        왜 안 갔는지를 적어 두지 않으면 내년에 같은 회사와 같은 일을 처음부터
+        다시 하게 됩니다. 지우는 게 아니라 언제든 다시 열 수 있습니다.
+      </p>
+      <form method="post" action="{{ url_for('project_update', project_id=p.id) }}">
+        <input type="hidden" name="action" value="close">
+        <div class="field">
+          <label class="field-label" for="pd-reason">무산 사유</label>
+          <select class="select" name="reason" id="pd-reason" required>
+            <option value="">고르세요</option>
+            {% for r in d.drop_reasons %}
+            <option value="{{ r.value }}">{{ r.label }}{% if r.signal %} ⚑{% endif %}</option>
+            {% endfor %}
+          </select>
+          <p class="field-hint">
+            ⚑ 는 <b>진행 의사가 없었던 것으로 의심되는</b> 사유입니다
+            (연락 두절 · 정보만 받아감 · 샘플만 반복 수령).
+            단가·MOQ·납기가 안 맞아 무산된 건 정상적인 협상 결과라 표시하지 않습니다.
+          </p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="pd-note">메모</label>
+          <textarea class="input textarea" name="closed_note" id="pd-note" rows="2"
+                    maxlength="500"
+                    placeholder="예: 3차 샘플 발송 뒤 두 달째 회신 없음. 독촉 메일 2회"></textarea>
+        </div>
+        <button type="submit" class="btn full">무산으로 접기</button>
+      </form>
+
+      <div class="sig-nums spaced-top">
+        <div class="sig-num"><b>{{ d.spent.samples }}</b><span>샘플</span></div>
+        <div class="sig-num"><b>{{ d.spent.quotes }}</b><span>견적</span></div>
+        <div class="sig-num"><b>{{ d.spent.contacts }}</b><span>연락</span></div>
+      </div>
+      <p class="field-hint no-top">이 건에 지금까지 들인 것입니다.</p>
+    </section>
+    {% endif %}
   </aside>
 </div>
 

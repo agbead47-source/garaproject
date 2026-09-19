@@ -12,7 +12,7 @@
       </p>
     </div>
     <div class="tabs">
-      {% for key, label in [('all','전체'), ('active','진행 중'), ('hold','보류'), ('won','수주')] %}
+      {% for key, label in [('all','전체'), ('active','진행 중'), ('hold','보류'), ('won','수주'), ('lost','무산')] %}
       <a class="tab {% if status == key %}active{% endif %}"
          href="{{ url_for('projects', status=key) }}">{{ label }}</a>
       {% endfor %}
@@ -25,6 +25,30 @@
     {% for s in states %}{{ state_badge(s) }}{% endfor %}
   </div>
 </section>
+
+{% if status == 'lost' and drops.total %}
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">무산 사유 {{ drops.total }}건</h2>
+      <p class="card-desc no-margin">
+        한 건씩 보면 안 보이는 게 모아 놓으면 보입니다.
+        {% if drops.signal %}
+        이 중 <strong>{{ drops.signal }}건</strong>이 연락 두절·정보 수집 쪽입니다.
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="sig-reasons">
+    {% for r in drops.rows %}
+    <span class="drop-chip {% if r.signal %}signal{% endif %}">{{ r.label }} {{ r.count }}</span>
+    {% endfor %}
+  </div>
+  <p class="field-hint">
+    단가·MOQ·납기가 안 맞아 무산된 건 정상적인 협상 결과라 빨간색으로 세지 않습니다.
+  </p>
+</section>
+{% endif %}
 
 <section class="card">
   <h2 class="card-title">새 프로젝트</h2>
@@ -70,6 +94,9 @@
       </div>
     </div>
     <span class="fill-badge {{ row.status_meta.css }}">{{ row.status_meta.label }}</span>
+    {% if row.drop_meta %}
+    <span class="drop-chip {% if row.drop_meta.signal %}signal{% endif %}">{{ row.drop_meta.label }}</span>
+    {% endif %}
   </div>
 
   <div class="proj-steps">

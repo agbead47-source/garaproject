@@ -99,7 +99,48 @@ STATUS_META = {
     "active": {"label": "진행 중", "css": "ok"},
     "hold": {"label": "보류", "css": "warn"},
     "won": {"label": "수주", "css": "confirmed"},
-    "lost": {"label": "종료", "css": "none"},
+    # '종료' 라고만 적으면 수주하고 끝난 건과 구분이 안 된다
+    "lost": {"label": "무산", "css": "none"},
+}
+
+# ---------------------------------------------------------------------------
+# 무산 사유
+# ---------------------------------------------------------------------------
+#   왜 안 갔는지를 안 적으면 내년에 같은 회사와 같은 일을 처음부터 다시 한다.
+#
+#   signal=True 는 **체리피커로 의심할 만한 사유**다.
+#   단가가 안 맞아 무산된 건 정상적인 협상 결과지 체리피커가 아니다.
+#   이 구분이 없으면 멀쩡한 고객사까지 싸잡게 된다.
+
+DROP_REASONS = [
+    {"value": "no_reply", "label": "연락 두절", "signal": True,
+     "hint": "견적·샘플을 보낸 뒤 회신이 끊긴 경우"},
+    {"value": "info_only", "label": "정보만 받아감", "signal": True,
+     "hint": "진행 의사 없이 단가·처방·성분표만 받아간 것으로 보이는 경우"},
+    {"value": "repeat_sample", "label": "샘플만 반복 수령", "signal": True,
+     "hint": "샘플을 여러 차례 받고도 발주 논의로 넘어가지 않은 경우"},
+    {"value": "price", "label": "단가 합의 실패", "signal": False,
+     "hint": "정상적인 협상 결과입니다"},
+    {"value": "moq", "label": "수량(MOQ) 미달", "signal": False, "hint": ""},
+    {"value": "spec", "label": "사양·처방 불일치", "signal": False, "hint": ""},
+    {"value": "regulation", "label": "규제·인증 문제", "signal": False,
+     "hint": "성분 한도, 현지 등록 불가 등"},
+    {"value": "timeline", "label": "납기 불가", "signal": False, "hint": ""},
+    {"value": "competitor", "label": "타사 선정", "signal": False, "hint": ""},
+    {"value": "customer_side", "label": "고객사 사정", "signal": False,
+     "hint": "출시 취소, 예산 삭감, 담당자 교체 등"},
+    {"value": "our_side", "label": "우리 사정", "signal": False,
+     "hint": "생산 여력 부족, 수익성 미달 등"},
+    {"value": "other", "label": "기타", "signal": False, "hint": ""},
+]
+DROP_MAP = {row["value"]: row for row in DROP_REASONS}
+SIGNAL_REASONS = {row["value"] for row in DROP_REASONS if row["signal"]}
+
+# 고객사를 어떻게 볼지. **단정하지 않는다.** 숫자를 보여주고 담당자가 판단한다.
+SIGNAL_LEVELS = {
+    "none": {"label": "신호 없음", "css": "ok"},
+    "watch": {"label": "참고", "css": "warn"},
+    "high": {"label": "주의해서 볼 신호", "css": "danger"},
 }
 
 # ---------------------------------------------------------------------------
@@ -308,6 +349,9 @@ CREATE TABLE IF NOT EXISTS projects (
     owner         TEXT,
     stage         TEXT NOT NULL DEFAULT 'intake',
     status        TEXT NOT NULL DEFAULT 'active',
+    closed_reason TEXT NOT NULL DEFAULT '',
+    closed_note   TEXT NOT NULL DEFAULT '',
+    closed_at     TEXT NOT NULL DEFAULT '',
     source_file   TEXT,
     source_text   TEXT,
     schedule_id   INTEGER,
@@ -446,6 +490,9 @@ LATE_COLUMNS = [
     ("contacts_log", "contact_id", "INTEGER"),
     ("contacts_log", "person", "TEXT NOT NULL DEFAULT ''"),
     ("contacts_log", "role", "TEXT NOT NULL DEFAULT ''"),
+    ("projects", "closed_reason", "TEXT NOT NULL DEFAULT ''"),
+    ("projects", "closed_note", "TEXT NOT NULL DEFAULT ''"),
+    ("projects", "closed_at", "TEXT NOT NULL DEFAULT ''"),
 ]
 
 
@@ -526,6 +573,7 @@ def get_project(project_id):
     data["parts"] = json.loads(data["parts"] or "[]")
     data["status_meta"] = STATUS_META.get(data["status"], STATUS_META["active"])
     data["stage_meta"] = STAGE_MAP.get(data["stage"], STAGES[0])
+    data["drop_meta"] = DROP_MAP.get(data.get("closed_reason") or "")
     return data
 
 
@@ -543,6 +591,8 @@ def list_projects(status="all"):
         item = dict(row)
         item["parts"] = json.loads(item["parts"] or "[]")
         item["status_meta"] = STATUS_META.get(item["status"], STATUS_META["active"])
+        # 목록에서도 왜 무산됐는지가 바로 보여야 한다
+        item["drop_meta"] = DROP_MAP.get(item.get("closed_reason") or "")
         item["progress"] = progress(item["id"])
         rows.append(item)
     return rows
@@ -1343,6 +1393,150 @@ def next_actions(project_id):
 # 통합 화면에 쓰는 묶음
 # ---------------------------------------------------------------------------
 
+def close_project(project_id, reason, note=""):
+    """이 건은 안 간다. 사유를 남기고 접는다.
+
+    끝이 아니다. 반년 뒤에 같은 고객사가 다시 오는 일이 흔하다.
+    그래서 지우지 않고 사유만 붙여 둔다 (reopen 으로 되살릴 수 있다).
+    """
+    if reason not in DROP_MAP:
+        return False
+    conn = connect()
+    conn.execute(
+        "UPDATE projects SET status = 'lost', closed_reason = ?, closed_note = ?, "
+        "closed_at = ?, updated_at = ? WHERE id = ?",
+        (reason, _clean(note, 500), today_iso(), now_iso(), project_id))
+    conn.commit()
+    return True
+
+
+def reopen_project(project_id):
+    """다시 연다. 무산 사유는 지운다 - 지금은 진행 중인 건이다."""
+    conn = connect()
+    conn.execute(
+        "UPDATE projects SET status = 'active', closed_reason = '', "
+        "closed_note = '', closed_at = '', updated_at = ? WHERE id = ?",
+        (now_iso(), project_id))
+    conn.commit()
+    return True
+
+
+def spent_on(project_id):
+    """이 건에 우리가 들인 것.
+
+    체리피커의 실질 피해는 '기분' 이 아니라 여기 쌓인 숫자다.
+    샘플을 몇 개 만들어 보냈고, 견적을 몇 번 냈고, 몇 번 연락했는가.
+    """
+    conn = connect()
+
+    def _count(sql):
+        return conn.execute(sql, (project_id,)).fetchone()[0]
+
+    return {
+        "samples": _count("SELECT COUNT(*) FROM samples WHERE project_id = ?"),
+        "quotes": _count("SELECT COUNT(*) FROM quotes WHERE project_id = ?"),
+        "contacts": _count("SELECT COUNT(*) FROM contacts_log WHERE project_id = ?"),
+    }
+
+
+def customer_signals(customer_id, customer_name="", skip_project_id=None):
+    """이 고객사와의 이력.
+
+    **체리피커라고 단정하지 않는다.** 한 건 무산은 흔한 일이고, 그걸로 회사를
+    규정하면 멀쩡한 고객사까지 잃는다. 여기서는 숫자와 사유를 보여주기만 하고,
+    판단은 담당자가 한다. 그래서 등급 이름도 '주의해서 볼 신호' 다.
+    """
+    conn = connect()
+    if not (customer_id or customer_name):
+        return None
+
+    if customer_id:
+        rows = conn.execute("SELECT * FROM projects WHERE customer_id = ?",
+                            (customer_id,)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM projects WHERE customer_name = ?",
+                            (customer_name,)).fetchall()
+    rows = [dict(r) for r in rows if r["id"] != skip_project_id]
+    if not rows:
+        return None
+
+    lost = [r for r in rows if r["status"] == "lost"]
+    signal_rows = [r for r in lost if (r.get("closed_reason") or "") in SIGNAL_REASONS]
+    won = [r for r in rows if r["status"] == "won"]
+
+    spent = {"samples": 0, "quotes": 0, "contacts": 0}
+    for row in rows:
+        for key, value in spent_on(row["id"]).items():
+            spent[key] += value
+
+    counted = {}
+    for row in lost:
+        key = row.get("closed_reason") or "other"
+        counted[key] = counted.get(key, 0) + 1
+    reasons = sorted(
+        ({"label": DROP_MAP.get(k, DROP_MAP["other"])["label"], "count": v,
+          "signal": k in SIGNAL_REASONS} for k, v in counted.items()),
+        key=lambda r: -r["count"])
+
+    # 한 건 무산으로는 아무 말도 하지 않는다
+    if len(signal_rows) < 2:
+        level = "none"
+    elif len(signal_rows) >= 3 and not won:
+        level = "high"
+    else:
+        level = "watch"
+
+    if level == "none":
+        why = "지금까지의 기록으로는 특별히 눈에 띄는 것이 없습니다."
+    elif won:
+        why = ("무산 {}건 중 {}건이 연락 두절·정보 수집 쪽입니다. "
+               "다만 수주 이력이 {}건 있어 거래는 되는 곳입니다."
+               .format(len(lost), len(signal_rows), len(won)))
+    else:
+        why = ("무산 {}건 중 {}건이 연락 두절·정보 수집 쪽이고, 아직 수주가 없습니다. "
+               "샘플 {}개·견적 {}건이 나갔습니다."
+               .format(len(lost), len(signal_rows), spent["samples"], spent["quotes"]))
+
+    return {
+        "customer_id": customer_id,
+        "customer_name": customer_name,
+        "projects": len(rows),
+        "won": len(won),
+        "lost": len(lost),
+        "active": sum(1 for r in rows if r["status"] in ("active", "hold")),
+        "signal_lost": len(signal_rows),
+        "spent": spent,
+        "reasons": reasons,
+        "level": level,
+        "level_meta": dict(SIGNAL_LEVELS[level], key=level),
+        "why": why,
+        "rows": [{"id": r["id"], "code": r["code"], "title": r["title"],
+                  "status": r["status"],
+                  "status_meta": STATUS_META.get(r["status"], STATUS_META["active"]),
+                  "closed_at": r.get("closed_at") or "",
+                  "drop_meta": DROP_MAP.get(r.get("closed_reason") or "")}
+                 for r in sorted(rows, key=lambda x: -x["id"])],
+    }
+
+
+def drop_stats():
+    """무산 사유 분포. 한 건씩 보면 안 보이는 게 모아 놓으면 보인다."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT closed_reason AS r, COUNT(*) AS n FROM projects "
+        "WHERE status = 'lost' GROUP BY closed_reason ORDER BY n DESC").fetchall()
+    out = []
+    total = 0
+    for row in rows:
+        meta = DROP_MAP.get(row["r"] or "")
+        out.append({"label": meta["label"] if meta else "사유 미기재",
+                    "count": row["n"],
+                    "signal": bool(meta and meta["signal"])})
+        total += row["n"]
+    return {"rows": out, "total": total,
+            "signal": sum(r["count"] for r in out if r["signal"])}
+
+
 def hub(project_id):
     """프로젝트 통합 화면 한 장."""
     project = get_project(project_id)
@@ -1357,6 +1551,8 @@ def hub(project_id):
         "quotes": quote_rows(project_id),
         "contacts": contacts_of(project_id),
         "next_contact": next_contact(project_id),
+        "spent": spent_on(project_id),
+        "drop_reasons": [dict(r) for r in DROP_REASONS],
         "progress": progress(project_id),
         "next": next_actions(project_id),
         "stages": STAGES,

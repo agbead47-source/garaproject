@@ -4068,3 +4068,103 @@ span.cert-dday.ca-prep, span.cert-dday.ca-off {
   .cert-row { flex-direction: column; }
   .cert-actions { align-items: stretch; flex-direction: row; flex-wrap: wrap; }
 }
+
+/* 진행하지 않기로 한 건 */
+.drop-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 14px;
+  padding: 13px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid #9AA0A8;
+  border-radius: 9px;
+  background: #FAFBFC;
+}
+.drop-banner-main { min-width: 0; }
+.drop-banner-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 13px; font-weight: 700; color: var(--text-sub);
+}
+.drop-banner-note {
+  margin-top: 5px; font-size: 12.5px; line-height: 1.65; color: var(--text);
+}
+.drop-banner-sub { margin-top: 4px; font-size: 11px; color: var(--gray); }
+.drop-banner .btn { flex: none; }
+
+.drop-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #F4F5F7;
+  color: var(--text-sub);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.drop-chip.signal { background: #FBECEC; color: #B03A3A; border-color: #F0D2D2; }
+
+/* 고객사 이력 신호 - 단정하지 않고 숫자만 보여준다 */
+.sig-card { border-left: 3px solid var(--line); }
+.sig-card.sig-warn { border-left-color: #E0A93B; }
+.sig-card.sig-danger { border-left-color: #C0392B; }
+
+.sig-badge {
+  margin-left: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #F4F5F7;
+  color: var(--text-sub);
+  font-size: 10.5px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.sig-badge.sig-warn { background: #FFF4E5; color: #B26A00; border-color: #F5DDB8; }
+.sig-badge.sig-danger { background: #FBECEC; color: #B03A3A; border-color: #F0D2D2; }
+
+.sig-nums {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 10px;
+}
+.sig-num {
+  flex: 1 1 74px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--white);
+  text-align: center;
+}
+.sig-num b { display: block; font-size: 19px; font-weight: 700; letter-spacing: -.5px; }
+.sig-num span { font-size: 10.5px; color: var(--text-sub); }
+
+.sig-reasons { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+
+.sig-rows { display: flex; flex-direction: column; }
+.sig-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 2px;
+  border-bottom: 1px solid #F1F2F4;
+  font-size: 12px;
+  color: var(--text-sub);
+  text-decoration: none;
+  min-width: 0;
+}
+.sig-row:last-child { border-bottom: none; }
+.sig-row:hover { background: #FAFBFC; }
+.sig-row-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
