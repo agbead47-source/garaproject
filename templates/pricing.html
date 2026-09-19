@@ -218,6 +218,10 @@
         <span class="verdict-target" id="out-target-mark"></span>
       </div>
       <p class="verdict-msg" id="out-msg"></p>
+      <div class="action-row quote-row">
+        <button type="button" class="btn btn-primary" id="quote-open">📄 견적서 만들기</button>
+        <span class="sample-hint">지금 화면의 단가·조건 그대로 견적서를 만듭니다. (하단 회사 직인 포함)</span>
+      </div>
     </section>
 
     <section class="card">
@@ -305,6 +309,71 @@
       </div>
       <p class="card-desc no-margin" id="out-breakeven-note"></p>
     </section>
+  </div>
+</div>
+
+<!-- 견적서 만들기 - 문서에 들어갈 값만 확인하고 넘긴다 -->
+<div class="modal-backdrop" id="quote-modal" hidden>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="quote-modal-title">
+    <div class="modal-head">
+      <h3 class="modal-title" id="quote-modal-title">견적서 만들기</h3>
+      <button type="button" class="modal-close" id="quote-close" aria-label="닫기">✕</button>
+    </div>
+
+    <form method="post" action="{{ url_for('pricing_quote') }}" id="quote-form">
+      <div class="modal-body">
+        <p class="modal-desc">
+          단가는 지금 화면에서 계산한 값이 그대로 들어갑니다.
+          문서에 적을 내용만 확인해 주세요.
+        </p>
+
+        <div class="quote-preview" id="quote-preview">—</div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="q-customer">수신 (고객사)</label>
+            <input class="input" type="text" name="customer" id="q-customer" value="{{ d.customer }}">
+          </div>
+          <div class="field">
+            <label class="field-label" for="q-attn">담당자 (Attn.)</label>
+            <input class="input" type="text" name="attn" id="q-attn" placeholder="예) Ms. Jane Park">
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="q-product">품목명</label>
+          <input class="input" type="text" name="product" id="q-product"
+                 value="{{ d.handoff_product or d.cost_sheet.product }}">
+        </div>
+
+        {% for t in quote_terms %}
+        <div class="field">
+          <label class="field-label" for="q-{{ t.key }}">{{ t.label }}</label>
+          <input class="input" type="text" name="term_{{ t.key }}" id="q-{{ t.key }}" value="{{ t.value }}">
+        </div>
+        {% endfor %}
+
+        <div class="field">
+          <label class="field-label" for="q-remark">비고 (선택)</label>
+          <textarea class="input textarea" name="remark" id="q-remark" rows="2"
+                    placeholder="금형비·시험비 등 별도 협의 사항을 적어 두세요."></textarea>
+        </div>
+      </div>
+
+      <!-- 화면에서 계산한 값 (제출 직전에 채운다) -->
+      <input type="hidden" name="qty" id="q-qty">
+      <input type="hidden" name="incoterm" id="q-incoterm">
+      <input type="hidden" name="fx" id="q-fx">
+      <input type="hidden" name="price_usd" id="q-price-usd">
+      <input type="hidden" name="price_krw" id="q-price-krw">
+      <input type="hidden" name="target_usd" id="q-target-usd">
+      <input type="hidden" name="terms" id="q-terms">
+
+      <div class="modal-foot">
+        <button type="button" class="btn" id="quote-cancel">취소</button>
+        <button type="submit" class="btn btn-primary">견적서 보기</button>
+      </div>
+    </form>
   </div>
 </div>
 {% endblock %}
@@ -568,6 +637,56 @@
     render();
     window.showToast('기본값으로 되돌렸습니다.');
   });
+
+  /* --- 견적서 만들기 --- */
+  var quoteModal = el('quote-modal');
+
+  function fillQuoteForm() {
+    var qty = num('p-qty');
+    var fx = num('p-fx') || 1;
+    var term = el('p-incoterm').value;
+    var price = priceOf(costFor(term, qty).total);
+
+    var unitUsd = +(price / fx).toFixed(2);   // 견적 단가는 센트 단위로 확정
+
+    el('q-qty').value = qty;
+    el('q-incoterm').value = term;
+    el('q-fx').value = fx;
+    el('q-price-usd').value = unitUsd;
+    el('q-price-krw').value = Math.round(price);
+    el('q-target-usd').value = num('p-target');
+
+    /* 조건별 단가도 같이 넘겨 견적서 참고표에 싣는다 */
+    el('q-terms').value = JSON.stringify(ORDER.map(function (code) {
+      var tp = priceOf(costFor(code, qty).total);
+      return { code: code, usd: +(tp / fx).toFixed(4), krw: Math.round(tp) };
+    }));
+
+    el('quote-preview').innerHTML =
+      '<strong>' + term + ' USD ' + usd(unitUsd) + '</strong> / 개 · ' +
+      qty.toLocaleString('ko-KR') + '개 · 합계 USD ' +
+      (unitUsd * qty).toLocaleString('en-US', { minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2 }) +
+      '<span class="quote-preview-sub">견적환율 ' + won(fx) + '원/USD</span>';
+  }
+
+  function openQuote() {
+    fillQuoteForm();
+    quoteModal.hidden = false;
+  }
+  function closeQuote() { quoteModal.hidden = true; }
+
+  el('quote-open').addEventListener('click', openQuote);
+  el('quote-close').addEventListener('click', closeQuote);
+  el('quote-cancel').addEventListener('click', closeQuote);
+  quoteModal.addEventListener('click', function (e) {
+    if (e.target === quoteModal) { closeQuote(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !quoteModal.hidden) { closeQuote(); }
+  });
+  /* 창을 열어 둔 채 뒤에서 값을 고쳐도 최신 단가로 나가게 한다 */
+  el('quote-form').addEventListener('submit', fillQuoteForm);
 
   /* --- 원가표 드래그앤드롭 (파일명만 쓴다) --- */
   var dropzone = document.getElementById('dropzone');

@@ -372,10 +372,30 @@ def pricing():
         page_title="영업단가 계산",
         active_menu="pricing",
         loaded=loaded,
+        quote_terms=dummy_data.QUOTE_TERMS,
         d=dummy_data.get_pricing_defaults(file_name or None, {
             "customer": request.args.get("customer", ""),
             "product": request.args.get("product", ""),
         }),
+    )
+
+
+@app.route("/pricing/quote", methods=["POST"])
+def pricing_quote():
+    """6-1. 견적서.
+
+    단가 계산 화면에서 뽑은 값을 그대로 받아 고객사로 나가는 견적서 모양으로
+    보여준다. (계산은 화면에서 끝났으니 여기서는 문서로 옮겨 담기만 한다)
+    문서 하단에는 회사 직인(static/seal.svg)이 찍힌다.
+    """
+    form = request.form.to_dict()
+    form.setdefault("issued_by", session.get("user", DEFAULT_USER))
+
+    return render_template(
+        "quote.html",
+        page_title="견적서",
+        active_menu="pricing",
+        q=dummy_data.build_quote(form),
     )
 
 

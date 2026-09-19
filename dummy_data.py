@@ -8,6 +8,10 @@
 (regdata/sync_eu.py 로 수집. DB가 없으면 자동으로 더미로 돌아간다.)
 """
 
+import json
+import zlib
+from datetime import date
+
 import reg_store
 
 # ---------------------------------------------------------------------------
@@ -1999,6 +2003,130 @@ def get_pricing_defaults(file_name=None, handoff=None):
         "margin_modes": [dict(row) for row in MARGIN_MODES],
         "fx_steps": list(FX_STEPS),
     }
+
+# ---------------------------------------------------------------------------
+# 견적서 (영업단가 계산 -> 고객사로 나가는 문서)
+#   단가 계산은 화면(JS)에서 하므로, 여기서는 계산된 값을 받아
+#   문서 형식(공급자·수신처·품목·거래조건·직인)으로 옮겨 담기만 한다.
+# ---------------------------------------------------------------------------
+
+# 공급자(자사) 정보 - 견적서 머리말과 하단 직인 옆에 들어간다
+SELLER = {
+    "name": "주식회사 투두트레이드",
+    "name_en": "TO-DO TRADE CO., LTD.",
+    "ceo": "김무역",
+    "biz_no": "123-45-67890",
+    "address": "서울특별시 강남구 테헤란로 123, 8층",
+    "tel": "+82-2-1234-5678",
+    "email": "sales@todotrade.co.kr",
+    # static/ 안의 직인 이미지. 실제 운영에서는 스캔한 법인 직인으로 바꾼다.
+    "seal_file": "seal.svg",
+}
+
+# 견적 조건 기본값 - 견적서 만들기 창에서 그대로 고칠 수 있다
+QUOTE_TERMS = [
+    {"key": "validity", "label": "견적 유효기간", "value": "견적일로부터 30일"},
+    {"key": "payment", "label": "결제 조건", "value": "T/T 30% 선금, 잔금 선적 전"},
+    {"key": "delivery", "label": "납기", "value": "발주 확정 후 45일 이내 선적"},
+    {"key": "origin", "label": "원산지", "value": "대한민국 (Republic of Korea)"},
+    {"key": "packing", "label": "포장", "value": "수출 표준 포장 (Export carton)"},
+]
+
+# 문서 하단 안내 문구
+QUOTE_NOTES = [
+    "본 견적은 기재된 선적 조건·수량·환율을 전제로 하며, 조건이 바뀌면 단가도 달라집니다.",
+    "환율 변동분은 선적 시점 기준으로 재협의할 수 있습니다.",
+    "금형비·시험비 등 1회성 비용은 별도 협의 항목입니다.",
+]
+
+
+def _quote_num(value, default=0.0):
+    """폼으로 넘어온 숫자 문자열을 float 으로. (콤마·빈칸 허용)"""
+    try:
+        return float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def _quote_no(customer, product, today):
+    """견적번호. 같은 날 같은 건이면 같은 번호가 나오도록 CRC 로 뒷자리를 만든다."""
+    seed = "{}|{}".format(customer, product).encode("utf-8")
+    return "QT-{}-{:04d}".format(today.strftime("%Y%m%d"), zlib.crc32(seed) % 10000)
+
+
+def build_quote(form):
+    """견적서 화면에 쓸 값. (form: 단가 계산 화면이 POST 한 값)
+
+    계산은 이미 화면에서 끝났고, 여기서는 받은 값을 검증·정리해서
+    문서 모양으로 만든다. 값이 비면 화면 기본값으로 메운다.
+    """
+    defaults = get_pricing_defaults()
+
+    customer = (form.get("customer") or "").strip() or defaults["customer"]
+    product = (form.get("product") or "").strip() or defaults["cost_sheet"]["product"]
+    attn = (form.get("attn") or "").strip()
+
+    qty = int(_quote_num(form.get("qty"), defaults["cost_sheet"]["quantity"])) or 1
+    fx = _quote_num(form.get("fx"), defaults["fx"]) or 1
+    target_usd = _quote_num(form.get("target_usd"), defaults["target_price_usd"])
+
+    # 견적서에 적는 단가는 센트 단위로 확정한다.
+    # (고객이 단가 x 수량을 계산해도 합계가 맞아야 한다)
+    price_usd = round(_quote_num(form.get("price_usd")), 2)
+    price_krw = round(_quote_num(form.get("price_krw"), price_usd * fx))
+
+    incoterm = (form.get("incoterm") or "").strip() or defaults["selected_incoterm"]
+    incoterm_label = next((i["label"] for i in INCOTERMS if i["code"] == incoterm), incoterm)
+    incoterm_desc = next((i["desc"] for i in INCOTERMS if i["code"] == incoterm), "")
+
+    # 조건별 단가 (참고표) - 화면에서 만든 JSON 을 그대로 받는다
+    try:
+        terms = json.loads(form.get("terms") or "[]")
+    except ValueError:
+        terms = []
+    terms = [
+        {
+            "code": str(row.get("code", "")),
+            "usd": _quote_num(row.get("usd")),
+            "krw": _quote_num(row.get("krw")),
+        }
+        for row in terms if isinstance(row, dict)
+    ]
+
+    # 거래조건 - 창에서 고친 값이 있으면 그 값, 없으면 기본값
+    conditions = [
+        {"key": row["key"], "label": row["label"],
+         "value": (form.get("term_" + row["key"]) or "").strip() or row["value"]}
+        for row in QUOTE_TERMS
+    ]
+
+    today = date.today()
+    return {
+        "seller": dict(SELLER),
+        "no": _quote_no(customer, product, today),
+        "issued_at": today.isoformat(),
+        "issued_by": form.get("issued_by") or "",
+        "customer": customer,
+        "attn": attn,
+        "product": product,
+        "quantity": qty,
+        "incoterm": incoterm,
+        "incoterm_label": incoterm_label,
+        "incoterm_desc": incoterm_desc,
+        "currency": "USD",
+        "fx": fx,
+        "unit_price_usd": price_usd,
+        "unit_price_krw": price_krw,
+        "amount_usd": price_usd * qty,
+        "amount_krw": price_krw * qty,
+        "target_usd": target_usd,
+        "over_target": bool(target_usd and price_usd > target_usd),
+        "terms": terms,
+        "conditions": conditions,
+        "notes": list(QUOTE_NOTES),
+        "remark": (form.get("remark") or "").strip(),
+    }
+
 
 # ---------------------------------------------------------------------------
 # 개발요청서 직접 작성 (해외영업 -> 사내 개발팀)

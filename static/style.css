@@ -1544,6 +1544,194 @@ a { color: inherit; text-decoration: none; }
 #breakeven-card.under { border-left-color: var(--green); }
 #breakeven-card.over { border-left-color: var(--red); }
 
+/* ---------- 견적서 (영업단가 계산 → 고객사 문서) ---------- */
+.quote-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.quote-row .btn { width: auto; white-space: nowrap; }
+
+.modal.modal-wide { width: 520px; max-height: 88vh; display: flex; flex-direction: column; }
+.modal-wide form { display: flex; flex-direction: column; min-height: 0; }
+.modal-wide .modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.modal-wide .field { margin-bottom: 14px; }
+.modal-wide .field-row .field { margin-bottom: 14px; }
+
+.quote-preview {
+  padding: 13px 15px;
+  border: 1px solid #CBE9DA;
+  border-radius: 8px;
+  background: #F6FBF8;
+  font-size: 14px;
+  margin-bottom: 18px;
+}
+.quote-preview-sub { display: block; color: var(--text-sub); font-size: 11.5px; margin-top: 3px; }
+
+/* 문서 화면 */
+.quote-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.quote-toolbar .back-link { margin-bottom: 0; }
+.quote-caveat { margin-bottom: 16px; }
+
+.quote-paper {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 46px 52px 40px;
+  max-width: 860px;
+}
+
+.quote-head { text-align: center; margin-bottom: 26px; }
+.quote-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 10px;
+  text-indent: 10px;
+}
+.quote-title-en { color: var(--gray); font-size: 11.5px; letter-spacing: 3px; margin-top: 4px; }
+
+.quote-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 20px;
+  font-size: 12.5px;
+  color: #3B4149;
+  margin-bottom: 14px;
+}
+.quote-meta-label { color: var(--text-sub); margin-right: 4px; }
+
+.quote-parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+.quote-party {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: #FCFCFD;
+}
+.quote-party-head {
+  color: var(--text-sub);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .4px;
+  margin-bottom: 6px;
+}
+.quote-party-name { font-size: 15px; font-weight: 700; margin-bottom: 5px; }
+.quote-party-row { color: #5A616B; font-size: 12px; line-height: 1.75; }
+
+.quote-items { width: 100%; border-collapse: collapse; font-size: 13px; }
+.quote-items th,
+.quote-items td { border: 1px solid var(--line); padding: 11px 12px; }
+.quote-items thead th {
+  background: #F4F5F7;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  color: #3B4149;
+}
+.quote-items .q-no { width: 42px; text-align: center; color: var(--text-sub); }
+.quote-items .q-term { width: 82px; text-align: center; font-weight: 600; }
+.quote-items .q-qty { width: 96px; text-align: right; white-space: nowrap; }
+.quote-items .q-price { width: 104px; text-align: right; font-weight: 600; white-space: nowrap; }
+.quote-items .q-amount { width: 132px; text-align: right; font-weight: 700; white-space: nowrap; }
+.q-item-name { font-weight: 700; }
+.q-item-sub { color: var(--text-sub); font-size: 11.5px; margin-top: 3px; }
+
+.quote-items .q-total th { background: var(--point-soft); color: var(--point); font-size: 14px; }
+.quote-items .q-total th:first-child { text-align: right; }
+.quote-items .q-total-sub td {
+  background: #FAFBFC;
+  color: var(--text-sub);
+  font-size: 12px;
+  text-align: right;
+}
+
+.quote-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 26px;
+  align-items: start;
+}
+.quote-block-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.quote-block-sub { color: var(--gray); font-size: 11px; font-weight: 600; margin-left: 4px; }
+
+.quote-terms { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.quote-terms th,
+.quote-terms td { border: 1px solid var(--line); padding: 8px 11px; text-align: left; }
+.quote-terms th { background: #FAFBFC; font-weight: 600; width: 40%; color: #3B4149; }
+.quote-terms .q-price { text-align: right; width: auto; font-weight: 600; }
+.quote-terms .q-picked th,
+.quote-terms .q-picked td { background: var(--point-soft); font-weight: 700; }
+
+.quote-remark {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #FCFCFD;
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
+.quote-notes {
+  margin: 24px 0 0;
+  padding-left: 18px;
+  color: var(--text-sub);
+  font-size: 11.5px;
+  line-height: 1.85;
+}
+
+/* 하단 서명 · 회사 직인 */
+.quote-sign {
+  position: relative;
+  margin-top: 46px;
+  padding-top: 26px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+.quote-sign-date { color: var(--text-sub); font-size: 12.5px; }
+.quote-sign-company { font-size: 18px; font-weight: 800; margin-top: 10px; letter-spacing: -.3px; }
+.quote-sign-en { color: var(--gray); font-size: 11px; letter-spacing: 1px; margin-top: 2px; }
+.quote-sign-ceo {
+  position: relative;
+  display: inline-block;
+  margin-top: 20px;
+  padding-right: 88px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.quote-sign-mark { color: var(--text-sub); font-size: 12px; margin-left: 2px; }
+.quote-seal {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 76px;
+  height: 76px;
+  /* 이름 옆에 겹쳐 찍히도록 살짝 내려 앉힌다 */
+  transform: translateY(-44%);
+  pointer-events: none;
+}
+
 /* ---------- 성분 관심도 (실시간) ---------- */
 .live-head-card { margin-bottom: 20px; }
 .live-head-card .result-head { border-bottom: none; padding-bottom: 8px; margin-bottom: 0; }
@@ -2179,3 +2367,31 @@ a { color: inherit; text-decoration: none; }
 .sch-cal-chip.st-today { background: #FDF2E0; color: #9A6412; }
 .sch-cal-chip.st-done { background: #E7F5EE; color: #237A52; text-decoration: line-through; }
 .sch-cal-chip:hover { outline: 1px solid var(--point); }
+
+/* ---------- 인쇄 (견적서 등 문서 화면) ---------- */
+@media print {
+  body { min-width: 0; background: #fff; }
+  .sidebar,
+  .topbar,
+  .stepper,
+  .no-print,
+  .toast { display: none !important; }
+
+  .layout, .main { display: block; }
+  .content { padding: 0; }
+
+  .quote-paper {
+    max-width: none;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+  }
+  .quote-paper table { page-break-inside: avoid; }
+  .quote-sign { page-break-inside: avoid; }
+
+  /* 직인·강조색이 인쇄에서도 빠지지 않게 한다 */
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  @page { margin: 16mm; }
+}

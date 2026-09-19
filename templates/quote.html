@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="quote-toolbar no-print">
+  <a class="back-link" href="{{ url_for('pricing', loaded='1') }}">← 영업단가 계산으로</a>
+  <div class="action-group">
+    <button type="button" class="btn" id="quote-copy">📋 내용 복사</button>
+    <button type="button" class="btn btn-primary" id="quote-print">🖨 인쇄 · PDF 저장</button>
+  </div>
+</div>
+
+<p class="card-desc no-print quote-caveat">
+  단가 계산 화면의 값을 그대로 옮긴 <strong>견적서 초안</strong>입니다.
+  문서 하단 직인은 가안용 이미지({{ q.seller.seal_file }})이며,
+  실제로 나가는 문서는 <strong>담당자 확인 후</strong> 회사 직인으로 교체해 주세요.
+</p>
+
+<section class="quote-paper" id="quote-paper">
+  <header class="quote-head">
+    <h2 class="quote-title">견 적 서</h2>
+    <div class="quote-title-en">QUOTATION</div>
+  </header>
+
+  <div class="quote-meta">
+    <div><span class="quote-meta-label">견적번호</span> {{ q.no }}</div>
+    <div><span class="quote-meta-label">견적일자</span> {{ q.issued_at }}</div>
+  </div>
+
+  <div class="quote-parties">
+    <div class="quote-party">
+      <div class="quote-party-head">수신 (To)</div>
+      <div class="quote-party-name">{{ q.customer }}</div>
+      {% if q.attn %}<div class="quote-party-row">담당 : {{ q.attn }}</div>{% endif %}
+      <div class="quote-party-row">아래와 같이 견적합니다.</div>
+    </div>
+    <div class="quote-party">
+      <div class="quote-party-head">공급자 (From)</div>
+      <div class="quote-party-name">{{ q.seller.name }}</div>
+      <div class="quote-party-row">사업자등록번호 : {{ q.seller.biz_no }}</div>
+      <div class="quote-party-row">{{ q.seller.address }}</div>
+      <div class="quote-party-row">TEL {{ q.seller.tel }} · {{ q.seller.email }}</div>
+      <div class="quote-party-row">담당 : {{ q.issued_by }}</div>
+    </div>
+  </div>
+
+  <table class="quote-items">
+    <thead>
+      <tr>
+        <th class="q-no">No</th>
+        <th>품목 (Description)</th>
+        <th class="q-term">거래조건</th>
+        <th class="q-qty">수량</th>
+        <th class="q-price">단가 (USD)</th>
+        <th class="q-amount">금액 (USD)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="q-no">1</td>
+        <td>
+          <div class="q-item-name">{{ q.product }}</div>
+          <div class="q-item-sub">{{ q.incoterm_desc }}</div>
+        </td>
+        <td class="q-term">{{ q.incoterm }}</td>
+        <td class="q-qty">{{ '{:,}'.format(q.quantity) }} 개</td>
+        <td class="q-price">{{ '%.2f'|format(q.unit_price_usd) }}</td>
+        <td class="q-amount">{{ '{:,.2f}'.format(q.amount_usd) }}</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr class="q-total">
+        <th colspan="5">합계 금액 (Total Amount)</th>
+        <th class="q-amount">USD {{ '{:,.2f}'.format(q.amount_usd) }}</th>
+      </tr>
+      <tr class="q-total-sub">
+        <td colspan="5">원화 환산 (참고 · 견적환율 {{ '{:,.0f}'.format(q.fx) }}원/USD)</td>
+        <td class="q-amount">{{ '{:,.0f}'.format(q.amount_krw) }}원</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="quote-cols">
+    <section class="quote-block">
+      <h3 class="quote-block-title">거래 조건</h3>
+      <table class="quote-terms">
+        {% for c in q.conditions %}
+        <tr><th>{{ c.label }}</th><td>{{ c.value }}</td></tr>
+        {% endfor %}
+        <tr><th>선적 조건</th><td>{{ q.incoterm_label }}</td></tr>
+      </table>
+    </section>
+
+    {% if q.terms %}
+    <section class="quote-block">
+      <h3 class="quote-block-title">조건별 단가 <span class="quote-block-sub">참고</span></h3>
+      <table class="quote-terms">
+        <tr><th>조건</th><th class="q-price">단가 (USD)</th></tr>
+        {% for t in q.terms %}
+        <tr {% if t.code == q.incoterm %}class="q-picked"{% endif %}>
+          <th>{{ t.code }}{% if t.code == q.incoterm %} (본 견적){% endif %}</th>
+          <td class="q-price">{{ '%.2f'|format(t.usd) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </section>
+    {% endif %}
+  </div>
+
+  {% if q.remark %}
+  <section class="quote-block">
+    <h3 class="quote-block-title">비고</h3>
+    <p class="quote-remark">{{ q.remark }}</p>
+  </section>
+  {% endif %}
+
+  <ul class="quote-notes">
+    {% for note in q.notes %}<li>{{ note }}</li>{% endfor %}
+  </ul>
+
+  <!-- 하단 서명 · 회사 직인 -->
+  <footer class="quote-sign">
+    <div class="quote-sign-date">{{ q.issued_at }}</div>
+    <div class="quote-sign-company">{{ q.seller.name }}</div>
+    <div class="quote-sign-en">{{ q.seller.name_en }}</div>
+    <div class="quote-sign-ceo">
+      대표이사 {{ q.seller.ceo }} <span class="quote-sign-mark">(인)</span>
+      <img class="quote-seal"
+           src="{{ url_for('static', filename=q.seller.seal_file) }}"
+           alt="{{ q.seller.name }} 대표이사 직인">
+    </div>
+  </footer>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  document.getElementById('quote-print').addEventListener('click', function () {
+    window.print();
+  });
+
+  document.getElementById('quote-copy').addEventListener('click', function () {
+    var text = document.getElementById('quote-paper').innerText.trim();
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(function () {
+        window.showToast('견적서 내용을 복사했습니다.');
+      });
+    } else {
+      window.showToast('이 브라우저에서는 복사를 지원하지 않습니다.', 'warn');
+    }
+  });
+})();
+</script>
+{% endblock %}
