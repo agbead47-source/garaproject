@@ -89,7 +89,7 @@
       </tr>
       {% if q.internal %}
       <tr class="q-total-sub">
-        <td colspan="5">{{ q.t.krw }} ({{ q.t.fx_note }} {{ '{:,.2f}'.format(q.fx).rstrip('0').rstrip('.') }}원/{{ q.currency }})</td>
+        <td colspan="5">{{ q.t.krw }} ({{ q.t.fx_note }} {{ '{:,.2f}'.format(q.fx).rstrip('0').rstrip('.') }}원/{{ q.currency }}{% if q.fx_basis %} · {{ q.fx_basis }}{% endif %})</td>
         <td class="q-amount">{{ '{:,.0f}'.format(q.amount_krw) }}원</td>
       </tr>
       {% endif %}

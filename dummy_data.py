@@ -2374,6 +2374,8 @@ def build_quote(form, view="customer"):
         "amount": price_unit * qty,
         # 아래 네 개는 사내 보관용에서만 쓴다 (환율·원가가 드러나는 값)
         "fx": fx if internal else 0,
+        # 견적환율이 어디서 온 값인지. 사내 보관용에만 적는다
+        "fx_basis": (form.get("fx_basis") or "").strip() if internal else "",
         "unit_price_krw": price_krw if internal else 0,
         "amount_krw": price_krw * qty if internal else 0,
         "target_price": target_price if internal else 0,

@@ -19,6 +19,7 @@ import customer_excel
 import customer_store
 import doc_edit_store
 import dummy_data
+import fx_store
 import mail_ai
 import packaging_store
 import project_store
@@ -50,6 +51,9 @@ packaging_store.init_db()
 
 # 프로젝트 - 지금까지 만든 화면을 한 건으로 묶는 축 (SQLite)
 project_store.init_db()
+
+# 견적환율 (SQLite. 받아 둔 고시만 읽고, 조회는 담당자가 누를 때만 나간다)
+fx_store._conn()
 
 # 올린 엑셀을 잠시 두는 자리. 미리보기 -> 확인 사이에만 쓴다
 IMPORT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -413,6 +417,24 @@ def convert():
     )
 
 
+@app.route("/api/fx")
+def api_fx():
+    """견적환율 조회. (담당자가 '환율 불러오기'를 누를 때만 외부로 나간다)
+
+    화면을 여는 것만으로는 부르지 않는다. 받아 둔 고시가 있으면 그것을 쓴다.
+    """
+    args = request.args
+    return jsonify(fx_store.lookup(
+        args.get("currency", "USD"),
+        source=args.get("source", fx_store.DEFAULT_SOURCE),
+        basis=args.get("basis", "latest"),
+        day=args.get("day", ""),
+        preset=args.get("preset", fx_store.DEFAULT_PRESET),
+        start=args.get("start", ""),
+        end=args.get("end", ""),
+    ))
+
+
 @app.route("/api/doc-edit", methods=["POST"])
 def api_doc_edit():
     """전달 문서에서 고친 값 한 칸을 저장한다. (빈 값이면 자동 변환 값으로 되돌림)"""
@@ -627,11 +649,28 @@ def pricing():
         except ValueError:
             pass
 
+    # 받아 둔 고시가 있으면 그 값으로 시작한다.
+    #   화면을 여는 것만으로 외부 API 를 부르지는 않는다(allow_network=False).
+    #   받아 둔 게 없으면 내장 기본값을 그대로 두고 "내장 기본값"이라고 적는다.
+    fx = fx_store.lookup(defaults["currency"], allow_network=False)
+    if fx["ok"] and fx["rate"]:
+        defaults["fx"] = fx["rate"]
+        defaults["fx_date"] = fx["day"]
+    else:
+        fx = dict(fx, state="builtin",
+                  state_meta=fx_store.state_meta("builtin"),
+                  rate=defaults["fx"], day=defaults["fx_date"],
+                  label="화면 기본값",
+                  detail=["아직 받아 둔 고시가 없습니다. "
+                          "'환율 불러오기'를 누르면 조회합니다."])
+
     return render_template(
         "pricing.html",
         page_title="영업단가 계산",
         active_menu="pricing",
         loaded=loaded,
+        fx=fx,
+        fx_opt=fx_store.options(),
         quote_terms=dummy_data.QUOTE_TERMS,
         quote_customers=_quote_customers(),
         project=project,
@@ -643,7 +682,7 @@ def pricing():
 QUOTE_FIELDS = {
     "customer": 120, "attn": 80, "attn_email": 120,
     "product": 160, "product_en": 160, "port": 60,
-    "qty": 16, "incoterm": 8, "fx": 16, "currency": 4,
+    "qty": 16, "incoterm": 8, "fx": 16, "fx_basis": 80, "currency": 4,
     "price_unit": 16, "price_krw": 16,
     "target_price": 16, "terms": 600, "remark": 400,
     "issued_by": 60, "issued_by_en": 60,

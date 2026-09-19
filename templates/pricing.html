@@ -215,20 +215,88 @@
         <p class="field-hint" id="currency-hint"></p>
       </div>
 
-      <div class="field-row">
-        <div class="field">
-          <label class="field-label" for="p-fx">
+      <!-- 견적환율.
+           "그때 환율로 계산했습니다" 라고 말하려면 그때가 언제인지, 누가 낸
+           환율인지 값과 같이 남아 있어야 한다. 그래서 출처·기준을 같이 고른다. -->
+      <div class="fx-panel">
+        <div class="fx-head">
+          <label class="field-label no-margin" for="p-fx">
             견적 환율 (<span id="fx-label">KRW/USD</span>)
           </label>
+          <span class="vstate v-{{ fx.state_meta.css }}" id="fx-state"
+                title="{{ fx.state_meta.desc }}">{{ fx.state_meta.label }}</span>
+        </div>
+
+        <div class="fx-input-row">
           <input class="input" type="number" id="p-fx" value="{{ d.fx }}" min="0" step="5">
-          <p class="field-hint">{{ d.fx_date }} 기준 · 수기 입력 (TODO: 실시간 환율 연동)</p>
+          <button type="button" class="btn btn-mini" id="p-fx-load">환율 불러오기</button>
         </div>
-        <div class="field">
-          <label class="field-label" for="p-target">
-            고객사 목표 단가 (<span id="target-cur">USD</span>)
-          </label>
-          <input class="input" type="number" id="p-target" value="{{ d.target_price }}" min="0" step="0.1">
+
+        <div class="fx-picks">
+          <div class="fx-pick">
+            <label class="fx-pick-label" for="p-fx-source">출처</label>
+            <select class="select select-mini" id="p-fx-source">
+              {% for src in fx_opt.sources %}
+              <option value="{{ src.key }}" data-bases="{{ src.bases|join(',') }}"
+                      data-note="{{ src.note }}" {% if not src.ready %}disabled{% endif %}
+                      {% if src.key == fx_opt.default_source %}selected{% endif %}>
+                {{ src.label }}{% if not src.ready %} — API 키 필요{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="fx-pick">
+            <label class="fx-pick-label" for="p-fx-basis">기준</label>
+            <select class="select select-mini" id="p-fx-basis">
+              {% for b in fx_opt.bases %}
+              <option value="{{ b.key }}" title="{{ b.desc }}">{{ b.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="fx-pick" id="fx-pick-day" hidden>
+            <label class="fx-pick-label" for="p-fx-day">날짜</label>
+            <input class="input input-mini" type="date" id="p-fx-day"
+                   value="{{ fx_opt.today }}" max="{{ fx_opt.today }}">
+          </div>
+
+          <div class="fx-pick" id="fx-pick-preset" hidden>
+            <label class="fx-pick-label" for="p-fx-preset">기간</label>
+            <select class="select select-mini" id="p-fx-preset">
+              {% for a in fx_opt.presets %}
+              <option value="{{ a.key }}"
+                      {% if a.key == fx_opt.default_preset %}selected{% endif %}>{{ a.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="fx-pick fx-pick-wide" id="fx-pick-range" hidden>
+            <label class="fx-pick-label" for="p-fx-start">직접 지정</label>
+            <span class="fx-range">
+              <input class="input input-mini" type="date" id="p-fx-start" max="{{ fx_opt.today }}">
+              <span class="fx-range-tilde">~</span>
+              <input class="input input-mini" type="date" id="p-fx-end" max="{{ fx_opt.today }}">
+            </span>
+          </div>
         </div>
+
+        <ul class="fx-detail" id="fx-detail">
+          {% for line in fx.detail %}<li>{{ line }}</li>{% endfor %}
+          {% if fx.message %}<li>{{ fx.message }}</li>{% endif %}
+        </ul>
+
+        <p class="fx-foot">
+          환율을 직접 고쳐도 됩니다. 고치면 <strong>수기 입력</strong>으로 바뀝니다.
+          어느 쪽이든 견적서에 그 근거가 같이 적힙니다.
+        </p>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="p-target">
+          고객사 목표 단가 (<span id="target-cur">USD</span>)
+        </label>
+        <input class="input" type="number" id="p-target" value="{{ d.target_price }}" min="0" step="0.1">
       </div>
       <div class="action-row">
         <button type="button" class="btn" id="p-reset">기본값으로 되돌리기</button>
@@ -450,6 +518,7 @@
       <input type="hidden" name="qty" id="q-qty">
       <input type="hidden" name="incoterm" id="q-incoterm">
       <input type="hidden" name="fx" id="q-fx">
+      <input type="hidden" name="fx_basis" id="q-fx-basis">
       <input type="hidden" name="price_unit" id="q-price-unit">
       <input type="hidden" name="currency" id="q-currency">
       <input type="hidden" name="price_krw" id="q-price-krw">
@@ -758,15 +827,157 @@
     radio.addEventListener('change', render);
   });
 
-  /* 통화를 바꾸면 그 통화의 기본 환율로 갈아 끼운다.
+  /* ---- 견적환율 ----
+     "그때 환율로 계산했습니다" 라고 말하려면 그때가 언제였는지가 값과 같이
+     남아 있어야 한다. 그래서 값만 받지 않고 출처·고시일·상태를 같이 들고 다닌다.
+     화면을 여는 것만으로는 조회하지 않는다. 서버가 받아 둔 값으로 시작한다. */
+
+  var FX_STATES = {{ fx_opt.states | tojson }};
+  var FX_STATE_LABEL = {};
+  Object.keys(FX_STATES).forEach(function (k) { FX_STATE_LABEL[k] = FX_STATES[k]; });
+
+  /* 지금 화면에 뜬 환율이 어디서 온 값인지 */
+  var fxInfo = {
+    state: '{{ fx.state }}',
+    sourceLabel: '{{ fx.source_label }}',
+    label: '{{ fx.label }}'
+  };
+
+  function fxBadge(state, sourceLabel, label) {
+    var meta = FX_STATE_LABEL[state];
+    var node = el('fx-state');
+    if (!meta || !node) { return; }
+    node.className = 'vstate v-' + meta.css;
+    node.textContent = meta.label;
+    node.title = meta.desc;
+    fxInfo = { state: state, sourceLabel: sourceLabel || '', label: label || '' };
+  }
+
+  /* 견적서에 적어 보낼 근거 한 줄 */
+  function fxBasisText() {
+    if (cur().code === 'KRW') { return ''; }
+    if (fxInfo.state === 'manual') { return '수기 입력'; }
+    if (!fxInfo.sourceLabel) { return fxInfo.label || ''; }
+    return fxInfo.sourceLabel + (fxInfo.label ? ' ' + fxInfo.label : '');
+  }
+
+  function fxDetail(lines) {
+    var box = el('fx-detail');
+    box.innerHTML = '';
+    (lines || []).forEach(function (line) {
+      var li = document.createElement('li');
+      li.textContent = line;
+      box.appendChild(li);
+    });
+  }
+
+  /* 출처마다 고를 수 있는 기준이 다르다.
+     수출입은행은 하루치만 주는 API 라 기간 평균을 낼 수 없다 - 그러면 숨긴다 */
+  function fxSyncPicks() {
+    var srcOpt = el('p-fx-source').selectedOptions[0];
+    var allowed = srcOpt ? (srcOpt.dataset.bases || '').split(',') : ['latest'];
+    var basis = el('p-fx-basis');
+
+    Array.prototype.forEach.call(basis.options, function (opt) {
+      opt.hidden = allowed.indexOf(opt.value) < 0;
+      opt.disabled = opt.hidden;
+    });
+    if (allowed.indexOf(basis.value) < 0) { basis.value = allowed[0]; }
+
+    el('fx-pick-day').hidden = basis.value !== 'date';
+    el('fx-pick-preset').hidden = basis.value !== 'avg';
+    el('fx-pick-range').hidden = !(basis.value === 'avg' &&
+                                   el('p-fx-preset').value === 'custom');
+  }
+
+  /* 조회. 담당자가 누를 때만 외부로 나간다 (quiet=true 면 통화를 바꿨을 때) */
+  var fxBusy = false;
+
+  function fxLoad(quiet) {
+    var code = cur().code;
+    if (code === 'KRW') {
+      el('p-fx').value = 1;
+      fxBadge('fixed', '', '1 : 1');
+      fxDetail(['원화로 결제하면 환산이 없습니다.']);
+      render();
+      return;
+    }
+    if (fxBusy) { return; }
+    fxBusy = true;
+
+    var btn = el('p-fx-load');
+    btn.disabled = true;
+    btn.textContent = '불러오는 중…';
+
+    var q = new URLSearchParams({
+      currency: code,
+      source: el('p-fx-source').value,
+      basis: el('p-fx-basis').value,
+      day: el('p-fx-day').value || '',
+      preset: el('p-fx-preset').value || '',
+      start: el('p-fx-start').value || '',
+      end: el('p-fx-end').value || ''
+    });
+
+    fetch('{{ url_for("api_fx") }}?' + q.toString())
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        fxDetail(data.detail && data.detail.length
+                 ? data.detail : (data.message ? [data.message] : []));
+        fxBadge(data.state, data.source_label, data.label);
+
+        /* 못 구하면 값을 건드리지 않는다. 0 이나 지어낸 숫자로 덮지 않는다 */
+        if (!data.ok || !data.rate) {
+          window.showToast(data.message || '환율을 가져오지 못했습니다.', 'error');
+          return;
+        }
+
+        el('p-fx').value = data.rate;
+        el('p-fx').step = data.rate >= 100 ? 5 : 0.01;
+        render();
+        if (!quiet) {
+          window.showToast(data.source_label + ' ' + data.label + ' · ' +
+                           rate(data.rate) + '원/' + code + ' 을 넣었습니다.');
+        }
+      })
+      .catch(function () {
+        fxDetail(['조회에 실패했습니다. 값은 그대로 두었습니다.']);
+        fxBadge('error', '', '');
+        window.showToast('환율 조회에 실패했습니다.', 'error');
+      })
+      .then(function () {
+        fxBusy = false;
+        btn.disabled = false;
+        btn.textContent = '환율 불러오기';
+      });
+  }
+
+  el('p-fx-load').addEventListener('click', function () { fxLoad(false); });
+  el('p-fx-source').addEventListener('change', fxSyncPicks);
+  el('p-fx-basis').addEventListener('change', fxSyncPicks);
+  el('p-fx-preset').addEventListener('change', fxSyncPicks);
+  fxSyncPicks();
+
+  /* 손으로 고치면 수기 입력이다. 고시값인 척하면 안 된다 */
+  el('p-fx').addEventListener('input', function () {
+    if (fxInfo.state !== 'manual') {
+      fxBadge('manual', '', '');
+      fxDetail(['담당자가 직접 넣은 값입니다. 견적서에도 그렇게 적힙니다.']);
+    }
+  });
+
+  /* 통화를 바꾸면 그 통화의 환율로 갈아 끼운다.
      손으로 고친 환율이 남아 있으면 엉뚱한 단가가 나온다 (엔화에 1,385원 등) */
   el('p-currency').addEventListener('change', function () {
     var c = cur();
+    /* 먼저 내장 기본값으로 돌려 둔다. 조회가 늦어도 이전 통화 환율이 남지 않게 */
     el('p-fx').value = c.fx;
     el('p-fx').step = c.fx >= 100 ? 5 : 0.1;
     el('p-target').step = c.decimals === 0 ? 10 : 0.1;
+    fxBadge('builtin', '', '화면 기본값');
     render();
     window.showToast(c.code + ' 기준으로 바꿨습니다. 환율과 목표 단가를 다시 확인해 주세요.', 'warn');
+    fxLoad(true);
   });
 
   /* ---- 구매팀 원가 항목 추가 ----
@@ -958,6 +1169,7 @@
     el('q-qty').value = qty;
     el('q-incoterm').value = term;
     el('q-fx').value = fx;
+    el('q-fx-basis').value = fxBasisText();
     el('q-currency').value = c.code;
     el('q-price-unit').value = unit;
     el('q-price-krw').value = Math.round(price);
@@ -972,7 +1184,8 @@
     el('quote-preview').innerHTML =
       '<strong>' + term + ' ' + c.code + ' ' + money(unit) + '</strong> / 개 · ' +
       qty.toLocaleString('ko-KR') + '개 · 합계 ' + c.code + ' ' + money(unit * qty) +
-      '<span class="quote-preview-sub">견적환율 ' + rate(fx) + '원/' + c.code + '</span>';
+      '<span class="quote-preview-sub">견적환율 ' + rate(fx) + '원/' + c.code +
+        (fxBasisText() ? ' · ' + fxBasisText() : '') + '</span>';
   }
 
   function openQuote() {
