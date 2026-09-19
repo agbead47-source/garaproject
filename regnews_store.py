@@ -66,13 +66,26 @@ SOURCES = [
         "url": "https://www.pom.go.id",
         "keywords": ["kosmetik", "cosmetic", "halal"],
     },
+    {
+        # 국문 사이트라 키워드도 국문이어야 한다. 제목이 영문 기관보다 짧아
+        # 최소 길이도 낮춰 잡는다 ('화장품법 개정' = 7자).
+        "key": "mfds",
+        "region": "한국",
+        "flag": "🇰🇷",
+        "agency": "식약처 (MFDS)",
+        "url": "https://www.mfds.go.kr/brd/m_99/list.do",
+        "keywords": ["화장품", "기능성", "원료", "고시", "개정", "안전기준",
+                     "입법예고", "행정예고"],
+        "min_title": 6,
+        "note": "주소 확인 필요 — 브라우저로 열어 공지 목록이 보이는 게시판인지 확인하세요",
+    },
 ]
 SOURCE_MAP = {row["key"]: row for row in SOURCES}
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (To-do team student project; trade dashboard)"}
 DELAY_SECONDS = 3        # 사이트 사이 대기 시간 (서버 부담 줄이기)
 TIMEOUT = 15
-MIN_TITLE_LEN = 10       # '더보기' 같은 짧은 메뉴 링크 제외
+MIN_TITLE_LEN = 10       # '더보기' 같은 짧은 메뉴 링크 제외 (사이트별로 덮어쓸 수 있다)
 MAX_PER_SOURCE = 40      # 대문 페이지는 링크가 많아 상한을 둔다
 MAX_KEEP = 300           # 저장소에 쌓아 둘 최대 건수
 
@@ -115,12 +128,16 @@ def crawl_source(source):
     except requests.RequestException as e:
         return [], "수집 실패: {}".format(str(e)[:120])
 
-    soup = BeautifulSoup(res.text, "html.parser")
+    # res.text 가 아니라 바이트를 넘긴다.
+    # 응답 헤더에 charset 이 없으면 requests 는 ISO-8859-1 로 읽어 버려서
+    # 국문 사이트(식약처 등) 제목이 깨지고 키워드가 하나도 안 걸린다.
+    soup = BeautifulSoup(res.content, "html.parser")
     results, seen_links = [], set()
+    min_title = source.get("min_title", MIN_TITLE_LEN)
 
     for a in soup.find_all("a", href=True):
         title = " ".join(a.get_text().split())       # 공백 정리
-        if len(title) < MIN_TITLE_LEN:
+        if len(title) < min_title:
             continue
 
         lowered = title.lower()
@@ -248,7 +265,8 @@ def get_news(limit=12, region="all"):
         "last_run": last_run,
         "collected": bool(data["items"]),
         "sources": [{"key": s["key"], "region": s["region"], "flag": s["flag"],
-                     "agency": s["agency"], "url": s["url"]} for s in SOURCES],
+                     "agency": s["agency"], "url": s["url"], "note": s.get("note", "")}
+                    for s in SOURCES],
         "store_path": os.path.relpath(STORE_PATH, BASE_DIR),
         "csv_path": os.path.relpath(CSV_PATH, BASE_DIR),
     }

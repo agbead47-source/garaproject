@@ -175,11 +175,18 @@
 
   <div class="regnews-sources">
     {% for s in news.sources %}
-    <a class="pill soft" href="{{ s.url }}" target="_blank" rel="noopener noreferrer">
-      {{ s.flag }} {{ s.agency }}
+    <a class="pill soft {% if s.note %}check{% endif %}" href="{{ s.url }}"
+       target="_blank" rel="noopener noreferrer"
+       title="{{ s.note or s.url }}">
+      {{ s.flag }} {{ s.agency }}{% if s.note %} ⚠{% endif %}
     </a>
     {% endfor %}
   </div>
+  {% for s in news.sources if s.note %}
+  <p class="field-hint no-top">
+    <b>{{ s.flag }} {{ s.agency }}</b> — {{ s.note }}
+  </p>
+  {% endfor %}
 </section>
 
 <div id="loading" class="loading-overlay" hidden>
