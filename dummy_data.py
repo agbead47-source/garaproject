@@ -419,12 +419,23 @@ _LAB_STRUCTURE = [
     {"key": "regulation", "rows": ["regulation_note"]},
 ]
 
+# 공장은 '생산'이다. 만들 수 있는지 판단하는 데 필요한 것만 넣는다.
+#   - 뺀 것: 목표 단가·거래조건·선적 조건
+#     고객사와의 협상 조건이라 공장이 볼 이유가 없고, 목표 단가를 먼저 보여주면
+#     원가 산출이 그 숫자에 끌려간다. 영업이 확정할 항목으로 옮겼다(_SALES_STRUCTURE).
+#   - 남긴 것: 언제까지 만들어 출고해야 하는지(샘플 납기·본생산 선적)는 생산 일정이다.
 _FACTORY_STRUCTURE = [
     {"key": "spec", "rows": ["product_name", "volume", "container", "accessory", "container_supply"]},
-    {"key": "commercial", "rows": ["moq", "target_price", "trade_terms"]},
-    {"key": "delivery", "rows": ["sample_due", "mass_shipment", "shipping_terms"]},
+    {"key": "quantity", "rows": ["moq"]},
+    {"key": "delivery", "rows": ["sample_due", "mass_shipment"]},
     {"key": "packaging", "rows": ["package_design", "label"]},
     {"key": "documents", "rows": ["documents", "responsible_person"]},
+]
+
+# 연구소에도 공장에도 보내지 않는 항목. 영업이 직접 확정해야 하는 거래 조건이다.
+# (요청서에 모호하게 적혀 오는 자리라 '확인 필요' 가 붙어 있다)
+_SALES_STRUCTURE = [
+    {"key": "sales_terms", "rows": ["target_price", "trade_terms", "shipping_terms"]},
 ]
 
 _DOC_TITLES = {
@@ -433,6 +444,12 @@ _DOC_TITLES = {
         "en": "Product Development Brief for R&D Lab",
         "zh": "研究所开发委托书",
         "vi": "Phiếu yêu cầu phát triển (Phòng R&D)",
+    },
+    "sales": {
+        "ko": "영업 확정 필요 항목",
+        "en": "Items for Sales to Confirm",
+        "zh": "营业需确认事项",
+        "vi": "Hạng mục kinh doanh cần xác nhận",
     },
     "factory": {
         "ko": "공장 전달용 생산 의뢰서",
@@ -451,8 +468,9 @@ _SECTION_HEADINGS = {
         "tests": "시험 요청",
         "regulation": "규제 주의사항",
         "spec": "제품 사양",
-        "commercial": "수량·단가",
-        "delivery": "납기·선적",
+        "quantity": "발주 수량",
+        "delivery": "생산·출고 일정",
+        "sales_terms": "영업이 확정할 거래 조건",
         "packaging": "포장·라벨 요구사항",
         "documents": "서류·책임자",
     },
@@ -464,8 +482,9 @@ _SECTION_HEADINGS = {
         "tests": "Requested Tests",
         "regulation": "Regulatory Notes",
         "spec": "Product Specification",
-        "commercial": "Quantity & Price",
-        "delivery": "Lead Time & Shipping",
+        "quantity": "Order Quantity",
+        "delivery": "Production & Shipment Schedule",
+        "sales_terms": "Commercial Terms (Sales to confirm)",
         "packaging": "Packaging & Label",
         "documents": "Documents & Responsible Person",
     },
@@ -787,6 +806,15 @@ def convert_for_factory(result, lang="ko", overrides=None):
     TODO: 실제 연동 (LLM 문서 변환 + 번역)
     """
     return _build_document(_FACTORY_STRUCTURE, "factory", result, lang, overrides)
+
+
+def sales_terms(result, lang="ko", overrides=None):
+    """연구소·공장 어디에도 안 보내고 영업이 직접 확정할 항목.
+
+    단가·결제조건·선적조건은 고객사와의 협상 영역이다. 공장에 넘기면
+    원가 산출이 목표 단가에 끌려가고, 연구소는 볼 이유가 없다.
+    """
+    return _build_document(_SALES_STRUCTURE, "sales", result, lang, overrides)
 
 
 # ---------------------------------------------------------------------------

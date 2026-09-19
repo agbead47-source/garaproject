@@ -158,9 +158,14 @@
 
         <div class="field">
           <span class="field-label">전달 대상</span>
+          <p class="field-hint no-top">요청서를 그대로 보내지 않고, 받는 쪽이 쓰는 문서로 바꿔서 보냅니다.</p>
           <div class="check-row">
-            <label class="check"><input type="checkbox" name="targets" value="연구소" checked> 🧪 연구소</label>
-            <label class="check"><input type="checkbox" name="targets" value="공장" checked> 🏭 공장</label>
+            <label class="check" title="제형·성분·시험·규제를 개발 의뢰서로 보냅니다">
+              <input type="checkbox" name="targets" value="연구소" checked> 🧪 연구소 <span class="check-sub">개발 의뢰</span>
+            </label>
+            <label class="check" title="용기·부자재·MOQ·납기로 생산 가능한지 검토를 요청합니다">
+              <input type="checkbox" name="targets" value="공장" checked> 🏭 공장 <span class="check-sub">생산 검토</span>
+            </label>
           </div>
         </div>
 
