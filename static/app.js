@@ -62,12 +62,12 @@
   }
 
   /* -----------------------------------------------------------------------
-   * 분석 결과 화면: 추출 값 인라인 수정 (화면에서만 반영)
+   * 변환 문서 화면: 값 인라인 수정 (화면에서만 반영)
    * --------------------------------------------------------------------- */
-  /* 분석 결과의 항목 값(.item-value)과 변환 문서의 값(.doc-text)을 같은 방식으로
-     그 자리에서 고친다. 내부 문서는 영업이 손을 대고 나가는 게 보통이다. */
+  /* 고치는 자리는 변환 문서(.doc-text) 하나뿐이다. 분석 결과는 원문에서 읽어낸
+     그대로 두고(읽기 전용), 손대는 일은 전달 문서에서 한다. */
   function initInlineEdit() {
-    var cells = document.querySelectorAll('.item-value, .doc-text');
+    var cells = document.querySelectorAll('.doc-text');
     if (!cells.length) { return; }
 
     function render(cell) {

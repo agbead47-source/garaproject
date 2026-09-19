@@ -42,7 +42,7 @@
 
   <section class="card">
     <h2 class="card-title">추출 항목 <span class="count-chip">{{ analysis.item_count }}</span></h2>
-    <p class="card-desc">추출 값은 클릭해서 바로 수정할 수 있습니다. (가안에서는 화면에서만 반영)</p>
+    <p class="card-desc">추출 값은 원문에서 읽어낸 그대로 둡니다. 고칠 일이 있으면 전달 문서 만들기 화면에서 고칩니다.</p>
     <table class="item-table">
       <thead>
         <tr>
@@ -60,8 +60,7 @@
             {% if item.note %}<span class="note-mark" title="{{ item.note }}">ⓘ</span>{% endif %}
           </td>
           <td>
-            <span class="item-value {% if not item.value %}empty{% endif %}"
-                  data-value="{{ item.value }}">{{ item.value or '— 값 없음' }}</span>
+            <span class="item-value {% if not item.value %}empty{% endif %}">{{ item.value or '— 값 없음' }}</span>
           </td>
           <td class="col-conf">
             {% if item.confidence %}
