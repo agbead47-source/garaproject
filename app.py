@@ -12,6 +12,7 @@ from flask import (Flask, jsonify, redirect, render_template, request,
 import contact_store
 import dummy_data
 import mail_ai
+import regnews_store
 import trend_store
 
 app = Flask(__name__)
@@ -316,6 +317,11 @@ def regulation():
             url_for("regulation", ready="1", country=request.form.get("country", "all"))
         )
 
+    # '지금 수집' - 규제기관 공지를 받아온다. (사이트 3곳 도는 데 10초 남짓)
+    if request.args.get("collect") == "1":
+        regnews_store.collect()
+        return redirect(url_for("regulation"))
+
     # 파일을 올리기 전에는 업로드 화면만 보여준다
     if request.args.get("ready") != "1":
         session.pop("reg_file", None)
@@ -332,6 +338,7 @@ def regulation():
             countries=countries,
             preset_country=preset,
             reg_source=dummy_data.get_reg_source(),
+            news=regnews_store.get_news(),
         )
 
     country = request.args.get("country", "all")
