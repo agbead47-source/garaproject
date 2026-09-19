@@ -21,12 +21,22 @@
 
   <div class="profile-grid">
     <div class="profile-block">
-      <div class="profile-block-title">담당 바이어</div>
-      <div class="info-row"><span class="info-label">이름</span><span class="info-value">{{ c.buyer.name }} · {{ c.buyer.title }}</span></div>
-      <div class="info-row"><span class="info-label">이메일</span><span class="info-value mono">{{ c.buyer.email }}</span></div>
-      <div class="info-row"><span class="info-label">전화</span><span class="info-value mono">{{ c.buyer.phone }}</span></div>
-      <div class="info-row"><span class="info-label">시차</span><span class="info-value">{{ c.buyer.timezone }}</span></div>
-      <div class="info-row"><span class="info-label">사용 언어</span><span class="info-value">{{ c.buyer.language }}</span></div>
+      <div class="profile-block-title">
+        대표 담당자
+        <a class="profile-block-link" href="{{ url_for('customer_detail', customer_id=c.id, tab='contacts') }}">
+          담당자 {{ c.active_contacts|length }}명 전체 보기 ›
+        </a>
+      </div>
+      {% if c.primary_contact %}
+      {% set b = c.primary_contact %}
+      <div class="info-row"><span class="info-label">이름</span><span class="info-value">{{ b.name }}{% if b.title %} · {{ b.title }}{% endif %}</span></div>
+      <div class="info-row"><span class="info-label">역할</span><span class="info-value">{{ b.role_meta.icon }} {{ b.role_meta.label }}</span></div>
+      <div class="info-row"><span class="info-label">이메일</span><span class="info-value mono">{{ b.email or '—' }}</span></div>
+      <div class="info-row"><span class="info-label">전화</span><span class="info-value mono">{{ b.phone or '—' }}</span></div>
+      <div class="info-row"><span class="info-label">시차</span><span class="info-value">{{ b.timezone or '—' }}</span></div>
+      {% else %}
+      <p class="card-desc no-margin">등록된 담당자가 없습니다.</p>
+      {% endif %}
     </div>
 
     <div class="profile-block">
@@ -51,7 +61,7 @@
 
 <div class="convert-bar">
   <div class="tabs">
-    {% set tabs = [('requests', '📌 바이어 요청사항'), ('emails', '✉️ 이메일'), ('projects', '📦 진행 건'), ('notes', '📝 내부 메모')] %}
+    {% set tabs = [('contacts', '👤 담당자'), ('requests', '📌 바이어 요청사항'), ('emails', '✉️ 이메일'), ('projects', '📦 진행 건'), ('notes', '📝 내부 메모')] %}
     {% for key, label in tabs %}
     <a class="tab {% if tab == key %}active{% endif %}"
        href="{{ url_for('customer_detail', customer_id=c.id, tab=key) }}">{{ label }}</a>
@@ -78,6 +88,169 @@
     </div>
   </div>
   {% endfor %}
+</section>
+
+{% elif tab == 'contacts' %}
+{% macro contact_fields(p, roles) %}
+  <div class="field-row">
+    <div class="field">
+      <label class="field-label" for="f-name-{{ p.id if p else 'new' }}">이름 *</label>
+      <input class="input" type="text" name="name" id="f-name-{{ p.id if p else 'new' }}"
+             value="{{ p.name if p else '' }}" placeholder="예) Emily Park" required>
+    </div>
+    <div class="field">
+      <label class="field-label" for="f-title-{{ p.id if p else 'new' }}">직함</label>
+      <input class="input" type="text" name="title" id="f-title-{{ p.id if p else 'new' }}"
+             value="{{ p.title if p else '' }}" placeholder="예) Product Director">
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="field-label">역할</span>
+    <div class="check-row wrap">
+      {% for r in roles %}
+      <label class="check" title="{{ r.desc }}">
+        <input type="radio" name="role" value="{{ r.value }}"
+               {% if (p and p.role == r.value) or (not p and loop.first) %}checked{% endif %}>
+        {{ r.icon }} {{ r.label }}
+      </label>
+      {% endfor %}
+    </div>
+    <p class="field-hint">
+      역할별로 무엇을 보낼지가 갈립니다. 성분표·CoA는 <b>품질·인증</b>,
+      인보이스는 <b>대금·결제</b> 담당에게 갑니다.
+    </p>
+  </div>
+
+  <div class="field-row">
+    <div class="field">
+      <label class="field-label" for="f-email-{{ p.id if p else 'new' }}">이메일</label>
+      <input class="input" type="email" name="email" id="f-email-{{ p.id if p else 'new' }}"
+             value="{{ p.email if p else '' }}" placeholder="name@company.com">
+    </div>
+    <div class="field">
+      <label class="field-label" for="f-phone-{{ p.id if p else 'new' }}">전화</label>
+      <input class="input" type="text" name="phone" id="f-phone-{{ p.id if p else 'new' }}"
+             value="{{ p.phone if p else '' }}" placeholder="+1 213-555-0148">
+    </div>
+  </div>
+
+  <div class="field-row">
+    <div class="field">
+      <label class="field-label" for="f-tz-{{ p.id if p else 'new' }}">시차</label>
+      <input class="input" type="text" name="timezone" id="f-tz-{{ p.id if p else 'new' }}"
+             value="{{ p.timezone if p else '' }}" placeholder="PST (한국 −16시간)">
+    </div>
+    <div class="field">
+      <label class="field-label" for="f-lang-{{ p.id if p else 'new' }}">사용 언어</label>
+      <input class="input" type="text" name="language" id="f-lang-{{ p.id if p else 'new' }}"
+             value="{{ p.language if p else '' }}" placeholder="English">
+    </div>
+  </div>
+
+  <div class="field">
+    <label class="field-label" for="f-note-{{ p.id if p else 'new' }}">메모</label>
+    <input class="input" type="text" name="note" id="f-note-{{ p.id if p else 'new' }}"
+           value="{{ p.note if p else '' }}"
+           placeholder="예) 인증서 요청은 이쪽에서 옵니다. 금요일 오후는 회신이 느립니다.">
+  </div>
+
+  <div class="check-row">
+    <label class="check" title="고객사 목록과 상세 맨 위에 보이는 담당자입니다.">
+      <input type="checkbox" name="is_primary" value="1"
+             {% if p and p.is_primary %}checked{% endif %}> 대표 담당자로 지정
+    </label>
+  </div>
+{% endmacro %}
+
+<section class="card">
+  <h2 class="card-title">
+    담당자 <span class="count-chip">{{ c.active_contacts|length }}</span>
+    {% if c.contacts|length > c.active_contacts|length %}
+    <span class="card-title-sub">비활성 {{ c.contacts|length - c.active_contacts|length }}명 포함</span>
+    {% endif %}
+  </h2>
+  <p class="card-desc">
+    고객사 한 곳에 담당자는 보통 여러 명입니다. 구매·품질·물류 담당이 따로 있고,
+    <strong>메일을 누구에게 보내느냐로 회신 속도가 갈립니다.</strong>
+    이 화면의 담당자는 더미가 아니라 <strong>실제로 저장</strong>됩니다.
+  </p>
+
+  {% for p in c.contacts %}
+  {% if edit_contact == p.id %}
+  <form class="contact-edit" method="post"
+        action="{{ url_for('customer_contacts', customer_id=c.id) }}">
+    <input type="hidden" name="action" value="update">
+    <input type="hidden" name="contact_id" value="{{ p.id }}">
+    <h3 class="sub-title">{{ p.name }} 수정</h3>
+    {{ contact_fields(p, contact_roles) }}
+    <div class="action-group spaced-top">
+      <button type="submit" class="btn btn-primary">저장</button>
+      <a class="btn" href="{{ url_for('customer_detail', customer_id=c.id, tab='contacts') }}">취소</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="contact-row {% if not p.is_active %}off{% endif %}">
+    <span class="contact-icon">{{ p.role_meta.icon }}</span>
+    <div class="contact-body">
+      <div class="contact-head">
+        <span class="contact-name">{{ p.name }}</span>
+        {% if p.title %}<span class="contact-title">{{ p.title }}</span>{% endif %}
+        <span class="pill soft">{{ p.role_meta.label }}</span>
+        {% if p.is_primary %}<span class="status-badge confirmed">대표</span>{% endif %}
+        {% if not p.is_active %}<span class="status-badge missing">비활성</span>{% endif %}
+      </div>
+      <div class="contact-lines">
+        {% if p.email %}<span class="contact-line mono">✉️ {{ p.email }}</span>{% endif %}
+        {% if p.phone %}<span class="contact-line mono">☎️ {{ p.phone }}</span>{% endif %}
+        {% if p.timezone %}<span class="contact-line">🕐 {{ p.timezone }}</span>{% endif %}
+        {% if p.language %}<span class="contact-line">🗣 {{ p.language }}</span>{% endif %}
+      </div>
+      {% if p.note %}<p class="contact-note">{{ p.note }}</p>{% endif %}
+    </div>
+
+    <div class="contact-tools">
+      {% if p.is_active and not p.is_primary %}
+      <form method="post" action="{{ url_for('customer_contacts', customer_id=c.id) }}">
+        <input type="hidden" name="action" value="primary">
+        <input type="hidden" name="contact_id" value="{{ p.id }}">
+        <button type="submit" class="btn btn-mini">대표로</button>
+      </form>
+      {% endif %}
+      <a class="btn btn-mini"
+         href="{{ url_for('customer_detail', customer_id=c.id, tab='contacts', edit=p.id) }}">수정</a>
+      <form method="post" action="{{ url_for('customer_contacts', customer_id=c.id) }}">
+        <input type="hidden" name="action" value="{{ 'activate' if not p.is_active else 'deactivate' }}">
+        <input type="hidden" name="contact_id" value="{{ p.id }}">
+        <button type="submit" class="btn btn-mini">{{ '복구' if not p.is_active else '비활성' }}</button>
+      </form>
+      <form method="post" action="{{ url_for('customer_contacts', customer_id=c.id) }}"
+            onsubmit="return confirm('{{ p.name }} 담당자를 삭제합니다. 담당이 바뀐 경우라면 기록이 남도록 삭제 대신 비활성을 쓰세요. 계속할까요?');">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="contact_id" value="{{ p.id }}">
+        <button type="submit" class="btn btn-mini btn-danger">삭제</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="card-desc no-margin">등록된 담당자가 없습니다. 아래에서 추가하세요.</p>
+  {% endfor %}
+</section>
+
+<section class="card">
+  <h2 class="card-title">담당자 추가</h2>
+  <p class="card-desc">
+    담당이 바뀌면 지우지 말고 <strong>비활성</strong>으로 두세요.
+    주고받은 메일의 상대가 누구였는지가 남아야 합니다.
+  </p>
+  <form method="post" action="{{ url_for('customer_contacts', customer_id=c.id) }}">
+    <input type="hidden" name="action" value="add">
+    {{ contact_fields(none, contact_roles) }}
+    <div class="action-group spaced-top">
+      <button type="submit" class="btn btn-primary">담당자 추가</button>
+    </div>
+  </form>
 </section>
 
 {% elif tab == 'emails' %}

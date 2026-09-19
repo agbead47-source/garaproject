@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from flask import (Flask, jsonify, redirect, render_template, request,
                    session, url_for)
 
+import contact_store
 import dummy_data
 import mail_ai
 import trend_store
@@ -23,6 +24,10 @@ app.register_blueprint(prospecting_bp)
 # 일정관리 모듈 (SQLite 사용. 날짜가 실제로 저장된다)
 from schedule_routes import bp as schedule_bp  # noqa: E402
 app.register_blueprint(schedule_bp)
+
+# 고객사 담당자 저장소 (SQLite 사용. 화면에서 넣은 담당자가 실제로 남는다)
+contact_store.init_db()
+contact_store.seed_from_profiles(dummy_data.get_customer_profiles())
 
 # 로그인하지 않았을 때 쓰는 기본 사용자명 (가안용)
 DEFAULT_USER = "해외영업팀 홍길동"
@@ -42,7 +47,11 @@ PERIODS = [
 @app.context_processor
 def inject_globals():
     """모든 템플릿에서 공통으로 쓰는 값."""
-    return {"current_user": session.get("user", DEFAULT_USER)}
+    return {
+        "current_user": session.get("user", DEFAULT_USER),
+        # 담당자 등록 등 저장 결과 안내 (한 번 보여주고 지운다)
+        "flash_msg": session.pop("contact_msg", None),
+    }
 
 
 @app.before_request
@@ -372,10 +381,61 @@ def pricing():
         page_title="영업단가 계산",
         active_menu="pricing",
         loaded=loaded,
+        quote_terms=dummy_data.QUOTE_TERMS,
         d=dummy_data.get_pricing_defaults(file_name or None, {
             "customer": request.args.get("customer", ""),
             "product": request.args.get("product", ""),
         }),
+    )
+
+
+# 견적서 세션에 담을 값 (쿠키 세션이라 필요한 것만, 길이도 잘라서 넣는다)
+QUOTE_FIELDS = {
+    "customer": 120, "attn": 80, "product": 160, "product_en": 160, "port": 60,
+    "qty": 16, "incoterm": 8, "fx": 16, "price_usd": 16, "price_krw": 16,
+    "target_usd": 16, "terms": 600, "remark": 400,
+    "issued_by": 60, "issued_by_en": 60,
+}
+
+
+@app.route("/pricing/quote", methods=["GET", "POST"])
+def pricing_quote():
+    """6-1. 견적서.
+
+    단가 계산 화면에서 뽑은 값을 그대로 받아 고객사로 나가는 견적서 모양으로
+    보여준다. (계산은 화면에서 끝났으니 여기서는 문서로 옮겨 담기만 한다)
+    문서 하단에는 회사 직인(static/seal.svg)이 찍힌다.
+
+    문서는 두 벌이다.
+      - 고객 발송용(customer) : 영문. 고객이 봐도 되는 값만
+      - 사내 보관용(internal) : 국문 + 원화 환산·견적환율·조건별 단가
+    화면에서 두 벌을 오갈 수 있게 값은 세션에 담고 GET 으로 넘긴다.
+    """
+    if request.method == "POST":
+        session["quote"] = {
+            key: (request.form.get(key) or "")[:limit]
+            for key, limit in QUOTE_FIELDS.items()
+        }
+        return redirect(url_for("pricing_quote", view=request.form.get("view", "customer")))
+
+    form = session.get("quote")
+    if not form:
+        # 계산 화면을 거치지 않고 주소로 바로 들어온 경우
+        return redirect(url_for("pricing"))
+
+    form = dict(form)
+    if not form.get("issued_by"):
+        form["issued_by"] = session.get("user", DEFAULT_USER)
+
+    view = request.args.get("view", "customer")
+    if view not in ("customer", "internal"):
+        view = "customer"
+
+    return render_template(
+        "quote.html",
+        page_title="견적서",
+        active_menu="pricing",
+        q=dummy_data.build_quote(form, view),
     )
 
 
@@ -434,18 +494,42 @@ def sample():
     )
 
 
+def _with_contacts(profile, contacts=None):
+    """고객사 프로필에 담당자 목록을 붙인다. (담당자만 DB, 나머지는 더미)"""
+    rows = contacts if contacts is not None else contact_store.list_contacts(profile["id"])
+    profile["contacts"] = rows
+    profile["primary_contact"] = contact_store.primary_of(rows)
+    profile["active_contacts"] = [r for r in rows if r["is_active"]]
+    return profile
+
+
 @app.route("/customers")
 def customers():
-    """8. 고객사 관리 - 목록. (UI 가안)"""
+    """8. 고객사 관리 - 목록. (UI 가안. 담당자는 실제 저장값)"""
     keyword = request.args.get("q", "")
     grade = request.args.get("grade", "all")
+
+    grouped = contact_store.contacts_by_customer()
+    rows = [_with_contacts(row, grouped.get(row["id"], []))
+            for row in dummy_data.get_customer_profiles("", grade)]
+
+    # 회사명·국가뿐 아니라 담당자 이름·이메일로도 찾을 수 있어야 한다
+    needle = (keyword or "").strip().lower()
+    if needle:
+        rows = [row for row in rows if needle in " ".join(
+            [row["name"], row["country"]] +
+            [" ".join([c["name"], c["email"] or "", c["title"] or ""])
+             for c in row["contacts"]]).lower()]
+
+    summary = dummy_data.get_customer_summary()
+    summary["contacts"] = sum(len(v) for v in grouped.values())
 
     return render_template(
         "customers.html",
         page_title="고객사 관리",
         active_menu="customers",
-        rows=dummy_data.get_customer_profiles(keyword, grade),
-        summary=dummy_data.get_customer_summary(),
+        rows=rows,
+        summary=summary,
         grade_meta=dummy_data.CUSTOMER_GRADE_META,
         selected={"q": keyword, "grade": grade},
     )
@@ -453,7 +537,7 @@ def customers():
 
 @app.route("/customers/<customer_id>")
 def customer_detail(customer_id):
-    """8-1. 고객사 관리 - 상세. (UI 가안)"""
+    """8-1. 고객사 관리 - 상세. (UI 가안. 담당자는 실제 저장값)"""
     profile = dummy_data.get_customer_profile(customer_id)
     if profile is None:
         return redirect(url_for("customers"))
@@ -462,13 +546,72 @@ def customer_detail(customer_id):
         "customer_detail.html",
         page_title=profile["name"],
         active_menu="customers",
-        c=profile,
+        c=_with_contacts(profile),
         tab=request.args.get("tab", "requests"),
         grade_meta=dummy_data.CUSTOMER_GRADE_META,
         request_meta=dummy_data.REQUEST_TYPE_META,
         priority_meta=dummy_data.PRIORITY_META,
         status_meta=dummy_data.HISTORY_STATUS_META,
+        contact_roles=contact_store.ROLES,
+        edit_contact=request.args.get("edit", type=int),
     )
+
+
+@app.route("/customers/<customer_id>/contacts", methods=["POST"])
+def customer_contacts(customer_id):
+    """8-2. 고객사 담당자 등록·수정·삭제.
+
+    고객사 한 곳에 담당자는 보통 여러 명이다. 구매·품질·물류 담당이 따로 있고
+    메일을 누구에게 보내느냐로 회신 속도가 갈린다. 여기서 넣은 값은
+    더미가 아니라 SQLite(data/contacts.db)에 실제로 저장된다.
+    """
+    if dummy_data.get_customer_profile(customer_id) is None:
+        return redirect(url_for("customers"))
+
+    back = url_for("customer_detail", customer_id=customer_id, tab="contacts")
+    action = request.form.get("action", "add")
+    contact_id = request.form.get("contact_id", type=int)
+
+    # 남의 고객사 담당자를 주소만 바꿔 건드리지 못하게 한다
+    if contact_id is not None:
+        target = contact_store.get_contact(contact_id)
+        if target is None or target["customer_id"] != customer_id:
+            session["contact_msg"] = ("error", "담당자를 찾지 못했습니다.")
+            return redirect(back)
+
+    if action == "add" or action == "update":
+        errors = contact_store.validate(request.form)
+        if errors:
+            session["contact_msg"] = ("error", " ".join(errors))
+            return redirect(back if action == "add" else
+                            url_for("customer_detail", customer_id=customer_id,
+                                    tab="contacts", edit=contact_id))
+
+        data = request.form.to_dict()
+        data["is_primary"] = request.form.get("is_primary") == "1"
+
+        if action == "add":
+            contact_store.add_contact(customer_id, data)
+            session["contact_msg"] = ("ok", "담당자를 추가했습니다.")
+        else:
+            contact_store.update_contact(contact_id, data)
+            session["contact_msg"] = ("ok", "담당자 정보를 수정했습니다.")
+
+    elif action == "primary":
+        ok = contact_store.set_primary(contact_id)
+        session["contact_msg"] = (("ok", "대표 담당자를 바꿨습니다.") if ok else
+                                  ("error", "비활성 담당자는 대표로 지정할 수 없습니다."))
+
+    elif action in ("deactivate", "activate"):
+        contact_store.set_active(contact_id, action == "activate")
+        session["contact_msg"] = ("ok", "담당자를 {}했습니다.".format(
+            "복구" if action == "activate" else "비활성 처리"))
+
+    elif action == "delete":
+        contact_store.delete_contact(contact_id)
+        session["contact_msg"] = ("ok", "담당자를 삭제했습니다.")
+
+    return redirect(back)
 
 
 if __name__ == "__main__":
