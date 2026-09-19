@@ -4,8 +4,8 @@
 <div class="bottom-actions top-bar">
   <a class="btn" href="{{ url_for('customers') }}">← 고객사 관리</a>
   <div class="action-group">
-    <a class="btn" href="#export">⬇️ 받기</a>
-    <a class="btn" href="#import">📗 올리기</a>
+    {# 받기 칸은 바로 아래에 있다. 내려가야 보이는 올리기 칸만 링크를 둔다 #}
+    <a class="btn" href="#import">📗 올리기 칸으로</a>
     <a class="btn" href="{{ url_for('customers_template') }}">📄 빈 양식 받기</a>
   </div>
 </div>

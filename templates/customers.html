@@ -11,10 +11,9 @@
     {% endif %}
   </p>
   <div class="action-group">
-    {# 받을 값을 고르는 화면으로 보낸다. 누르자마자 전부 내려받으면 고를 자리가 없다 #}
-    <a class="btn" href="{{ url_for('customers_import', q=selected.q,
-                                    grade=selected.grade, _anchor='export') }}">⬇️ 엑셀로 받기</a>
-    <a class="btn btn-primary" href="{{ url_for('customers_import', _anchor='import') }}">📗 엑셀로 올리기</a>
+    {# 받기와 올리기가 같은 화면이라 버튼도 하나다. 조건은 그대로 들고 간다 #}
+    <a class="btn btn-primary" href="{{ url_for('customers_import', q=selected.q,
+                                       grade=selected.grade) }}">📗 엑셀로 주고받기</a>
   </div>
 </div>
 
