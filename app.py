@@ -361,6 +361,27 @@ def regulation():
     )
 
 
+def _quote_customers():
+    """견적서 만들기 창에서 고를 고객사 + 담당자.
+
+    수신처를 손으로 타이핑하면 이름·철자가 매번 달라진다.
+    고객사 관리에 등록된 담당자를 그대로 고를 수 있게 내려준다.
+    """
+    grouped = contact_store.contacts_by_customer()
+    rows = []
+    for profile in dummy_data.get_customer_profiles():
+        contacts = [c for c in grouped.get(profile["id"], []) if c["is_active"]]
+        rows.append({
+            "id": profile["id"],
+            "name": profile["name"],
+            # 대표 담당자가 맨 앞이라 창에서 기본값으로 쓴다
+            "contacts": [{"id": c["id"], "name": c["name"], "title": c["title"] or "",
+                          "email": c["email"] or "", "role": c["role_meta"]["label"]}
+                         for c in contacts],
+        })
+    return rows
+
+
 @app.route("/pricing", methods=["GET", "POST"])
 def pricing():
     """6. 영업단가 계산.
@@ -382,6 +403,7 @@ def pricing():
         active_menu="pricing",
         loaded=loaded,
         quote_terms=dummy_data.QUOTE_TERMS,
+        quote_customers=_quote_customers(),
         d=dummy_data.get_pricing_defaults(file_name or None, {
             "customer": request.args.get("customer", ""),
             "product": request.args.get("product", ""),
@@ -391,7 +413,8 @@ def pricing():
 
 # 견적서 세션에 담을 값 (쿠키 세션이라 필요한 것만, 길이도 잘라서 넣는다)
 QUOTE_FIELDS = {
-    "customer": 120, "attn": 80, "product": 160, "product_en": 160, "port": 60,
+    "customer": 120, "attn": 80, "attn_email": 120,
+    "product": 160, "product_en": 160, "port": 60,
     "qty": 16, "incoterm": 8, "fx": 16, "price_usd": 16, "price_krw": 16,
     "target_usd": 16, "terms": 600, "remark": 400,
     "issued_by": 60, "issued_by_en": 60,

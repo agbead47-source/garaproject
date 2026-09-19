@@ -2084,7 +2084,8 @@ QUOTE_LABELS = {
         "title": "QUOTATION", "sub_title": "견 적 서",
         "no": "Quotation No.", "date": "Date",
         "to": "To (Messrs.)", "from": "Supplier",
-        "attn": "Attn.", "intro": "We are pleased to quote you as follows.",
+        "attn": "Attn.", "attn_email": "E-mail",
+        "intro": "We are pleased to quote you as follows.",
         "biz_no": "Business Reg. No.", "contact": "Contact",
         "th_no": "No", "th_desc": "Description", "th_term": "Terms",
         "th_qty": "Q'ty", "th_price": "Unit Price (USD)", "th_amount": "Amount (USD)",
@@ -2097,7 +2098,8 @@ QUOTE_LABELS = {
         "title": "견 적 서", "sub_title": "QUOTATION",
         "no": "견적번호", "date": "견적일자",
         "to": "수신", "from": "공급자",
-        "attn": "담당", "intro": "아래와 같이 견적합니다.",
+        "attn": "담당", "attn_email": "이메일",
+        "intro": "아래와 같이 견적합니다.",
         "biz_no": "사업자등록번호", "contact": "담당",
         "th_no": "No", "th_desc": "품목", "th_term": "거래조건",
         "th_qty": "수량", "th_price": "단가 (USD)", "th_amount": "금액 (USD)",
@@ -2150,6 +2152,7 @@ def build_quote(form, view="customer"):
 
     customer = (form.get("customer") or "").strip() or defaults["customer"]
     attn = (form.get("attn") or "").strip()
+    attn_email = (form.get("attn_email") or "").strip()
 
     # 품목명은 국문·영문을 따로 받는다. 고객 발송용에 국문 제품명이 나가면 안 된다.
     product_ko = (form.get("product") or "").strip() or sheet["product"]
@@ -2220,6 +2223,7 @@ def build_quote(form, view="customer"):
                      else (form.get("issued_by") or ""),
         "customer": customer,
         "attn": attn,
+        "attn_email": attn_email,
         "product": product,
         "product_sub": product_sub,
         "quantity": qty,
