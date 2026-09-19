@@ -2017,6 +2017,40 @@ _COST_SHEET = {
     ],
 }
 
+# 결제 통화 - 원가는 원화로 잡고, 파는 통화만 고른다.
+#   미국만 상대하는 게 아니다. 일본은 엔화, 유럽 유통사는 유로로 달라는 곳이 있고,
+#   국내 벤더를 통한 간접 수출이면 원화로 끊기도 한다.
+#   fx 는 화면 기본값(수기 입력)이다. 실시간 고시환율이 아니다.
+CURRENCIES = [
+    {"code": "USD", "label": "USD · 미국 달러", "symbol": "$", "decimals": 2, "fx": 1385},
+    {"code": "EUR", "label": "EUR · 유로", "symbol": "€", "decimals": 2, "fx": 1502},
+    {"code": "JPY", "label": "JPY · 일본 엔", "symbol": "¥", "decimals": 0, "fx": 9.3,
+     "note": "시장에서는 100엔 단위로 고시하지만 여기서는 1엔 기준으로 적습니다"},
+    {"code": "CNY", "label": "CNY · 중국 위안", "symbol": "¥", "decimals": 2, "fx": 193},
+    {"code": "HKD", "label": "HKD · 홍콩 달러", "symbol": "HK$", "decimals": 2, "fx": 178},
+    {"code": "SGD", "label": "SGD · 싱가포르 달러", "symbol": "S$", "decimals": 2, "fx": 1078},
+    {"code": "GBP", "label": "GBP · 영국 파운드", "symbol": "£", "decimals": 2, "fx": 1796},
+    {"code": "AUD", "label": "AUD · 호주 달러", "symbol": "A$", "decimals": 2, "fx": 928},
+    {"code": "KRW", "label": "KRW · 대한민국 원", "symbol": "₩", "decimals": 0, "fx": 1,
+     "note": "원화로 끊으면 환율 변동 위험이 없습니다 (국내 벤더 경유 수출 등)"},
+]
+CURRENCY_MAP = {row["code"]: row for row in CURRENCIES}
+DEFAULT_CURRENCY = "USD"
+
+# 구매팀 원가에 덧붙이는 항목. 원가표에 없던 비용을 영업이 직접 얹을 때 쓴다.
+#   (금형 상각처럼 1회성 비용을 수량으로 나눠 넣는 경우가 잦다)
+COST_PRESETS = [
+    {"key": "parts_self", "label": "용기·부자재 (자급)",
+     "note": "공장이 사서 단가에 포함할 때"},
+    {"key": "carton", "label": "단상자·라벨", "note": "2차 포장재"},
+    {"key": "mould", "label": "금형 상각",
+     "note": "1회성 금형비를 발주 수량으로 나눠 넣습니다"},
+    {"key": "test", "label": "검사·시험비", "note": "안정성·미생물·중금속 등"},
+    {"key": "inland", "label": "내륙 운송 (공장→창고)", "note": ""},
+    {"key": "etc", "label": "기타", "note": ""},
+]
+
+
 # 선적 조건 - 뒤로 갈수록 판매자가 부담하는 범위가 넓어진다
 INCOTERM_ORDER = ["EXW", "FCA", "FOB", "CFR", "CIF"]
 
@@ -2083,8 +2117,11 @@ def get_pricing_defaults(file_name=None, handoff=None):
         "handoff": bool(customer or product),
         "source_doc": "Glowtree_Beauty_Development_Request.pdf",
         "cost_sheet": parse_cost_sheet(file_name),
-        "target_price_usd": 2.8,
-        "fx": 1385,
+        "target_price": 2.8,
+        "currency": DEFAULT_CURRENCY,
+        "currencies": [dict(row) for row in CURRENCIES],
+        "cost_presets": [dict(row) for row in COST_PRESETS],
+        "fx": CURRENCY_MAP[DEFAULT_CURRENCY]["fx"],
         "fx_date": "2026-09-18",
         "margin": 25,
         "margin_mode": "margin",
@@ -2180,7 +2217,7 @@ QUOTE_LABELS = {
         "intro": "We are pleased to quote you as follows.",
         "biz_no": "Business Reg. No.", "contact": "Contact",
         "th_no": "No", "th_desc": "Description", "th_term": "Terms",
-        "th_qty": "Q'ty", "th_price": "Unit Price (USD)", "th_amount": "Amount (USD)",
+        "th_qty": "Q'ty", "th_price": "Unit Price", "th_amount": "Amount",
         "unit": "pcs", "total": "Total Amount",
         "conditions": "Terms & Conditions", "shipment": "Shipment",
         "remark": "Remarks",
@@ -2194,7 +2231,7 @@ QUOTE_LABELS = {
         "intro": "아래와 같이 견적합니다.",
         "biz_no": "사업자등록번호", "contact": "담당",
         "th_no": "No", "th_desc": "품목", "th_term": "거래조건",
-        "th_qty": "수량", "th_price": "단가 (USD)", "th_amount": "금액 (USD)",
+        "th_qty": "수량", "th_price": "단가", "th_amount": "금액",
         "unit": "개", "total": "합계 금액",
         "conditions": "거래 조건", "shipment": "선적 조건",
         "remark": "비고",
@@ -2258,12 +2295,18 @@ def build_quote(form, view="customer"):
 
     qty = int(_quote_num(form.get("qty"), sheet["quantity"])) or 1
     fx = _quote_num(form.get("fx"), defaults["fx"]) or 1
-    target_usd = _quote_num(form.get("target_usd"), defaults["target_price_usd"])
 
-    # 견적서에 적는 단가는 센트 단위로 확정한다.
+    # 결제 통화. 모르는 코드가 오면 기본 통화로 돌린다
+    currency = CURRENCY_MAP.get((form.get("currency") or "").upper(),
+                                CURRENCY_MAP[DEFAULT_CURRENCY])
+    digits = currency["decimals"]
+
+    target_price = _quote_num(form.get("target_price"), defaults["target_price"])
+
+    # 견적서에 적는 단가는 통화의 최소 단위로 확정한다.
     # (고객이 단가 x 수량을 계산해도 합계가 맞아야 한다)
-    price_usd = round(_quote_num(form.get("price_usd")), 2)
-    price_krw = round(_quote_num(form.get("price_krw"), price_usd * fx))
+    price_unit = round(_quote_num(form.get("price_unit")), digits)
+    price_krw = round(_quote_num(form.get("price_krw"), price_unit * fx))
 
     incoterm = (form.get("incoterm") or "").strip() or defaults["selected_incoterm"]
     incoterm_label = next((i["label"] for i in INCOTERMS if i["code"] == incoterm), incoterm)
@@ -2282,7 +2325,7 @@ def build_quote(form, view="customer"):
         terms = [
             {
                 "code": str(row.get("code", "")),
-                "usd": _quote_num(row.get("usd")),
+                "unit": _quote_num(row.get("unit")),
                 "krw": _quote_num(row.get("krw")),
             }
             for row in rows if isinstance(row, dict)
@@ -2324,15 +2367,17 @@ def build_quote(form, view="customer"):
         "incoterm_label": incoterm_label,
         "incoterm_desc": incoterm_desc if internal else "",
         "port": port,
-        "currency": "USD",
-        "unit_price_usd": price_usd,
-        "amount_usd": price_usd * qty,
+        "currency": currency["code"],
+        "currency_symbol": currency["symbol"],
+        "decimals": digits,
+        "unit_price": price_unit,
+        "amount": price_unit * qty,
         # 아래 네 개는 사내 보관용에서만 쓴다 (환율·원가가 드러나는 값)
         "fx": fx if internal else 0,
         "unit_price_krw": price_krw if internal else 0,
         "amount_krw": price_krw * qty if internal else 0,
-        "target_usd": target_usd if internal else 0,
-        "over_target": bool(internal and target_usd and price_usd > target_usd),
+        "target_price": target_price if internal else 0,
+        "over_target": bool(internal and target_price and price_unit > target_price),
         "terms": terms,
         "conditions": conditions,
         "notes": list(QUOTE_NOTES[lang]),

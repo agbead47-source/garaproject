@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% from "_state.html" import project_head %}
+
+{% block content %}
+{{ project_head(p, progress) }}
+
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">샘플 · 피드백 <span class="count-chip">{{ rows|length }}</span></h2>
+      <p class="card-desc no-margin">
+        A·B·C 또는 1차·2차로 버전을 나눕니다. 같은 칸에 기록해야 나중에
+        <strong>어디서 갈렸는지</strong> 찾을 수 있습니다.
+      </p>
+    </div>
+  </div>
+
+  <form class="sample-new" method="post">
+    <input type="hidden" name="action" value="add">
+    <div class="field">
+      <label class="field-label" for="sn-round">차수</label>
+      <select class="select select-inline" name="round" id="sn-round">
+        {% for n in [1,2,3,4] %}<option value="{{ n }}">{{ n }}차</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="field-label" for="sn-code">버전</label>
+      <input class="input" type="text" name="code" id="sn-code" maxlength="20"
+             placeholder="비우면 A·B·C 순서">
+    </div>
+    <div class="field grow">
+      <label class="field-label" for="sn-note">메모</label>
+      <input class="input" type="text" name="note" id="sn-note" maxlength="500"
+             placeholder="무엇을 바꾼 버전인가요?">
+    </div>
+    <button type="submit" class="btn btn-primary">샘플 추가</button>
+  </form>
+</section>
+
+{% for s in rows %}
+<section class="card sample-card" id="s{{ s.id }}">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        {{ s.round }}차 · 샘플 {{ s.code }}
+        <span class="fill-badge {{ s.status_meta.css }}">{{ s.status_meta.label }}</span>
+      </h2>
+      <p class="card-desc no-margin">
+        제작 {{ s.made_at or '—' }}
+        {% if s.sent_at %}· 발송 {{ s.sent_at }}{% endif %}
+        {% if s.note %}· {{ s.note }}{% endif %}
+      </p>
+    </div>
+    <form method="post" onsubmit="return confirm('이 샘플을 지울까요?');">
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="sample_id" value="{{ s.id }}">
+      <button type="submit" class="btn btn-mini">삭제</button>
+    </form>
+  </div>
+
+  <!-- 사양 -->
+  <form class="sample-specs" method="post">
+    <input type="hidden" name="action" value="update">
+    <input type="hidden" name="sample_id" value="{{ s.id }}">
+
+    <div class="spec-grid">
+      {% for spec in s.specs %}
+      <div class="spec-cell">
+        <label class="field-label" for="sp{{ s.id }}-{{ spec.key }}">{{ spec.label }}</label>
+        <input class="input" type="text" id="sp{{ s.id }}-{{ spec.key }}"
+               name="spec_{{ spec.key }}" value="{{ spec.value }}"
+               maxlength="300" placeholder="{{ spec.hint }}">
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="sample-foot">
+      <label class="field-label" for="st{{ s.id }}">상태</label>
+      <select class="select select-inline" name="status" id="st{{ s.id }}">
+        {% for key in status_order %}
+        <option value="{{ key }}" {% if s.status == key %}selected{% endif %}>{{ status_meta[key].label }}</option>
+        {% endfor %}
+      </select>
+      <input class="input" type="date" name="sent_at" value="{{ s.sent_at or '' }}" title="발송일">
+      <input class="input grow" type="text" name="note" value="{{ s.note or '' }}" maxlength="500">
+      <button type="submit" class="btn btn-primary">사양·상태 저장</button>
+    </div>
+  </form>
+
+  <!-- 피드백 -->
+  <h3 class="sub-title">피드백 <span class="count-chip">{{ s.notes|length }}</span></h3>
+  <div class="fb-list">
+    {% for n in s.notes %}
+    <div class="fb-row fb-{{ n.side_meta.css }}">
+      <span class="fb-side">{{ n.side_meta.icon }} {{ n.side_meta.label }}</span>
+      <span class="fill-badge {{ n.verdict_meta.css }}">{{ n.verdict_meta.label }}</span>
+      <span class="fb-body">{{ n.body }}</span>
+      <span class="fb-at">{{ n.at[:10] }}</span>
+    </div>
+    {% else %}
+    <p class="card-desc no-margin">아직 피드백이 없습니다.</p>
+    {% endfor %}
+  </div>
+
+  <form class="fb-form" method="post">
+    <input type="hidden" name="action" value="feedback">
+    <input type="hidden" name="sample_id" value="{{ s.id }}">
+    <select class="select select-inline" name="side">
+      {% for key, meta in sides.items() %}
+      <option value="{{ key }}">{{ meta.icon }} {{ meta.label }}</option>
+      {% endfor %}
+    </select>
+    <select class="select select-inline" name="verdict">
+      {% for key, meta in verdicts.items() %}
+      <option value="{{ key }}">{{ meta.label }}</option>
+      {% endfor %}
+    </select>
+    <input class="input grow" type="text" name="body" maxlength="2000"
+           placeholder="받은 피드백을 그대로 적으세요">
+    <button type="submit" class="btn">피드백 남기기</button>
+  </form>
+</section>
+{% else %}
+<section class="card">
+  <p class="card-desc no-margin">
+    아직 샘플이 없습니다. 위에서 하나 추가해 보세요.
+    샘플을 넣으면 프로젝트 진행률의 <strong>샘플·피드백</strong> 단계가 채워집니다.
+  </p>
+</section>
+{% endfor %}
+{% endblock %}

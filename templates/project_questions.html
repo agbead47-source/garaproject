@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% from "_state.html" import project_head %}
+
+{% block content %}
+{{ project_head(p, progress) }}
+
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">바이어 확인사항</h2>
+      <p class="card-desc no-margin">
+        요청서에서 <strong>빠진 조건</strong>을 모았습니다. 통화·거래조건·결제조건·MOQ·납기·
+        패키지 사양이 비어 있으면 견적이 한 번 더 왔다 갔다 합니다.
+        고른 항목으로 바이어에게 보낼 영문 메일 초안을 만듭니다.
+      </p>
+    </div>
+    <form method="post">
+      <input type="hidden" name="action" value="rebuild">
+      <button type="submit" class="btn btn-mini">다시 훑기</button>
+    </form>
+  </div>
+
+  <form method="post" id="q-form">
+    <table class="item-table q-table">
+      <thead>
+        <tr>
+          <th class="col-pick"><span class="text-gray">고르기</span></th>
+          <th class="col-status">상태</th>
+          <th>확인할 항목</th>
+          <th>지금 값</th>
+          <th>바이어에게 물을 문장 (영문)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for q in rows %}
+        <tr class="{% if q.conflict %}row-conflict{% endif %}">
+          <td class="col-pick">
+            <input type="checkbox" name="key" value="{{ q.key }}"
+                   {% if q.key in picked or (not picked and q.status == 'open') %}checked{% endif %}>
+          </td>
+          <td class="col-status">
+            <span class="fill-badge {{ q.status_meta.css }}">{{ q.status_meta.label }}</span>
+            {% if q.priority == 'high' %}<div class="flag-badge check">먼저</div>{% endif %}
+          </td>
+          <td>
+            <div class="q-name">{{ q.label }}</div>
+            <div class="q-why">{{ q.why }}</div>
+            {% if q.conflict %}
+            <div class="q-conflict">
+              ⚠ {{ q.conflict.note }}
+              <div class="q-conflict-pair">
+                <span><b>과거</b> {{ q.conflict.past }}
+                  {% if q.conflict.past_source %}<span class="text-gray">({{ q.conflict.past_source }})</span>{% endif %}
+                </span>
+                <span><b>이번</b> {{ q.conflict.now }}</span>
+              </div>
+            </div>
+            {% endif %}
+          </td>
+          <td class="q-now">
+            {% if q.field_value %}{{ q.field_value }}{% else %}<span class="text-gray">비어 있음</span>{% endif %}
+            {% if q.answer %}
+            <div class="q-answer">회신: {{ q.answer }}</div>
+            {% endif %}
+          </td>
+          <td class="q-ask">{{ q.ask_en }}</td>
+        </tr>
+        {% else %}
+        <tr><td class="empty-row" colspan="5">확인할 항목이 없습니다. 조건이 모두 채워졌습니다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if rows %}
+    <div class="bottom-actions">
+      <div class="action-group">
+        <button type="submit" class="btn" name="action" value="ask">문의함으로 표시</button>
+        <button type="submit" class="btn" name="action" value="close">정리됨으로 표시</button>
+      </div>
+      <button type="submit" class="btn btn-primary" name="action" value="draft">
+        ✉️ 고른 항목으로 회신 초안 만들기
+      </button>
+    </div>
+    {% endif %}
+  </form>
+</section>
+
+{% if draft %}
+<section class="card" id="draft">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">회신 초안 <span class="count-chip">{{ draft.count }}건</span></h2>
+      <p class="card-desc no-margin">
+        미리 적어 둔 영문 문장을 엮었습니다. 보내기 전에 손보세요.
+        (<code>TODO: 실제 연동</code> — 문장 다듬기는 아직 사람이 합니다)
+      </p>
+    </div>
+    <button type="button" class="btn" id="draft-copy">📋 복사하기</button>
+  </div>
+
+  <dl class="doc-rows">
+    <div class="doc-row">
+      <dt class="doc-label">받는 사람</dt>
+      <dd class="doc-value">{{ draft.to or '바이어 이메일이 비어 있습니다' }}</dd>
+    </div>
+    <div class="doc-row">
+      <dt class="doc-label">제목</dt>
+      <dd class="doc-value">{{ draft.subject }}</dd>
+    </div>
+  </dl>
+
+  <pre class="draft-body" id="draft-body">{{ draft.body }}</pre>
+
+  <div class="bottom-actions">
+    <form method="post">
+      {% for key in draft['keys'] %}<input type="hidden" name="key" value="{{ key }}">{% endfor %}
+      <input type="hidden" name="action" value="ask">
+      <button type="submit" class="btn btn-primary">보낸 것으로 표시 ({{ draft.count }}건)</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2 class="card-title">회신 반영</h2>
+  <p class="card-desc">
+    바이어 답을 적으면 <strong>제품 조건에 확정값으로 올라갑니다.</strong>
+    확인사항에서도 빠집니다.
+  </p>
+  <form class="answer-form" method="post">
+    <input type="hidden" name="action" value="answer">
+    <select class="select select-inline" name="question_id">
+      {% for q in rows %}
+      <option value="{{ q.id }}">{{ q.label }}</option>
+      {% endfor %}
+    </select>
+    <input class="input grow" type="text" name="answer" maxlength="1000"
+           placeholder="바이어가 뭐라고 했나요? (예: CIF Los Angeles, USD)">
+    <button type="submit" class="btn btn-primary" {% if not rows %}disabled{% endif %}>확정값으로 올리기</button>
+  </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var btn = document.getElementById('draft-copy');
+  if (!btn) { return; }
+  btn.addEventListener('click', function () {
+    var text = document.getElementById('draft-body').textContent;
+    function done(ok) {
+      window.showToast(ok ? '📋 회신 초안을 복사했습니다.' : '복사에 실패했습니다.',
+                       ok ? '' : 'error');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); },
+                                              function () { done(false); });
+    } else { done(false); }
+  });
+})();
+</script>
+{% endblock %}

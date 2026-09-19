@@ -227,7 +227,7 @@
       fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: question })
+        body: JSON.stringify({ q: question, project: panel.dataset.project || '' })
       }).then(function (res) {
         return res.ok ? res.json() : Promise.reject(res.status);
       }).then(function (data) {

@@ -1,0 +1,60 @@
+{# 값의 상태 뱃지.
+
+   시제품에서 제일 위험한 건 예시로 깔아 둔 숫자를 확정값으로 착각하는 것이다.
+   그래서 값 옆에 늘 "이건 어디서 온 값인지"를 붙인다. #}
+
+{% macro state_badge(meta, small=false) -%}
+<span class="vstate v-{{ meta.css }}{% if small %} tiny{% endif %}" title="{{ meta.desc }}">
+  {{ meta.label }}
+</span>
+{%- endmacro %}
+
+{# 값 한 줄: 라벨 · 값 · 상태 #}
+{% macro value_row(row, edit_url=none, project_id=none) -%}
+<div class="vrow {% if row.empty %}empty{% endif %}">
+  <div class="vrow-label">{{ row.label }}</div>
+  <div class="vrow-value">
+    {% if row.value %}{{ row.value }}{% else %}<span class="text-gray">— 아직 없음</span>{% endif %}
+    {% if row.source %}<div class="vrow-source">{{ row.source }}</div>{% endif %}
+  </div>
+  {{ state_badge(row.state_meta) }}
+  {% if edit_url %}
+  <button type="button" class="vrow-edit" data-edit-field="{{ row.key }}"
+          data-label="{{ row.label }}" data-value="{{ row.value }}"
+          data-state="{{ row.state }}" aria-label="{{ row.label }} 고치기">✎</button>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{# 프로젝트 화면 위에 공통으로 붙는 머리말 #}
+{% macro project_head(p, progress, here='') -%}
+<div class="proj-bar">
+  <div class="proj-bar-main">
+    <a class="proj-back" href="{{ url_for('project_hub', project_id=p.id) }}">← 프로젝트</a>
+    <span class="proj-code">{{ p.code }}</span>
+    <span class="proj-title">{{ p.title }}</span>
+    {% if p.customer_name %}<span class="proj-cust">{{ p.customer_name }}</span>{% endif %}
+  </div>
+  <div class="proj-bar-side">
+    <span class="proj-progress-mini">
+      진행 {{ progress.done }}/{{ progress.total }}
+      <span class="pbar tiny"><span class="pbar-fill" style="width: {{ progress.percent }}%"></span></span>
+    </span>
+  </div>
+</div>
+{%- endmacro %}
+
+{# 기존 화면을 프로젝트에서 열었을 때 위에 붙는 띠.
+   어느 건을 보고 있는지 알아야 하고, 돌아갈 길이 있어야 한다. #}
+{% macro project_banner(project) -%}
+{% if project %}
+<div class="proj-banner">
+  <span class="proj-banner-icon">📁</span>
+  <span class="proj-banner-text">
+    <strong>{{ project.title }}</strong> 프로젝트에서 열었습니다
+    <span class="text-gray">· {{ project.code }}{% if project.customer_name %} · {{ project.customer_name }}{% endif %}</span>
+  </span>
+  <a class="btn btn-mini" href="{{ url_for('project_hub', project_id=project.id) }}">프로젝트로 돌아가기</a>
+</div>
+{% endif %}
+{%- endmacro %}

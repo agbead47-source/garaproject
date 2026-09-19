@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_state.html" import state_badge %}
+
+{% block content %}
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">프로젝트 <span class="count-chip">{{ rows|length }}</span></h2>
+      <p class="card-desc no-margin">
+        한 건의 해외영업 업무를 처음부터 끝까지 묶는 자리입니다.
+        요청 접수 → 분석 → 확인사항 → 전달 → 샘플 → 견적 → 일정 → 후속 연락.
+      </p>
+    </div>
+    <div class="tabs">
+      {% for key, label in [('all','전체'), ('active','진행 중'), ('hold','보류'), ('won','수주')] %}
+      <a class="tab {% if status == key %}active{% endif %}"
+         href="{{ url_for('projects', status=key) }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# 이 시제품이 값을 어떻게 구분하는지 먼저 보여 준다 #}
+  <div class="state-legend">
+    <span class="state-legend-head">값 상태 표기</span>
+    {% for s in states %}{{ state_badge(s) }}{% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h2 class="card-title">새 프로젝트</h2>
+  <p class="card-desc">
+    고객사를 고르고 <strong>샘플 요청서로 시작</strong>을 켜면, 요청서 분석 결과가 그대로
+    제품 조건으로 들어오고 빠진 항목은 바이어 확인사항으로 만들어집니다.
+  </p>
+
+  <form class="proj-new" method="post" action="{{ url_for('project_new') }}">
+    <div class="field">
+      <label class="field-label" for="np-customer">고객사</label>
+      <select class="select" name="customer_id" id="np-customer">
+        <option value="">고객사 없이 (직접 입력)</option>
+        {% for c in customers %}
+        <option value="{{ c.id }}">{{ c.flag }} {{ c.name }} · {{ c.country }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field grow">
+      <label class="field-label" for="np-title">제품명 · 건 이름</label>
+      <input class="input" type="text" name="title" id="np-title"
+             placeholder="비우면 요청서에서 읽어낸 제품명을 씁니다">
+    </div>
+    <label class="check">
+      <input type="checkbox" name="with_analysis" value="1" checked> 샘플 요청서로 시작
+    </label>
+    <button type="submit" class="btn btn-primary">프로젝트 열기</button>
+  </form>
+</section>
+
+{% for row in rows %}
+<section class="card proj-card">
+  <div class="proj-card-head">
+    <div>
+      <a class="proj-card-title" href="{{ url_for('project_hub', project_id=row.id) }}">
+        {{ row.title }}
+      </a>
+      <div class="proj-card-sub">
+        <span class="proj-code">{{ row.code }}</span>
+        {% if row.customer_name %}· {{ row.customer_name }}{% endif %}
+        {% if row.country %}· {{ row.country }}{% endif %}
+        {% if row.owner %}· 담당 {{ row.owner }}{% endif %}
+      </div>
+    </div>
+    <span class="fill-badge {{ row.status_meta.css }}">{{ row.status_meta.label }}</span>
+  </div>
+
+  <div class="proj-steps">
+    {% for s in row.progress.stages %}
+    <span class="proj-step {% if s.done %}done{% endif %}" title="{{ s.note }}">
+      <span class="proj-step-icon">{{ s.icon }}</span>
+      <span class="proj-step-label">{{ s.label }}</span>
+    </span>
+    {% endfor %}
+  </div>
+
+  <div class="proj-card-foot">
+    <span class="pbar"><span class="pbar-fill" style="width: {{ row.progress.percent }}%"></span></span>
+    <span class="proj-percent">{{ row.progress.percent }}%</span>
+    <span class="proj-counts">
+      조건 {{ row.progress.fields }} · 확인 {{ row.progress.open_questions }} ·
+      샘플 {{ row.progress.samples }} · 견적 {{ row.progress.quotes }} ·
+      일정 {{ row.progress.tasks }} · 연락 {{ row.progress.contacts }}
+    </span>
+  </div>
+</section>
+{% else %}
+<section class="card">
+  <p class="card-desc no-margin">
+    아직 프로젝트가 없습니다. 위에서 하나 열어 보세요.
+  </p>
+</section>
+{% endfor %}
+{% endblock %}

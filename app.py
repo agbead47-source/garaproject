@@ -5,6 +5,7 @@
 """
 
 import os
+import re
 import uuid
 from datetime import date, timedelta
 
@@ -19,6 +20,8 @@ import doc_edit_store
 import dummy_data
 import mail_ai
 import packaging_store
+import project_store
+import schedule_store
 import regnews_store
 import trade_store
 import trend_store
@@ -43,6 +46,9 @@ customer_store.init_db()
 
 # 포장재 가격 동향 (SQLite. 화면은 받아 둔 값만 읽는다)
 packaging_store.init_db()
+
+# 프로젝트 - 지금까지 만든 화면을 한 건으로 묶는 축 (SQLite)
+project_store.init_db()
 
 # 올린 엑셀을 잠시 두는 자리. 미리보기 -> 확인 사이에만 쓴다
 IMPORT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -113,10 +119,13 @@ def inject_globals():
     """모든 템플릿에서 공통으로 쓰는 값."""
     return {
         "current_user": session.get("user", DEFAULT_USER),
-        # 무역 도우미 (모든 화면 우측 하단)
+        # 무역 도우미 (모든 화면 우측 하단).
+        #   프로젝트 화면이면 그 건에 맞는 추천 질문을 띄운다
         "bot_name": chat_bot.BOT_NAME,
         "bot_kind": chat_bot.BOT_KIND,
-        "bot_greeting": chat_bot.GREETING,
+        "bot_greeting": chat_bot.greeting(
+            (request.view_args or {}).get("project_id")
+            or request.args.get("project", type=int)),
         # 담당자 등록 등 저장 결과 안내 (한 번 보여주고 지운다)
         "flash_msg": session.pop("contact_msg", None),
     }
@@ -235,8 +244,13 @@ def api_chat():
     """
     payload = request.get_json(silent=True) or {}
     question = (payload.get("q") or "")[:300]
+    # 화면이 프로젝트를 열어 두고 있으면 그 건의 값으로 답한다
+    try:
+        project_id = int(payload.get("project") or 0) or None
+    except (TypeError, ValueError):
+        project_id = None
 
-    reply = chat_bot.answer(question)
+    reply = chat_bot.answer(question, project_id=project_id)
 
     # 링크는 서버에서 주소로 바꿔 준다 (화면이 엔드포인트 이름을 알 필요가 없다)
     links = []
@@ -328,8 +342,23 @@ def result():
 
 @app.route("/convert")
 def convert():
-    """3. 내부 전달 문서 변환."""
-    options = session.get("options", {})
+    """3. 내부 전달 문서 변환.
+
+    프로젝트에서 열면(`?project=`) 그 건의 고객사·제품으로 맞추고,
+    문서를 만든 것으로 프로젝트 단계를 옮긴다.
+    """
+    project = None
+    project_id = request.args.get("project", type=int)
+    if project_id:
+        project = project_store.get_project(project_id)
+
+    options = dict(session.get("options", {}))
+    if project:
+        options["customer"] = project["customer_name"] or options.get("customer", "")
+        if project["source_file"]:
+            options["file_name"] = project["source_file"]
+        project_store.update_project(project_id, {"stage": "handoff"})
+
     analysis = dummy_data.analyze_document(options.get("file_name") or None)
 
     # 언어는 주소창(?lang=) 우선, 없으면 업로드 화면에서 고른 값
@@ -377,6 +406,7 @@ def convert():
         lab_doc=lab_doc,
         factory_doc=factory_doc,
         sales_doc=sales_doc,
+        project=project,
         edited_count=(lab_doc["edited_count"] + factory_doc["edited_count"]
                       + sales_doc["edited_count"]),
     )
@@ -507,6 +537,32 @@ def regulation():
     )
 
 
+def _project_handoff(args):
+    """프로젝트에서 넘어온 값. 단가 화면이 그 건의 조건으로 열린다."""
+    project_id = args.get("project", type=int)
+    if not project_id:
+        return None, None
+
+    project = project_store.get_project(project_id)
+    if project is None:
+        return None, None
+
+    fields = project_store.raw_fields(project_id)
+
+    def _v(key):
+        return (fields.get(key) or {}).get("value", "")
+
+    return project, {
+        "customer": project["customer_name"],
+        "product": _v("product_name") or project["title"],
+        "country": project["country"],
+        "moq": _v("moq"),
+        "currency": _v("currency"),
+        "trade_terms": _v("trade_terms"),
+        "target_price": _v("target_price"),
+    }
+
+
 def _quote_customers():
     """견적서 만들기 창에서 고를 고객사 + 담당자.
 
@@ -543,6 +599,33 @@ def pricing():
     loaded = request.args.get("loaded") == "1"
     file_name = session.get("cost_file") if loaded else None
 
+    # 프로젝트에서 열면 그 건의 고객사·제품·수량·통화로 맞춘다
+    project, handoff = _project_handoff(request.args)
+    defaults = dummy_data.get_pricing_defaults(file_name or None, {
+        "customer": (handoff or {}).get("customer") or request.args.get("customer", ""),
+        "product": (handoff or {}).get("product") or request.args.get("product", ""),
+    })
+
+    if handoff:
+        qty = re.sub(r"[^0-9]", "", handoff.get("moq") or "")
+        if qty:
+            defaults["cost_sheet"]["quantity"] = int(qty)
+        code = (handoff.get("currency") or "").strip().upper()[:3]
+        if code in dummy_data.CURRENCY_MAP:
+            defaults["currency"] = code
+            defaults["fx"] = dummy_data.CURRENCY_MAP[code]["fx"]
+        term = (handoff.get("trade_terms") or "").upper()
+        for row in dummy_data.INCOTERMS:
+            if row["code"] in term:
+                defaults["selected_incoterm"] = row["code"]
+                break
+        try:
+            target = float(re.sub(r"[^0-9.]", "", handoff.get("target_price") or "") or 0)
+            if target:
+                defaults["target_price"] = target
+        except ValueError:
+            pass
+
     return render_template(
         "pricing.html",
         page_title="영업단가 계산",
@@ -550,10 +633,8 @@ def pricing():
         loaded=loaded,
         quote_terms=dummy_data.QUOTE_TERMS,
         quote_customers=_quote_customers(),
-        d=dummy_data.get_pricing_defaults(file_name or None, {
-            "customer": request.args.get("customer", ""),
-            "product": request.args.get("product", ""),
-        }),
+        project=project,
+        d=defaults,
     )
 
 
@@ -561,8 +642,9 @@ def pricing():
 QUOTE_FIELDS = {
     "customer": 120, "attn": 80, "attn_email": 120,
     "product": 160, "product_en": 160, "port": 60,
-    "qty": 16, "incoterm": 8, "fx": 16, "price_usd": 16, "price_krw": 16,
-    "target_usd": 16, "terms": 600, "remark": 400,
+    "qty": 16, "incoterm": 8, "fx": 16, "currency": 4,
+    "price_unit": 16, "price_krw": 16,
+    "target_price": 16, "terms": 600, "remark": 400,
     "issued_by": 60, "issued_by_en": 60,
 }
 
@@ -679,7 +761,18 @@ def packaging():
     parts = [p for p in request.args.getlist("part")
              if p in packaging_store.PART_MAP]
     preset = request.args.get("preset", "")
+
+    # 프로젝트에서 열면 그 건에 저장해 둔 포장 구성으로 맞춘다
+    project = None
+    project_id = request.args.get("project", type=int)
+    if project_id:
+        project = project_store.get_project(project_id)
+        if project and not parts and not preset:
+            parts = [p for p in project["parts"] if p in packaging_store.PART_MAP]
+
     keep = {"preset": preset} if preset and not parts else {}
+    if project:
+        keep["project"] = project["id"]
 
     if request.args.get("collect") == "1":
         result = packaging_store.collect(force=request.args.get("force") == "1")
@@ -692,6 +785,7 @@ def packaging():
         active_menu="packaging",
         board=packaging_store.board(parts=parts, preset=preset),
         status_meta=packaging_store.STATUS_META,
+        project=project,
         collect_msg=session.pop("packaging_msg", None),
     )
 
@@ -819,6 +913,335 @@ def customer_detail(customer_id):
         contact_roles=contact_store.ROLES,
         edit_contact=request.args.get("edit", type=int),
     )
+
+
+# ---------------------------------------------------------------------------
+# 프로젝트 - 한 건을 처음부터 끝까지 묶는 축
+# ---------------------------------------------------------------------------
+
+def _project_or_404(project_id):
+    project = project_store.get_project(project_id)
+    return project
+
+
+def _project_profile(project):
+    """고객사 프로필. 과거 요청사항과 대조할 때 쓴다."""
+    if not project or not project.get("customer_id"):
+        return None
+    return _find_profile(project["customer_id"])
+
+
+@app.route("/projects")
+def projects():
+    """프로젝트 목록. 지금 무엇이 몇 건 돌고 있는지."""
+    status = request.args.get("status", "all")
+    rows = project_store.list_projects(status)
+
+    return render_template(
+        "projects.html",
+        page_title="프로젝트",
+        active_menu="projects",
+        rows=rows,
+        status=status,
+        status_meta=project_store.STATUS_META,
+        stages=project_store.STAGES,
+        states=[project_store.state_meta(k) for k in project_store.STATE_ORDER],
+        customers=_all_profiles(),
+        flash_msg=session.pop("project_msg", None),
+    )
+
+
+@app.route("/projects/new", methods=["POST"])
+def project_new():
+    """프로젝트를 연다.
+
+    '샘플 요청서로 시작'을 고르면 요청서 분석 결과를 그대로 제품 조건으로 옮기고,
+    빠진 항목을 바이어 확인사항으로 만든다. 흐름은 여기서 시작된다.
+    """
+    customer_id = (request.form.get("customer_id") or "").strip()
+    profile = _find_profile(customer_id) if customer_id else None
+    with_analysis = request.form.get("with_analysis") == "1"
+
+    analysis = dummy_data.analyze_document() if with_analysis else None
+    title = (request.form.get("title") or "").strip()
+    if not title and analysis:
+        title = next((i["value"] for i in analysis["items"]
+                      if i["key"] == "product_name"), "")
+
+    buyer_name = (request.form.get("buyer_name") or "").strip()
+    buyer_email = (request.form.get("buyer_email") or "").strip()
+    if profile and not buyer_name:
+        contacts = contact_store.list_contacts(profile["id"], include_inactive=False)
+        primary = contact_store.primary_of(contacts)
+        if primary:
+            buyer_name = primary["name"]
+            buyer_email = buyer_email or (primary["email"] or "")
+
+    project_id = project_store.create_project({
+        "title": title or "새 프로젝트",
+        "customer_id": customer_id,
+        "customer_name": profile["name"] if profile else
+                         (request.form.get("customer_name") or "").strip(),
+        "buyer_name": buyer_name,
+        "buyer_email": buyer_email,
+        "country": profile["country"] if profile else
+                   (request.form.get("country") or "").strip(),
+        "owner": session.get("user", DEFAULT_USER).replace("해외영업팀 ", ""),
+    }, analysis=analysis, profile=profile)
+
+    session["project_msg"] = ("ok", "프로젝트를 열었습니다." + (
+        " 요청서 분석 결과를 제품 조건으로 옮겼습니다." if with_analysis else ""))
+    return redirect(url_for("project_hub", project_id=project_id))
+
+
+@app.route("/projects/<int:project_id>")
+def project_hub(project_id):
+    """프로젝트 통합 화면. 한 건에 딸린 모든 것을 여기서 본다."""
+    data = project_store.hub(project_id)
+    if data is None:
+        return redirect(url_for("projects"))
+
+    project = data["project"]
+    profile = _project_profile(project)
+    grouped = contact_store.contacts_by_customer()
+
+    # 일정은 기존 일정관리 모듈에 붙여 둔 건을 그대로 읽는다
+    schedule = None
+    if project["schedule_id"]:
+        row = schedule_store.get_project(project["schedule_id"])
+        if row:
+            schedule = schedule_store.project_view(row)
+
+    return render_template(
+        "project.html",
+        page_title=project["title"],
+        active_menu="projects",
+        d=data,
+        profile=profile,
+        contacts=grouped.get(project["customer_id"], []),
+        schedule=schedule,
+        parts=packaging_store.PARTS,
+        packaging=packaging_store.board(parts=project["parts"]) if project["parts"] else None,
+        sample_specs=project_store.SAMPLE_SPECS,
+        status_meta=project_store.STATUS_META,
+        flash_msg=session.pop("project_msg", None),
+    )
+
+
+@app.route("/projects/<int:project_id>/update", methods=["POST"])
+def project_update(project_id):
+    if _project_or_404(project_id) is None:
+        return redirect(url_for("projects"))
+
+    action = request.form.get("action", "info")
+    back = request.form.get("back") or url_for("project_hub", project_id=project_id)
+
+    if action == "delete":
+        project_store.delete_project(project_id)
+        session["project_msg"] = ("ok", "프로젝트를 지웠습니다.")
+        return redirect(url_for("projects"))
+
+    if action == "field":
+        key = request.form.get("key", "")
+        if key in project_store.FIELD_LABELS:
+            state = request.form.get("state", "user")
+            project_store.set_field(project_id, key, request.form.get("value", ""),
+                                    state, source="담당자 입력")
+            profile = _project_profile(project_store.get_project(project_id))
+            project_store.rebuild_questions(project_id, profile=profile)
+            session["project_msg"] = ("ok", "{} 값을 고쳤습니다.".format(
+                project_store.FIELD_LABELS[key]))
+        return redirect(back)
+
+    if action == "parts":
+        parts = [p for p in request.form.getlist("part")
+                 if p in packaging_store.PART_MAP]
+        project_store.set_parts(project_id, parts)
+        session["project_msg"] = ("ok", "포장 구성을 저장했습니다. 관련 소재값만 보여 줍니다.")
+        return redirect(back)
+
+    if action == "schedule":
+        project = project_store.get_project(project_id)
+        if project["schedule_id"]:
+            session["project_msg"] = ("ok", "이미 일정이 걸려 있습니다.")
+            return redirect(back)
+
+        schedule_id = schedule_store.create_project({
+            "title": project["title"],
+            "account": project["customer_name"],
+            "account_kind": "customer",
+            "country": project["country"],
+            "owner": "해외영업",
+            "customer_id": project["customer_id"],
+            "origin": "project",
+            "start_date": request.form.get("start_date") or project_store.today_iso(),
+            "pace": request.form.get("pace", "standard"),
+        })
+        project_store.set_schedule(project_id, schedule_id)
+        session["project_msg"] = ("ok", "샘플·생산·선적 일정을 만들어 붙였습니다.")
+        return redirect(back)
+
+    project_store.update_project(project_id, request.form.to_dict())
+    session["project_msg"] = ("ok", "프로젝트 정보를 고쳤습니다.")
+    return redirect(back)
+
+
+@app.route("/projects/<int:project_id>/questions", methods=["GET", "POST"])
+def project_questions(project_id):
+    """바이어 확인사항과 영문 회신 초안."""
+    project = _project_or_404(project_id)
+    if project is None:
+        return redirect(url_for("projects"))
+
+    back = url_for("project_questions", project_id=project_id)
+
+    if request.method == "POST":
+        action = request.form.get("action", "draft")
+        keys = request.form.getlist("key")
+
+        if action == "answer":
+            project_store.update_question(request.form.get("question_id", type=int), {
+                "status": "answered",
+                "answer": request.form.get("answer", ""),
+            })
+            session["project_msg"] = ("ok", "회신을 반영했습니다. 제품 조건에 확정값으로 올렸습니다.")
+            return redirect(back)
+
+        if action == "ask":
+            n = project_store.mark_questions(project_id, keys, "asked")
+            session["project_msg"] = ("ok", "{}건을 문의함으로 표시했습니다.".format(n))
+            return redirect(back)
+
+        if action == "close":
+            n = project_store.mark_questions(project_id, keys, "closed")
+            session["project_msg"] = ("ok", "{}건을 정리했습니다.".format(n))
+            return redirect(back)
+
+        if action == "rebuild":
+            profile = _project_profile(project)
+            made = project_store.rebuild_questions(project_id, profile=profile)
+            session["project_msg"] = ("ok", "다시 훑었습니다. 새 확인사항 {}건.".format(made))
+            return redirect(back)
+
+        # 기본: 메일 초안 만들기
+        session["q_draft"] = keys
+        return redirect(back)
+
+    picked = session.pop("q_draft", None)
+    draft = project_store.draft_email(project_id, picked) if picked is not None else None
+
+    return render_template(
+        "project_questions.html",
+        page_title="바이어 확인사항",
+        active_menu="projects",
+        p=project,
+        rows=project_store.questions_of(project_id),
+        draft=draft,
+        picked=set(picked or []),
+        progress=project_store.progress(project_id),
+        flash_msg=session.pop("project_msg", None),
+    )
+
+
+@app.route("/projects/<int:project_id>/samples", methods=["GET", "POST"])
+def project_samples(project_id):
+    """샘플 버전과 피드백."""
+    project = _project_or_404(project_id)
+    if project is None:
+        return redirect(url_for("projects"))
+
+    back = url_for("project_samples", project_id=project_id)
+
+    if request.method == "POST":
+        action = request.form.get("action", "add")
+        data = request.form.to_dict()
+
+        if action == "add":
+            project_store.add_sample(project_id, data)
+            session["project_msg"] = ("ok", "샘플을 추가했습니다.")
+        elif action == "update":
+            project_store.update_sample(request.form.get("sample_id", type=int), data)
+            session["project_msg"] = ("ok", "샘플을 고쳤습니다.")
+        elif action == "feedback":
+            ok = project_store.add_feedback(request.form.get("sample_id", type=int), data)
+            session["project_msg"] = (("ok", "피드백을 저장했습니다.") if ok
+                                      else ("error", "내용을 적어 주세요."))
+        elif action == "delete":
+            project_store.delete_sample(request.form.get("sample_id", type=int))
+            session["project_msg"] = ("ok", "샘플을 지웠습니다.")
+        return redirect(back)
+
+    return render_template(
+        "project_samples.html",
+        page_title="샘플 · 피드백",
+        active_menu="projects",
+        p=project,
+        rows=project_store.samples_of(project_id),
+        specs=project_store.SAMPLE_SPECS,
+        status_meta=project_store.SAMPLE_STATUS,
+        status_order=project_store.SAMPLE_STATUS_ORDER,
+        sides=project_store.FEEDBACK_SIDES,
+        verdicts=project_store.FEEDBACK_VERDICTS,
+        progress=project_store.progress(project_id),
+        flash_msg=session.pop("project_msg", None),
+    )
+
+
+@app.route("/projects/<int:project_id>/quotes", methods=["GET", "POST"])
+def project_quotes(project_id):
+    """견적 대안 비교. 조건을 바꿔 가며 나란히 본다."""
+    project = _project_or_404(project_id)
+    if project is None:
+        return redirect(url_for("projects"))
+
+    back = url_for("project_quotes", project_id=project_id)
+
+    if request.method == "POST":
+        action = request.form.get("action", "add")
+        if action == "add":
+            project_store.add_quote(project_id, request.form.to_dict())
+            session["project_msg"] = ("ok", "견적 대안을 넣었습니다.")
+        elif action == "delete":
+            project_store.delete_quote(request.form.get("quote_id", type=int))
+            session["project_msg"] = ("ok", "대안을 지웠습니다.")
+        elif action == "choose":
+            project_store.choose_quote(project_id, request.form.get("quote_id", type=int))
+            session["project_msg"] = ("ok", "이 대안을 골랐습니다. 수량·조건·통화를 제품 조건에 확정값으로 올렸습니다.")
+        elif action == "seed":
+            sheet = dummy_data.parse_cost_sheet()
+            made = project_store.seed_quotes(
+                project_id, unit_cost=sheet["total"], basis="example")
+            session["project_msg"] = ("ok", "비교용 대안 {}개를 깔았습니다. 원가는 예시값입니다.".format(made))
+        return redirect(back)
+
+    sheet = dummy_data.parse_cost_sheet()
+    return render_template(
+        "project_quotes.html",
+        page_title="견적 대안 비교",
+        active_menu="projects",
+        p=project,
+        rows=project_store.quote_rows(project_id),
+        tiers=project_store.CONTAINER_TIERS,
+        basis_meta=project_store.QUOTE_BASIS,
+        incoterms=dummy_data.INCOTERMS,
+        currencies=dummy_data.CURRENCIES,
+        sheet=sheet,
+        progress=project_store.progress(project_id),
+        flash_msg=session.pop("project_msg", None),
+    )
+
+
+@app.route("/projects/<int:project_id>/contacts", methods=["POST"])
+def project_contacts(project_id):
+    """바이어 연락 이력과 다음 연락일."""
+    if _project_or_404(project_id) is None:
+        return redirect(url_for("projects"))
+
+    ok = project_store.add_contact(project_id, request.form.to_dict())
+    session["project_msg"] = (("ok", "연락 이력을 남겼습니다.") if ok
+                              else ("error", "내용을 적어 주세요."))
+    return redirect(request.form.get("back")
+                    or url_for("project_hub", project_id=project_id))
 
 
 # ---------------------------------------------------------------------------

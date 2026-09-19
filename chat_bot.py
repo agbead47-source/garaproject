@@ -38,6 +38,26 @@ GREETING = {
     ],
 }
 
+# 프로젝트 화면에서 띄우는 추천 질문. 그 건의 값으로 답할 수 있는 것들이다.
+PROJECT_CHIPS = [
+    "이 건 어디까지 왔어?",
+    "확인사항 뭐 남았어?",
+    "샘플 어떻게 됐어?",
+    "견적 대안 비교해줘",
+]
+
+
+def greeting(project_id=None):
+    """처음 열었을 때 띄울 인사와 추천 질문."""
+    if not project_id:
+        return dict(GREETING)
+    return {
+        "text": GREETING["text"] + "\n지금 프로젝트를 열어 두셨네요. "
+                                   "그 건에 대해서도 답합니다.",
+        "chips": PROJECT_CHIPS + GREETING["chips"][:2],
+    }
+
+
 # 무역 용어. 해외영업이 신입에게 매번 설명하게 되는 것들만 골랐다.
 GLOSSARY = [
     {"terms": ["exw", "공장인도"], "title": "EXW (Ex Works · 공장 인도)",
@@ -511,14 +531,113 @@ _CUST_RE = re.compile(r"고객사|바이어|담당자|연락처|이메일 주소
 _TREND_RE = re.compile(r"트렌드|뜨는|인기|관심도|성분 추천")
 
 
-def answer(question):
+_PROJECT_RE = re.compile(
+    r"이 ?(건|프로젝트)|현재 프로젝트|어디까지|진행 ?(상황|률)|남은 (일|것)|"
+    r"확인사항|다음 (할|에 할)|샘플 어(때|떻)|견적 (대안|비교)|이 건")
+
+
+def _answer_project(text, project_id):
+    """지금 보고 있는 프로젝트의 값으로 답한다.
+
+    화면에서 프로젝트를 열고 물어봐야 답할 수 있다. 어느 건인지 모르면
+    아무 건이나 골라 답하지 않는다.
+    """
+    import project_store
+
+    data = project_store.hub(project_id)
+    if data is None:
+        return _reply("그 프로젝트를 찾지 못했습니다.",
+                      links=[{"label": "프로젝트 목록", "endpoint": "projects"}])
+
+    p = data["project"]
+    info = data["progress"]
+    link = {"label": "프로젝트 열기", "endpoint": "project_hub",
+            "args": {"project_id": p["id"]}}
+
+    if "확인사항" in text:
+        open_q = [q for q in data["questions"] if q["status"] == "open"]
+        if not open_q:
+            return _reply("확인이 필요한 항목은 없습니다. 조건이 모두 채워졌습니다.",
+                          links=[link], source=p["code"])
+        lines = ["{} — 바이어에게 확인할 항목 {}건입니다.".format(p["title"], len(open_q))]
+        for q in open_q[:6]:
+            piece = "· {}".format(q["label"])
+            if q["conflict"]:
+                piece += " ⚠ 과거 요청과 다릅니다"
+            lines.append(piece)
+        lines.append("\n확인사항 화면에서 고르면 영문 회신 초안을 만들어 드립니다.")
+        return _reply("\n".join(lines),
+                      links=[{"label": "확인사항 정리하기", "endpoint": "project_questions",
+                              "args": {"project_id": p["id"]}}],
+                      source=p["code"])
+
+    if "샘플" in text:
+        if not data["samples"]:
+            return _reply("아직 샘플이 없습니다.",
+                          links=[{"label": "샘플 관리", "endpoint": "project_samples",
+                                  "args": {"project_id": p["id"]}}], source=p["code"])
+        lines = ["{} — 샘플 {}건입니다.".format(p["title"], len(data["samples"]))]
+        for s in data["samples"]:
+            piece = "· {}차 {} — {}".format(s["round"], s["code"],
+                                            s["status_meta"]["label"])
+            if s["notes"]:
+                piece += " · 최근 피드백 {}".format(s["notes"][0]["verdict_meta"]["label"])
+            lines.append(piece)
+        return _reply("\n".join(lines),
+                      links=[{"label": "샘플 관리", "endpoint": "project_samples",
+                              "args": {"project_id": p["id"]}}], source=p["code"])
+
+    if "견적" in text:
+        if not data["quotes"]:
+            return _reply("아직 견적 대안이 없습니다.",
+                          links=[{"label": "견적 비교", "endpoint": "project_quotes",
+                                  "args": {"project_id": p["id"]}}], source=p["code"])
+        lines = ["{} — 견적 대안 {}개입니다.".format(p["title"], len(data["quotes"]))]
+        for q in data["quotes"]:
+            lines.append("· {} — {} {:.2f}{}{}".format(
+                q["label"], q["currency"], q["unit_price"],
+                " (최저)" if q.get("best") else "",
+                " ★선택" if q["chosen"] else ""))
+        lines.append("\n값 출처: " + ", ".join(
+            sorted({q["basis_meta"]["label"] for q in data["quotes"]})))
+        return _reply("\n".join(lines),
+                      links=[{"label": "견적 비교", "endpoint": "project_quotes",
+                              "args": {"project_id": p["id"]}}], source=p["code"])
+
+    # 기본: 어디까지 왔나
+    lines = ["{} ({})".format(p["title"], p["code"])]
+    if p["customer_name"]:
+        lines[0] += " — {}".format(p["customer_name"])
+    lines.append("진행 {}/{}단계 ({}%)".format(info["done"], info["total"], info["percent"]))
+    for stage in info["stages"]:
+        lines.append("{} {} — {}".format("✅" if stage["done"] else "⬜",
+                                         stage["label"], stage["note"]))
+
+    todo = data["next"]["items"]
+    if todo:
+        lines.append("\n다음 할 일: " + todo[0]["label"])
+    return _reply("\n".join(lines), links=[link], source=p["code"])
+
+
+def answer(question, project_id=None):
     """질문 하나에 답 하나. (외부 API 를 부르지 않고 저장된 값만 읽는다)"""
     text = _norm(question)
     if not text:
         return _reply("무엇을 도와드릴까요?", chips=GREETING["chips"])
 
+    # 프로젝트 화면에서 물으면 그 건의 값으로 답한다
+    if project_id and _PROJECT_RE.search(text):
+        try:
+            return _answer_project(text, project_id)
+        except Exception as exc:                      # noqa: BLE001
+            return _reply("프로젝트 자료를 읽다가 막혔습니다. ({})".format(str(exc)[:60]))
+
     if re.search(r"^(안녕|하이|hi|hello|반가)", text):
-        return _reply(GREETING["text"], chips=GREETING["chips"])
+        chips = list(GREETING["chips"])
+        if project_id:
+            chips = ["이 건 어디까지 왔어?", "확인사항 뭐 남았어?",
+                     "샘플 어떻게 됐어?", "견적 대안 비교해줘"] + chips[:2]
+        return _reply(GREETING["text"], chips=chips)
 
     if re.search(r"(뭐|무엇|뭘).*(할 수|가능|해줘|할수)|도움말|help|사용법", text):
         return _reply(

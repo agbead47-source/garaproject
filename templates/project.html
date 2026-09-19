@@ -1,0 +1,494 @@
+{% extends "base.html" %}
+{% from "_state.html" import state_badge, value_row %}
+{% set p = d.project %}
+
+{% block content %}
+<!-- ============ 머리말: 이 건이 무엇이고 어디까지 왔나 ============ -->
+<section class="card proj-hero">
+  <div class="result-head">
+    <div>
+      <div class="proj-hero-top">
+        <span class="proj-code">{{ p.code }}</span>
+        <span class="fill-badge {{ p.status_meta.css }}">{{ p.status_meta.label }}</span>
+      </div>
+      <h2 class="card-title no-margin">{{ p.title }}</h2>
+      <p class="card-desc no-margin">
+        {% if p.customer_name %}<strong>{{ p.customer_name }}</strong>{% endif %}
+        {% if p.buyer_name %} · 바이어 {{ p.buyer_name }}{% endif %}
+        {% if p.buyer_email %} ({{ p.buyer_email }}){% endif %}
+        {% if p.country %} · 판매국 {{ p.country }}{% endif %}
+        · 담당 {{ p.owner }}
+      </p>
+    </div>
+    <a class="btn btn-mini" href="{{ url_for('projects') }}">프로젝트 목록</a>
+  </div>
+
+  <div class="proj-flow">
+    {% for s in d.progress.stages %}
+    <div class="flow-step {% if s.done %}done{% endif %} {% if s.key == p.stage %}now{% endif %}">
+      <div class="flow-icon">{{ s.icon }}</div>
+      <div class="flow-label">{{ s.label }}</div>
+      <div class="flow-note">{{ s.note }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="proj-hero-foot">
+    <span class="pbar"><span class="pbar-fill" style="width: {{ d.progress.percent }}%"></span></span>
+    <span class="proj-percent">{{ d.progress.percent }}% · {{ d.progress.done }}/{{ d.progress.total }} 단계</span>
+  </div>
+</section>
+
+<div class="proj-grid">
+  <!-- ============ 왼쪽 ============ -->
+  <div class="proj-main">
+
+    <!-- 다음 할 일 -->
+    <section class="card">
+      <h2 class="card-title">다음 할 일</h2>
+      <p class="card-desc">
+        사람이 체크한 게 아니라 <strong>값이 실제로 들어왔는지</strong>로 판정한 결과입니다.
+      </p>
+      <div class="todo-list">
+        {% for item in d.next['items'] %}
+        <div class="todo-item {% if item.overdue %}overdue{% endif %}">
+          <span class="todo-icon">{{ item.icon }}</span>
+          <div>
+            <div class="todo-label">{{ item.label }}</div>
+            <div class="todo-note">{{ item.note }}{% if item.desc %} · {{ item.desc }}{% endif %}</div>
+          </div>
+          {% if item.stage == 'questions' %}
+          <a class="btn btn-mini" href="{{ url_for('project_questions', project_id=p.id) }}">확인사항</a>
+          {% elif item.stage == 'sample' %}
+          <a class="btn btn-mini" href="{{ url_for('project_samples', project_id=p.id) }}">샘플</a>
+          {% elif item.stage == 'quote' %}
+          <a class="btn btn-mini" href="{{ url_for('project_quotes', project_id=p.id) }}">견적</a>
+          {% elif item.stage == 'handoff' %}
+          <a class="btn btn-mini" href="{{ url_for('convert', project=p.id) }}">전달 문서</a>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="card-desc no-margin">여덟 단계가 모두 채워졌습니다.</p>
+        {% endfor %}
+      </div>
+      <div class="todo-owner">담당 {{ d.next.owner or '—' }}</div>
+    </section>
+
+    <!-- 제품 조건 -->
+    <section class="card" id="fields">
+      <div class="result-head">
+        <div>
+          <h2 class="card-title no-margin">제품 조건 <span class="count-chip">{{ d.progress.fields }}</span></h2>
+          <p class="card-desc no-margin">
+            요청서에서 읽어낸 값과 담당자가 넣은 값이 한곳에 모입니다. 값을 누르면 고칠 수 있습니다.
+          </p>
+        </div>
+        <a class="btn btn-mini" href="{{ url_for('result') }}">원문 분석 보기</a>
+      </div>
+
+      <div class="state-legend">
+        {% for s in d.states %}{{ state_badge(s) }}{% endfor %}
+      </div>
+
+      {% for group in d.fields %}
+      <h3 class="sub-title">{{ group.label }}</h3>
+      <div class="vrows">
+        {% for row in group.rows %}
+        {{ value_row(row, edit_url=true, project_id=p.id) }}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </section>
+
+    <!-- 원문 요청서 -->
+    <section class="card">
+      <h2 class="card-title">원문 요청서</h2>
+      {% if p.source_text %}
+      <p class="card-desc">{{ p.source_file or '파일명 없음' }}</p>
+      <div class="source-box">{{ p.source_text }}</div>
+      {% else %}
+      <p class="card-desc no-margin">
+        아직 원문이 없습니다. 업로드 화면에서 요청서를 분석하면 여기에 붙습니다.
+      </p>
+      {% endif %}
+    </section>
+
+    <!-- 연구소·공장 전달 문서 -->
+    <section class="card">
+      <div class="result-head">
+        <div>
+          <h2 class="card-title no-margin">연구소 · 공장 전달 문서</h2>
+          <p class="card-desc no-margin">
+            같은 요청서를 받는 쪽이 쓰는 문서로 바꿔 넘깁니다.
+            연구소에는 처방·성분, 공장에는 패키지·납기만 갑니다.
+          </p>
+        </div>
+      </div>
+      <div class="handoff-row">
+        <a class="handoff-card" href="{{ url_for('convert', project=p.id, tab='lab') }}">
+          <span class="handoff-icon">🧪</span>
+          <span>
+            <strong>연구소 · 개발 의뢰</strong>
+            <span class="handoff-sub">제형·성분·시험 항목</span>
+          </span>
+        </a>
+        <a class="handoff-card" href="{{ url_for('convert', project=p.id, tab='factory') }}">
+          <span class="handoff-icon">🏭</span>
+          <span>
+            <strong>공장 · 생산 검토</strong>
+            <span class="handoff-sub">용기·수량·납기·서류</span>
+          </span>
+        </a>
+        <a class="handoff-card" href="{{ url_for('pricing', project=p.id) }}">
+          <span class="handoff-icon">💰</span>
+          <span>
+            <strong>영업단가 계산</strong>
+            <span class="handoff-sub">원가·마진·통화·견적서</span>
+          </span>
+        </a>
+      </div>
+    </section>
+
+    <!-- 샘플 -->
+    <section class="card">
+      <div class="result-head">
+        <div>
+          <h2 class="card-title no-margin">샘플 <span class="count-chip">{{ d.samples|length }}</span></h2>
+          <p class="card-desc no-margin">제형·향·용기를 바꾼 버전과 그에 대한 피드백입니다.</p>
+        </div>
+        <a class="btn btn-mini" href="{{ url_for('project_samples', project_id=p.id) }}">샘플 관리</a>
+      </div>
+
+      {% if d.samples %}
+      <div class="sample-strip">
+        {% for s in d.samples %}
+        <a class="sample-chip" href="{{ url_for('project_samples', project_id=p.id) }}#s{{ s.id }}">
+          <span class="sample-code">{{ s.round }}차 · {{ s.code }}</span>
+          <span class="fill-badge {{ s.status_meta.css }}">{{ s.status_meta.label }}</span>
+          <span class="sample-note">
+            {%- set fb = s.notes|first -%}
+            {% if fb %}{{ fb.side_meta.icon }} {{ fb.body[:40] }}{% else %}피드백 없음{% endif %}
+          </span>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="card-desc no-margin">아직 샘플이 없습니다.</p>
+      {% endif %}
+    </section>
+
+    <!-- 견적 -->
+    <section class="card">
+      <div class="result-head">
+        <div>
+          <h2 class="card-title no-margin">견적 대안 <span class="count-chip">{{ d.quotes|length }}</span></h2>
+          <p class="card-desc no-margin">수량·용기·조건·마진을 바꿔 가며 비교합니다.</p>
+        </div>
+        <a class="btn btn-mini" href="{{ url_for('project_quotes', project_id=p.id) }}">견적 비교</a>
+      </div>
+
+      {% if d.quotes %}
+      <table class="item-table">
+        <thead>
+          <tr>
+            <th>대안</th><th class="col-cost">수량</th><th>조건</th>
+            <th class="col-cost">단가</th><th class="col-fill">값 출처</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for q in d.quotes %}
+          <tr class="{% if q.chosen %}step-current{% endif %}">
+            <td>{{ q.label }}{% if q.chosen %} <span class="pill">선택</span>{% endif %}</td>
+            <td class="col-cost">{{ '{:,}'.format(q.qty) }}</td>
+            <td>{{ q.incoterm }} · {{ q.tier.label }}</td>
+            <td class="col-cost">{{ q.currency }} {{ '%.2f'|format(q.unit_price) }}</td>
+            <td class="col-fill"><span class="fill-badge {{ q.basis_meta.css }}">{{ q.basis_meta.label }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="card-desc no-margin">아직 견적 대안이 없습니다.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <!-- ============ 오른쪽 ============ -->
+  <aside class="proj-side">
+
+    <!-- 확인사항 -->
+    <section class="card">
+      <div class="result-head">
+        <div>
+          <h2 class="card-title no-margin">
+            바이어 확인사항
+            <span class="count-chip">{{ d.progress.open_questions }}</span>
+          </h2>
+        </div>
+        <a class="btn btn-mini" href="{{ url_for('project_questions', project_id=p.id) }}">정리하기</a>
+      </div>
+      {% for q in d.questions[:5] %}
+      <div class="q-line {% if q.conflict %}conflict{% endif %}">
+        <span class="fill-badge {{ q.status_meta.css }}">{{ q.status_meta.label }}</span>
+        <span class="q-label">{{ q.label }}</span>
+        {% if q.conflict %}<span class="q-warn" title="{{ q.conflict.note }}">⚠ 과거 요청과 다름</span>{% endif %}
+      </div>
+      {% else %}
+      <p class="card-desc no-margin">확인할 항목이 없습니다.</p>
+      {% endfor %}
+      {% if d.questions|length > 5 %}
+      <p class="card-desc no-margin">외 {{ d.questions|length - 5 }}건</p>
+      {% endif %}
+    </section>
+
+    <!-- 고객사 -->
+    {% if profile %}
+    <section class="card">
+      <div class="result-head">
+        <div><h2 class="card-title no-margin">고객사</h2></div>
+        <a class="btn btn-mini" href="{{ url_for('customer_detail', customer_id=profile.id) }}">상세</a>
+      </div>
+      <div class="brief-line">
+        <span class="brief-name">{{ profile.flag }} {{ profile.name }}</span>
+      </div>
+      <div class="cust-tags wrap">
+        {% for t in profile.tags %}<span class="pill soft">{{ t }}</span>{% endfor %}
+      </div>
+      {% if contacts %}
+      <h3 class="sub-title">담당자</h3>
+      {% for c in contacts[:3] %}
+      <div class="q-line">
+        <span class="q-label">{{ c.name }}{% if c.is_primary %} (대표){% endif %}</span>
+        <span class="text-gray">{{ c.role_meta.label }}</span>
+      </div>
+      {% endfor %}
+      {% endif %}
+      {% if profile.requests %}
+      <h3 class="sub-title">매번 요구하는 것</h3>
+      {% for r in profile.requests[:3] %}
+      <div class="q-line"><span class="q-label">{{ r.title }}</span></div>
+      {% endfor %}
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- 일정 -->
+    <section class="card">
+      <div class="result-head">
+        <div><h2 class="card-title no-margin">일정</h2></div>
+        {% if schedule %}
+        <a class="btn btn-mini" href="{{ url_for('schedule.detail', project_id=p.schedule_id) }}">일정 화면</a>
+        {% endif %}
+      </div>
+
+      {% if schedule %}
+      <div class="sched-list">
+        {% for t in schedule.tasks[:6] %}
+        <div class="sched-row {% if t.status == 'done' %}done{% elif t.late_days %}late{% endif %}">
+          <span class="sched-date">{{ t.plan_date }}</span>
+          <span class="sched-title">{{ t.phase_icon }} {{ t.title }}</span>
+          <span class="sched-owner">{{ t.owner }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="card-desc">아직 일정이 없습니다. 기본 일정을 만들어 붙일 수 있습니다.</p>
+      <form method="post" action="{{ url_for('project_update', project_id=p.id) }}">
+        <input type="hidden" name="action" value="schedule">
+        <button type="submit" class="btn btn-primary full">🗓 기본 일정 만들기</button>
+      </form>
+      {% endif %}
+    </section>
+
+    <!-- 후속 연락 -->
+    <section class="card">
+      <h2 class="card-title">바이어 연락</h2>
+      {% if d.next_contact %}
+      <div class="next-contact {% if d.next_contact.overdue %}overdue{% endif %}">
+        <div class="next-date">
+          {{ d.next_contact.next_date }}
+          {% if d.next_contact.overdue %}<span class="flag-badge missing">지남</span>{% endif %}
+        </div>
+        <div class="next-action">{{ d.next_contact.next_action or d.next_contact.summary }}</div>
+      </div>
+      {% endif %}
+
+      <div class="contact-log">
+        {% for c in d.contacts[:4] %}
+        <div class="contact-row">
+          <span class="contact-date">{{ c.at }}</span>
+          <span class="contact-dir {{ c.direction_meta.css }}">{{ c.channel_meta.icon }} {{ c.direction_meta.label }}</span>
+          <span class="contact-summary">{{ c.summary }}</span>
+        </div>
+        {% else %}
+        <p class="card-desc no-margin">아직 연락 이력이 없습니다.</p>
+        {% endfor %}
+      </div>
+
+      <form class="contact-form" method="post"
+            action="{{ url_for('project_contacts', project_id=p.id) }}">
+        <input class="input" type="text" name="summary" placeholder="무엇을 주고받았나요?" maxlength="400">
+        <div class="contact-form-row">
+          <select class="select select-inline" name="direction">
+            <option value="out">보냄</option>
+            <option value="in">받음</option>
+          </select>
+          <select class="select select-inline" name="channel">
+            {% for key, meta in [('email','이메일'), ('call','전화'), ('meeting','미팅·화상'), ('sample','샘플 발송'), ('other','기타')] %}
+            <option value="{{ key }}">{{ meta }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="contact-form-row">
+          <input class="input" type="date" name="next_date" title="다음 연락 예정일">
+          <input class="input" type="text" name="next_action" placeholder="다음 할 일" maxlength="200">
+        </div>
+        <button type="submit" class="btn full">연락 기록 남기기</button>
+      </form>
+    </section>
+
+    <!-- 포장 구성 → 포장재 가격 동향 -->
+    <section class="card">
+      <div class="result-head">
+        <div><h2 class="card-title no-margin">용기 · 부자재</h2></div>
+        {% if p.parts %}
+        <a class="btn btn-mini" href="{{ url_for('packaging', project=p.id) }}">소재값 보기</a>
+        {% endif %}
+      </div>
+      <p class="card-desc">
+        이 제품에 들어가는 부품을 고르면 관련 <strong>소재값 추세</strong>만 봅니다.
+        용기 납품가 계산이 아니라 참고용입니다.
+      </p>
+
+      <form method="post" action="{{ url_for('project_update', project_id=p.id) }}">
+        <input type="hidden" name="action" value="parts">
+        <div class="part-picks">
+          {% for part in parts %}
+          <label class="part-pick {% if part.key in p.parts %}on{% endif %}">
+            <input type="checkbox" name="part" value="{{ part.key }}"
+                   {% if part.key in p.parts %}checked{% endif %}>
+            <span>{{ part.icon }} {{ part.label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <button type="submit" class="btn full">포장 구성 저장</button>
+      </form>
+
+      {% if packaging %}
+      <div class="pack-mini">
+        {% for card in packaging.cards %}
+        {% if card.latest %}
+        <div class="pack-mini-row">
+          <span>{{ card.icon }} {{ card.name }}</span>
+          {% set ch = card.changes|selectattr('label','equalto','전년 동월 대비')|first %}
+          {% if ch %}
+          <span class="growth {% if ch.pct > 0.05 %}up{% elif ch.pct < -0.05 %}down{% else %}flat{% endif %}">
+            {% if ch.pct > 0 %}+{% endif %}{{ '%.1f'|format(ch.pct) }}%
+          </span>
+          {% else %}<span class="text-gray">—</span>{% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- 프로젝트 정보 -->
+    <section class="card">
+      <h2 class="card-title">프로젝트 정보</h2>
+      <form class="proj-info" method="post" action="{{ url_for('project_update', project_id=p.id) }}">
+        <div class="field">
+          <label class="field-label" for="pi-title">건 이름</label>
+          <input class="input" type="text" name="title" id="pi-title" value="{{ p.title }}">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="pi-status">상태</label>
+            <select class="select select-inline" name="status" id="pi-status">
+              {% for key, meta in status_meta.items() %}
+              <option value="{{ key }}" {% if p.status == key %}selected{% endif %}>{{ meta.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="pi-owner">담당</label>
+            <input class="input" type="text" name="owner" id="pi-owner" value="{{ p.owner }}">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="pi-buyer">바이어 · 이메일</label>
+          <input class="input" type="text" name="buyer_name" id="pi-buyer" value="{{ p.buyer_name }}">
+          <input class="input spaced-top" type="text" name="buyer_email" value="{{ p.buyer_email }}">
+        </div>
+        <button type="submit" class="btn full">저장</button>
+      </form>
+    </section>
+  </aside>
+</div>
+
+<!-- 값 고치기 창 -->
+<div class="modal-backdrop" id="field-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h3 class="modal-title" id="fm-title">값 고치기</h3>
+      <button type="button" class="modal-close" id="fm-close" aria-label="닫기">✕</button>
+    </div>
+    <form method="post" action="{{ url_for('project_update', project_id=p.id) }}">
+      <input type="hidden" name="action" value="field">
+      <input type="hidden" name="key" id="fm-key">
+      <div class="modal-body">
+        <div class="field">
+          <label class="field-label" for="fm-value">값</label>
+          <textarea class="input" name="value" id="fm-value" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label" for="fm-state">이 값의 상태</label>
+          <select class="select" name="state" id="fm-state">
+            {% for s in d.states %}
+            <option value="{{ s.key }}">{{ s.label }} — {{ s.desc }}</option>
+            {% endfor %}
+          </select>
+          <p class="field-hint">
+            확정값으로 바꾸면 바이어 확인사항에서도 빠집니다.
+          </p>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" id="fm-cancel">취소</button>
+        <button type="submit" class="btn btn-primary">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  /* 값 하나를 고치는 창. 상태(어디서 온 값인지)도 같이 고른다 */
+  var modal = document.getElementById('field-modal');
+  if (!modal) { return; }
+
+  function open(btn) {
+    document.getElementById('fm-title').textContent = btn.dataset.label + ' 고치기';
+    document.getElementById('fm-key').value = btn.dataset.editField;
+    document.getElementById('fm-value').value = btn.dataset.value || '';
+    var state = document.getElementById('fm-state');
+    state.value = btn.dataset.state || 'user';
+    modal.hidden = false;
+    document.getElementById('fm-value').focus();
+  }
+  function close() { modal.hidden = true; }
+
+  document.querySelectorAll('[data-edit-field]').forEach(function (btn) {
+    btn.addEventListener('click', function () { open(btn); });
+  });
+  document.getElementById('fm-close').addEventListener('click', close);
+  document.getElementById('fm-cancel').addEventListener('click', close);
+  modal.addEventListener('click', function (e) { if (e.target === modal) { close(); } });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !modal.hidden) { close(); }
+  });
+})();
+</script>
+{% endblock %}

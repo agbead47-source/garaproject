@@ -1,6 +1,9 @@
 {% extends "base.html" %}
+{% from "_state.html" import project_banner %}
 
 {% block content %}
+{{ project_banner(project if project is defined else none) }}
+
 {# 목적을 먼저 못 박는다. 이 화면은 납품가 계산기가 아니다 #}
 <section class="card pack-head">
   <div class="result-head">

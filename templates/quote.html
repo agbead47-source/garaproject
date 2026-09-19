@@ -23,7 +23,7 @@
 {% else %}
 <p class="card-desc no-print quote-caveat">
   고객사로 나가는 <strong>영문 견적서</strong>입니다. 원가가 드러나는 값(원화 환산·견적환율·조건별 단가)은
-  빼고 <strong>USD 단가와 합계만</strong> 넣었습니다.
+  빼고 <strong>{{ q.currency }} 단가와 합계만</strong> 넣었습니다.
   하단 직인은 가안용 이미지({{ q.seller.seal_file }})이니, 실제 발송 전에 회사 직인으로 교체해 주세요.
 </p>
 {% endif %}
@@ -64,8 +64,8 @@
         <th>{{ q.t.th_desc }}</th>
         <th class="q-term">{{ q.t.th_term }}</th>
         <th class="q-qty">{{ q.t.th_qty }}</th>
-        <th class="q-price">{{ q.t.th_price }}</th>
-        <th class="q-amount">{{ q.t.th_amount }}</th>
+        <th class="q-price">{{ q.t.th_price }} ({{ q.currency }})</th>
+        <th class="q-amount">{{ q.t.th_amount }} ({{ q.currency }})</th>
       </tr>
     </thead>
     <tbody>
@@ -78,18 +78,18 @@
         </td>
         <td class="q-term">{{ q.incoterm_full }}</td>
         <td class="q-qty">{{ '{:,}'.format(q.quantity) }} {{ q.t.unit }}</td>
-        <td class="q-price">{{ '%.2f'|format(q.unit_price_usd) }}</td>
-        <td class="q-amount">{{ '{:,.2f}'.format(q.amount_usd) }}</td>
+        <td class="q-price">{{ '{:,.{}f}'.format(q.unit_price, q.decimals) }}</td>
+        <td class="q-amount">{{ '{:,.{}f}'.format(q.amount, q.decimals) }}</td>
       </tr>
     </tbody>
     <tfoot>
       <tr class="q-total">
         <th colspan="5">{{ q.t.total }}</th>
-        <th class="q-amount">USD {{ '{:,.2f}'.format(q.amount_usd) }}</th>
+        <th class="q-amount">{{ q.currency }} {{ '{:,.{}f}'.format(q.amount, q.decimals) }}</th>
       </tr>
       {% if q.internal %}
       <tr class="q-total-sub">
-        <td colspan="5">{{ q.t.krw }} ({{ q.t.fx_note }} {{ '{:,.0f}'.format(q.fx) }}원/USD)</td>
+        <td colspan="5">{{ q.t.krw }} ({{ q.t.fx_note }} {{ '{:,.2f}'.format(q.fx).rstrip('0').rstrip('.') }}원/{{ q.currency }})</td>
         <td class="q-amount">{{ '{:,.0f}'.format(q.amount_krw) }}원</td>
       </tr>
       {% endif %}
@@ -113,11 +113,11 @@
         {{ q.t.term_table }} <span class="quote-block-sub">{{ q.t.term_table_sub }}</span>
       </h3>
       <table class="quote-terms">
-        <tr><th>조건</th><th class="q-price">단가 (USD)</th></tr>
+        <tr><th>조건</th><th class="q-price">단가 ({{ q.currency }})</th></tr>
         {% for t in q.terms %}
         <tr {% if t.code == q.incoterm %}class="q-picked"{% endif %}>
           <th>{{ t.code }}{% if t.code == q.incoterm %} (본 견적){% endif %}</th>
-          <td class="q-price">{{ '%.2f'|format(t.usd) }}</td>
+          <td class="q-price">{{ '{:,.{}f}'.format(t.unit, q.decimals) }}</td>
         </tr>
         {% endfor %}
       </table>

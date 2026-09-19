@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_state.html" import project_banner %}
 
 {% macro doc_body(doc) -%}
 <div class="doc-head">
@@ -92,6 +93,8 @@
 {%- endmacro %}
 
 {% block content %}
+{{ project_banner(project if project is defined else none) }}
+
 <div class="convert-bar">
   <div class="tabs" role="tablist">
     <button type="button" class="tab {% if tab != 'factory' %}active{% endif %}" data-tab="lab">🧪 연구소 · 개발 의뢰</button>

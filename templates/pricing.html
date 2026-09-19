@@ -1,6 +1,9 @@
 {% extends "base.html" %}
+{% from "_state.html" import project_banner %}
 
 {% block content %}
+{{ project_banner(project if project is defined else none) }}
+
 <section class="card result-summary">
   <div class="result-head">
     <div>
@@ -92,6 +95,8 @@
           <span class="part-unit">원</span>
         </div>
         {% endfor %}
+        <div id="cost-extra"></div>
+
         <div class="part-row part-sum">
           <span class="part-label">제조원가 합계 (EXW)</span>
           <span class="part-input sum-value" id="cost-sum">—</span>
@@ -99,11 +104,27 @@
         </div>
       </div>
 
+      {# 원가표에 없던 비용을 영업이 직접 얹는다. 금형 상각처럼 1회성 비용이 흔하다 #}
+      <div class="cost-add">
+        <select class="select select-inline" id="cost-preset">
+          {% for row in d.cost_presets %}
+          <option value="{{ row.key }}" data-label="{{ row.label }}"
+                  data-note="{{ row.note }}">{{ row.label }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-mini" id="cost-add">＋ 원가 항목 추가</button>
+        <span class="field-hint no-top">구매팀 원가표에 없던 비용을 여기서 더합니다.</span>
+      </div>
+
       {% if d.cost_sheet.unmatched %}
       <div class="unmatched-box">
         <div class="unmatched-head">인식하지 못한 행 {{ d.cost_sheet.unmatched|length }}건</div>
         {% for row in d.cost_sheet.unmatched %}
-        <div class="unmatched-row"><strong>{{ row.label }}</strong> — {{ row.note }}</div>
+        <div class="unmatched-row">
+          <div><strong>{{ row.label }}</strong> — {{ row.note }}</div>
+          <button type="button" class="btn btn-mini unmatched-add"
+                  data-label="{{ row.label }}">계산에 넣기</button>
+        </div>
         {% endfor %}
       </div>
       {% endif %}
@@ -178,18 +199,35 @@
       </div>
     </section>
 
-    <!-- 4. 환율 -->
+    <!-- 4. 통화·환율 -->
     <section class="card">
-      <h2 class="card-title">④ 환율</h2>
+      <h2 class="card-title">④ 결제 통화 · 환율</h2>
+
+      <div class="field">
+        <label class="field-label" for="p-currency">결제 통화</label>
+        <select class="select" id="p-currency">
+          {% for c in d.currencies %}
+          <option value="{{ c.code }}" data-fx="{{ c.fx }}" data-decimals="{{ c.decimals }}"
+                  data-symbol="{{ c.symbol }}" data-note="{{ c.note|default('') }}"
+                  {% if c.code == d.currency %}selected{% endif %}>{{ c.label }}</option>
+          {% endfor %}
+        </select>
+        <p class="field-hint" id="currency-hint"></p>
+      </div>
+
       <div class="field-row">
         <div class="field">
-          <label class="field-label" for="p-fx">견적 환율 (KRW/USD)</label>
-          <input class="input" type="number" id="p-fx" value="{{ d.fx }}" min="100" step="5">
+          <label class="field-label" for="p-fx">
+            견적 환율 (<span id="fx-label">KRW/USD</span>)
+          </label>
+          <input class="input" type="number" id="p-fx" value="{{ d.fx }}" min="0" step="5">
           <p class="field-hint">{{ d.fx_date }} 기준 · 수기 입력 (TODO: 실시간 환율 연동)</p>
         </div>
         <div class="field">
-          <label class="field-label" for="p-target">고객사 목표 단가 (USD)</label>
-          <input class="input" type="number" id="p-target" value="{{ d.target_price_usd }}" min="0" step="0.1">
+          <label class="field-label" for="p-target">
+            고객사 목표 단가 (<span id="target-cur">USD</span>)
+          </label>
+          <input class="input" type="number" id="p-target" value="{{ d.target_price }}" min="0" step="0.1">
         </div>
       </div>
       <div class="action-row">
@@ -204,7 +242,7 @@
       <div class="verdict-head">
         <div>
           <div class="verdict-label"><span id="out-term">CIF</span> 판매 단가</div>
-          <div class="verdict-price"><span id="out-usd">—</span> <span class="verdict-cur">USD / 개</span></div>
+          <div class="verdict-price"><span id="out-usd">—</span> <span class="verdict-cur"><span data-cur>USD</span> / 개</span></div>
           <div class="verdict-krw"><span id="out-krw">—</span>원 / 개</div>
         </div>
         <div class="verdict-gap">
@@ -233,7 +271,7 @@
             <th class="col-label">조건</th>
             <th>포함 범위</th>
             <th class="col-cost">원가 (원)</th>
-            <th class="col-cost">단가 (USD)</th>
+            <th class="col-cost">단가 (<span data-cur>USD</span>)</th>
           </tr>
         </thead>
         <tbody id="term-rows"></tbody>
@@ -275,17 +313,17 @@
       </table>
     </section>
 
-    <section class="card">
+    <section class="card" id="fx-card">
       <h2 class="card-title">환율 변동 시 단가</h2>
       <p class="card-desc">
-        원가는 원화, 판매는 달러라 <strong>환율이 내려가면(원화 강세) USD 단가가 올라갑니다.</strong>
+        원가는 원화, 판매는 외화라 <strong>환율이 내려가면(원화 강세) 외화 단가가 올라갑니다.</strong>
       </p>
       <table class="item-table">
         <thead>
           <tr>
             <th class="col-label">변동</th>
             <th class="col-cost">환율</th>
-            <th class="col-cost">단가 (USD)</th>
+            <th class="col-cost">단가 (<span data-cur>USD</span>)</th>
             <th class="col-status">목표 달성</th>
           </tr>
         </thead>
@@ -412,9 +450,10 @@
       <input type="hidden" name="qty" id="q-qty">
       <input type="hidden" name="incoterm" id="q-incoterm">
       <input type="hidden" name="fx" id="q-fx">
-      <input type="hidden" name="price_usd" id="q-price-usd">
+      <input type="hidden" name="price_unit" id="q-price-unit">
+      <input type="hidden" name="currency" id="q-currency">
       <input type="hidden" name="price_krw" id="q-price-krw">
-      <input type="hidden" name="target_usd" id="q-target-usd">
+      <input type="hidden" name="target_price" id="q-target-price">
       <input type="hidden" name="terms" id="q-terms">
       <input type="hidden" name="view" value="customer">
 
@@ -444,7 +483,31 @@
   function el(id) { return document.getElementById(id); }
   function num(id) { return parseFloat(el(id).value) || 0; }
   function won(v) { return Math.round(v).toLocaleString('ko-KR'); }
-  function usd(v) { return v.toFixed(2); }
+
+  /* 결제 통화. 원가는 원화로 잡고 파는 통화만 고른다 */
+  function cur() {
+    var opt = el('p-currency').selectedOptions[0];
+    return {
+      code: el('p-currency').value,
+      decimals: opt ? parseInt(opt.dataset.decimals, 10) : 2,
+      fx: opt ? parseFloat(opt.dataset.fx) : 1,
+      note: opt ? (opt.dataset.note || '') : ''
+    };
+  }
+
+  /* 환율 표기. 엔화는 9.3원처럼 1원 미만이 의미를 갖는다 - 반올림하면 단가가 틀어진다 */
+  function rate(v) {
+    return v >= 100
+      ? Math.round(v).toLocaleString('ko-KR')
+      : v.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /* 외화 표기. 엔·원처럼 소수점을 안 쓰는 통화가 있다 */
+  function money(v, digits) {
+    var d = (digits === undefined) ? cur().decimals : digits;
+    return v.toLocaleString('en-US', { minimumFractionDigits: d,
+                                       maximumFractionDigits: d });
+  }
 
   function marginMode() {
     var picked = document.querySelector('input[name="margin-mode"]:checked');
@@ -499,6 +562,17 @@
     var fx = num('p-fx') || 1;
     var target = num('p-target');
     var term = el('p-incoterm').value;
+    var money_ = cur();
+    var code = money_.code;
+
+    /* 통화 표기를 화면 전체에 맞춘다 */
+    document.querySelectorAll('[data-cur]').forEach(function (node) {
+      node.textContent = code;
+    });
+    el('fx-label').textContent = 'KRW/' + code;
+    el('target-cur').textContent = code;
+    el('currency-hint').textContent = money_.note ||
+      '원가는 원화로 잡고, 이 통화로 팝니다. 환율은 수기 입력입니다.';
 
     var c = costFor(term, qty);
     var price = priceOf(c.total);
@@ -508,7 +582,7 @@
     el('out-term').textContent = term;
 
     /* --- 상단 판정 --- */
-    el('out-usd').textContent = usd(priceUsd);
+    el('out-usd').textContent = money(priceUsd);
     el('out-krw').textContent = won(price);
 
     var gap = priceUsd - target;
@@ -522,20 +596,20 @@
       el('out-gap-note').textContent = '목표 단가를 입력하세요.';
       el('out-msg').textContent = '';
     } else if (gap > 0) {
-      gapEl.textContent = '+' + usd(gap) + ' 초과';
+      gapEl.textContent = '+' + money(gap) + ' 초과';
       gapEl.className = 'verdict-diff text-red';
       card.classList.add('over');
-      el('out-gap-note').textContent = '목표 USD ' + usd(target) + ' / 개';
+      el('out-gap-note').textContent = '목표 ' + code + ' ' + money(target) + ' / 개';
       el('out-msg').textContent =
-        '목표 단가를 개당 ' + usd(gap) + ' USD(' + won(gap * fx) + '원) 넘습니다. ' +
+        '목표 단가를 개당 ' + money(gap) + ' ' + code + '(' + won(gap * fx) + '원) 넘습니다. ' +
         '선적 조건을 낮추거나(EXW·FOB), 마진율·원가를 조정해야 합니다.';
     } else {
-      gapEl.textContent = usd(Math.abs(gap)) + ' 여유';
+      gapEl.textContent = money(Math.abs(gap)) + ' 여유';
       gapEl.className = 'verdict-diff text-green';
       card.classList.add('under');
-      el('out-gap-note').textContent = '목표 USD ' + usd(target) + ' / 개';
+      el('out-gap-note').textContent = '목표 ' + code + ' ' + money(target) + ' / 개';
       el('out-msg').textContent =
-        term + ' 조건으로 목표 단가 안에 들어옵니다. 개당 ' + usd(Math.abs(gap)) + ' USD 여유가 있습니다.';
+        term + ' 조건으로 목표 단가 안에 들어옵니다. 개당 ' + money(Math.abs(gap)) + ' ' + code + ' 여유가 있습니다.';
     }
 
     var ratio = target > 0 ? Math.min(priceUsd / target, 1.6) : 0;
@@ -556,7 +630,7 @@
         '<td class="col-label">' + code + (code === term ? ' <span class="pill">선택</span>' : '') + '</td>' +
         '<td class="term-scope">' + TERM_SCOPE[code] + '</td>' +
         '<td class="col-cost">' + won(tc.total) + '</td>' +
-        '<td class="col-cost">' + usd(tp) + '</td>';
+        '<td class="col-cost">' + money(tp) + '</td>';
       termBody.appendChild(tr);
     });
 
@@ -603,8 +677,8 @@
       tr.innerHTML =
         '<td class="col-label">' + (step > 0 ? '+' : '') + step + '%' +
           (step === 0 ? ' <span class="pill">기준</span>' : '') + '</td>' +
-        '<td class="col-cost">' + won(f) + '원</td>' +
-        '<td class="col-cost">' + usd(u) + '</td>' +
+        '<td class="col-cost">' + rate(f) + '원</td>' +
+        '<td class="col-cost">' + money(u) + '</td>' +
         '<td class="col-status"><span class="status-badge ' +
           (pass ? 'confirmed">달성' : 'danger">초과') + '</span></td>';
       fxBody.appendChild(tr);
@@ -614,7 +688,15 @@
     var beCard = el('breakeven-card');
     beCard.classList.remove('over', 'under');
 
-    if (target <= 0) {
+    /* 원화로 팔면 환율 변동 위험이 없다. 손익분기 환율을 적을 이유도 없다 */
+    var noFx = (code === 'KRW');
+    beCard.hidden = noFx;
+    var fxCard = el('fx-card');
+    if (fxCard) { fxCard.hidden = noFx; }
+
+    if (noFx) {
+      /* 그대로 내려가면 아래 계산이 헛돈다 */
+    } else if (target <= 0) {
       el('out-fxmin').textContent = '—';
       el('out-fxmin').className = 'info-value';
       el('out-fxgap').textContent = '—';
@@ -625,9 +707,9 @@
       var diff = fx - fxMin;
       var realMargin = (1 - c.total / (target * fx)) * 100;
 
-      el('out-fxmin').textContent = won(fxMin) + '원 / USD';
+      el('out-fxmin').textContent = rate(fxMin) + '원 / ' + code;
       el('out-fxmin').className = 'info-value ' + (diff >= 0 ? 'text-green' : 'text-red');
-      el('out-fxgap').textContent = (diff >= 0 ? '+' : '') + won(diff) + '원 ' +
+      el('out-fxgap').textContent = (diff >= 0 ? '+' : '') + rate(diff) + '원 ' +
         (diff >= 0 ? '(여유)' : '(부족)');
       el('out-realmargin').textContent = realMargin.toFixed(1) + '%' +
         (realMargin < num('p-margin') ? ' — 목표 ' + num('p-margin') + '%보다 낮음' : '');
@@ -636,11 +718,11 @@
       beCard.classList.add(diff >= 0 ? 'under' : 'over');
 
       el('out-breakeven-note').textContent = diff >= 0
-        ? '환율이 ' + won(fxMin) + '원 밑으로 내려가면 목표 단가 USD ' + usd(target) +
-          '로는 마진 ' + num('p-margin') + '%를 지킬 수 없습니다. 현재 ' + won(fx) +
-          '원이라 ' + won(diff) + '원 여유가 있습니다.'
-        : '지금 환율(' + won(fx) + '원)로는 목표 단가 USD ' + usd(target) + '에 마진 ' +
-          num('p-margin') + '%를 못 맞춥니다. 환율이 ' + won(fxMin) +
+        ? '환율이 ' + rate(fxMin) + '원 밑으로 내려가면 목표 단가 ' + code + ' ' + money(target) +
+          '로는 마진 ' + num('p-margin') + '%를 지킬 수 없습니다. 현재 ' + rate(fx) +
+          '원이라 ' + rate(diff) + '원 여유가 있습니다.'
+        : '지금 환율(' + rate(fx) + '원)로는 목표 단가 ' + code + ' ' + money(target) + '에 마진 ' +
+          num('p-margin') + '%를 못 맞춥니다. 환율이 ' + rate(fxMin) +
           '원까지 올라야 하거나, 원가·조건을 조정해야 합니다.';
     }
 
@@ -657,7 +739,8 @@
 
   /* --- 이벤트 --- */
   var DEFAULTS = {};
-  var inputs = ['p-qty', 'p-incoterm', 'p-ins-rate', 'p-ins-cov', 'p-margin', 'p-fx', 'p-target'];
+  var inputs = ['p-qty', 'p-incoterm', 'p-ins-rate', 'p-ins-cov', 'p-margin',
+                'p-fx', 'p-target', 'p-currency'];
 
   document.querySelectorAll('[data-cost], [data-logi]').forEach(function (input) {
     inputs.push(input.id);
@@ -675,7 +758,98 @@
     radio.addEventListener('change', render);
   });
 
+  /* 통화를 바꾸면 그 통화의 기본 환율로 갈아 끼운다.
+     손으로 고친 환율이 남아 있으면 엉뚱한 단가가 나온다 (엔화에 1,385원 등) */
+  el('p-currency').addEventListener('change', function () {
+    var c = cur();
+    el('p-fx').value = c.fx;
+    el('p-fx').step = c.fx >= 100 ? 5 : 0.1;
+    el('p-target').step = c.decimals === 0 ? 10 : 0.1;
+    render();
+    window.showToast(c.code + ' 기준으로 바꿨습니다. 환율과 목표 단가를 다시 확인해 주세요.', 'warn');
+  });
+
+  /* ---- 구매팀 원가 항목 추가 ----
+     원가표에 없던 비용을 영업이 직접 얹는다. 지운 만큼 합계에서도 빠진다 */
+  var extraSeq = 0;
+
+  function addCostLine(label, note, amount) {
+    extraSeq += 1;
+    var id = 'cost-extra-' + extraSeq;
+
+    var row = document.createElement('div');
+    row.className = 'part-row part-extra';
+
+    var lab = document.createElement('label');
+    lab.className = 'part-label';
+    lab.setAttribute('for', id);
+
+    var name = document.createElement('input');
+    name.className = 'part-name';
+    name.type = 'text';
+    name.value = label || '';
+    name.maxLength = 40;
+    name.placeholder = '항목 이름';
+    lab.appendChild(name);
+
+    if (note) {
+      var hint = document.createElement('span');
+      hint.className = 'part-note';
+      hint.textContent = note;
+      lab.appendChild(hint);
+    }
+
+    var input = document.createElement('input');
+    input.className = 'input part-input';
+    input.type = 'number';
+    input.id = id;
+    input.min = '0';
+    input.step = '10';
+    input.value = amount || 0;
+    input.setAttribute('data-cost', '');
+    input.addEventListener('input', render);
+
+    var unit = document.createElement('span');
+    unit.className = 'part-unit';
+    unit.textContent = '원';
+
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'part-del';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', '항목 삭제');
+    del.addEventListener('click', function () {
+      row.remove();
+      render();
+    });
+
+    row.appendChild(lab);
+    row.appendChild(input);
+    row.appendChild(unit);
+    row.appendChild(del);
+    el('cost-extra').appendChild(row);
+    input.focus();
+    render();
+  }
+
+  el('cost-add').addEventListener('click', function () {
+    var opt = el('cost-preset').selectedOptions[0];
+    addCostLine(opt ? opt.dataset.label : '', opt ? opt.dataset.note : '', 0);
+  });
+
+  /* 원가표에서 인식하지 못한 행을 한 번에 올린다 */
+  document.querySelectorAll('.unmatched-add').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      addCostLine(btn.dataset.label, '원가표에서 옮김 — 금액을 확인해 주세요', 0);
+      btn.closest('.unmatched-row').classList.add('moved');
+      btn.disabled = true;
+      btn.textContent = '추가됨';
+    });
+  });
+
   el('p-reset').addEventListener('click', function () {
+    /* 직접 넣은 원가 항목도 같이 지운다 */
+    el('cost-extra').innerHTML = '';
     Object.keys(DEFAULTS).forEach(function (key) {
       if (key === 'mode') { return; }
       var node = el(key);
@@ -776,28 +950,29 @@
     var fx = num('p-fx') || 1;
     var term = el('p-incoterm').value;
     var price = priceOf(costFor(term, qty).total);
+    var c = cur();
 
-    var unitUsd = +(price / fx).toFixed(2);   // 견적 단가는 센트 단위로 확정
+    // 견적 단가는 그 통화의 최소 단위로 확정한다 (단가 x 수량 = 합계가 맞아야 한다)
+    var unit = +(price / fx).toFixed(c.decimals);
 
     el('q-qty').value = qty;
     el('q-incoterm').value = term;
     el('q-fx').value = fx;
-    el('q-price-usd').value = unitUsd;
+    el('q-currency').value = c.code;
+    el('q-price-unit').value = unit;
     el('q-price-krw').value = Math.round(price);
-    el('q-target-usd').value = num('p-target');
+    el('q-target-price').value = num('p-target');
 
     /* 조건별 단가도 같이 넘겨 견적서 참고표에 싣는다 */
     el('q-terms').value = JSON.stringify(ORDER.map(function (code) {
       var tp = priceOf(costFor(code, qty).total);
-      return { code: code, usd: +(tp / fx).toFixed(4), krw: Math.round(tp) };
+      return { code: code, unit: +(tp / fx).toFixed(4), krw: Math.round(tp) };
     }));
 
     el('quote-preview').innerHTML =
-      '<strong>' + term + ' USD ' + usd(unitUsd) + '</strong> / 개 · ' +
-      qty.toLocaleString('ko-KR') + '개 · 합계 USD ' +
-      (unitUsd * qty).toLocaleString('en-US', { minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2 }) +
-      '<span class="quote-preview-sub">견적환율 ' + won(fx) + '원/USD</span>';
+      '<strong>' + term + ' ' + c.code + ' ' + money(unit) + '</strong> / 개 · ' +
+      qty.toLocaleString('ko-KR') + '개 · 합계 ' + c.code + ' ' + money(unit * qty) +
+      '<span class="quote-preview-sub">견적환율 ' + rate(fx) + '원/' + c.code + '</span>';
   }
 
   function openQuote() {
