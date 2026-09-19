@@ -56,13 +56,52 @@
     <div class="summary-value">{{ summary.active }}</div>
     <div class="summary-sub">보류 {{ summary.hold }}건</div>
   </div>
+  {# 인증서 기한은 일정과 성격이 같다. 놓치면 선적이 멈춘다 #}
+  <div class="summary-card {% if cert_summary.expired %}danger{% elif cert_summary.action %}warn{% endif %}">
+    <div class="summary-label">인증서 갱신</div>
+    <div class="summary-value {% if cert_summary.expired %}text-red{% endif %}">{{ cert_summary.action }}</div>
+    <div class="summary-sub">
+      {% if cert_summary.expired %}만료 {{ cert_summary.expired }}건 · {% endif %}
+      만료 전에 착수해야 하는 건
+    </div>
+  </div>
 </div>
+
+{# 어느 탭에 있든 위에 뜬다. 인증서가 끊기면 다른 일정이 다 맞아도 선적을 못 한다 #}
+{% if cert_alerts and view != 'certs' %}
+<div class="cert-bar">
+  <div class="cert-bar-head">
+    <span class="cert-bar-title">
+      챙겨야 할 인증서 {{ cert_summary.action }}건
+    </span>
+    <a class="btn btn-mini"
+       href="{{ url_for('schedule.board', view='certs', alert='action') }}">인증서 보기</a>
+  </div>
+  <div class="cert-bar-rows">
+    {% for c in cert_alerts %}
+    <div class="cert-bar-row">
+      <span class="cert-alert ca-{{ c.alert_meta.css }}" title="{{ c.alert_meta.desc }}">
+        {{ c.alert_meta.label }}
+      </span>
+      <span class="cert-dday ca-{{ c.alert_meta.css }}">{{ c.d_label }}</span>
+      <span class="cert-bar-name">
+        {{ c.kind_meta.icon }} {{ c.name }}
+        {% if c.country %}<span class="text-gray">· {{ c.country }}</span>{% endif %}
+      </span>
+      <span class="cert-bar-scope">{{ c.scope }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 <div class="pros-toolbar">
   <div class="tabs small">
     {% for v in views %}
     <a class="tab {% if view == v.value %}active{% endif %}"
-       href="{{ url_for('schedule.board', view=v.value, status=selected.status, owner=selected.owner, q=selected.q) }}">{{ v.label }}</a>
+       href="{{ url_for('schedule.board', view=v.value, status=selected.status, owner=selected.owner, q=selected.q) }}">
+      {{ v.label }}{% if v.value == 'certs' and cert_summary.action %}
+      <span class="tab-badge">{{ cert_summary.action }}</span>{% endif %}</a>
     {% endfor %}
   </div>
   <form class="sch-filter" method="get" action="{{ url_for('schedule.board') }}">
@@ -156,6 +195,223 @@
         <input type="hidden" name="action" value="clear">
         <button class="btn full" type="submit">예시 건 지우기</button>
       </form>
+    </section>
+  </aside>
+</div>
+
+{% elif view == 'certs' %}
+{% set d = data.certs %}
+
+<p class="live-caveat">
+  인증서가 일정관리에 있는 이유는 하나입니다 — <strong>인증서는 만료됩니다.</strong>
+  그리고 여기서 진짜 기한은 만료일이 아니라 <strong>갱신 착수일</strong>입니다.
+  할랄 갱신에 두세 달, ISO 22716 재심사는 실사 일정을 잡는 데만 몇 주가 걸립니다.
+  만료일 D-7 에 알아차리면 인증서가 끊긴 채로 선적을 맞습니다.
+</p>
+
+<div class="pros-toolbar">
+  <div class="tabs small">
+    <a class="tab {% if d.kind == 'all' and d.alert == 'all' %}active{% endif %}"
+       href="{{ url_for('schedule.board', view='certs') }}">전체 {{ cert_summary.total }}</a>
+    <a class="tab {% if d.alert == 'action' %}active{% endif %}"
+       href="{{ url_for('schedule.board', view='certs', alert='action') }}">
+      챙길 것 {{ cert_summary.action }}</a>
+    {% for k in C.KINDS %}
+    <a class="tab {% if d.kind == k.key %}active{% endif %}"
+       href="{{ url_for('schedule.board', view='certs', kind=k.key) }}">{{ k.icon }} {{ k.label }}</a>
+    {% endfor %}
+  </div>
+  <div class="pros-toolbar-right">
+    <form method="post" action="{{ url_for('schedule.cert_demo') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="{{ 'clear' if d.has_demo else 'seed' }}">
+      <button class="btn btn-mini" type="submit">
+        {{ '예시 인증서 지우기' if d.has_demo else '예시 인증서 넣기' }}
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="pros-grid">
+  <section class="card">
+    <h2 class="card-title">인증서 {{ d.rows|length }}건</h2>
+    <p class="card-desc">
+      급한 것부터 위에 옵니다. <strong>만료일을 적지 않으면 기한을 따질 수 없습니다</strong> —
+      비어 있으면 지어내지 않고 <span class="cert-alert ca-nodate">만료일 미확인</span> 으로 둡니다.
+    </p>
+
+    {% for c in d.rows %}
+    <div class="cert-row ca-{{ c.alert_meta.css }}">
+      <div class="cert-main">
+        <div class="cert-line">
+          <span class="cert-alert ca-{{ c.alert_meta.css }}" title="{{ c.alert_meta.desc }}">
+            {{ c.alert_meta.label }}
+          </span>
+          <span class="cert-dday ca-{{ c.alert_meta.css }}">{{ c.d_label }}</span>
+          <span class="cert-name">{{ c.kind_meta.icon }} {{ c.name }}</span>
+          {% if c.country %}<span class="cert-country">{{ c.country }}</span>{% endif %}
+          {% if c.is_demo %}<span class="sch-demo-tag">예시</span>{% endif %}
+        </div>
+        {% if c.scope %}<div class="cert-scope">{{ c.scope }}</div>{% endif %}
+        <div class="cert-why">{{ c.why }}</div>
+        <div class="cert-meta">
+          {% if c.issuer %}<span>{{ c.issuer }}</span>{% endif %}
+          {% if c.number %}<span>번호 {{ c.number }}</span>{% endif %}
+          {% if c.issued_date %}<span>발급 {{ c.issued_date }}</span>{% endif %}
+          {% if c.lead_days %}<span>갱신 준비 {{ c.lead_days }}일</span>{% endif %}
+          {% if c.owner %}<span>{{ c.owner }}</span>{% endif %}
+          <span class="cert-status cs-{{ c.status_meta.css }}">{{ c.status_meta.label }}</span>
+        </div>
+        {% if c.catalog_note %}
+        <div class="cert-note">💡 {{ c.catalog_note }}</div>
+        {% endif %}
+        {% if c.note %}<div class="cert-note">{{ c.note }}</div>{% endif %}
+      </div>
+
+      <div class="cert-actions">
+        {# 갱신은 날짜를 갈아 끼우는 일이다. 새 만료일 없이는 처리하지 않는다 #}
+        <form class="cert-renew" method="post"
+              action="{{ url_for('schedule.cert_update', cert_id=c.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="action" value="renew">
+          <input type="hidden" name="kind" value="{{ d.kind }}">
+          <input type="hidden" name="alert" value="{{ d.alert }}">
+          <input class="input input-mini" type="date" name="issued_date"
+                 title="새 발급일" aria-label="새 발급일">
+          <input class="input input-mini" type="date" name="expiry_date"
+                 title="새 만료일" aria-label="새 만료일" required>
+          <button class="btn btn-mini" type="submit">갱신 반영</button>
+        </form>
+        <span class="cert-renew-hint">갱신 후 새 발급일·만료일</span>
+        <div class="cert-actions-row">
+          <form method="post" action="{{ url_for('schedule.cert_update', cert_id=c.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="action" value="status">
+            <input type="hidden" name="kind" value="{{ d.kind }}">
+            <input type="hidden" name="alert" value="{{ d.alert }}">
+            <select class="select select-inline" name="status" onchange="this.form.submit()"
+                    aria-label="상태">
+              {% for st in C.STATUSES %}
+              <option value="{{ st.value }}" {% if c.status == st.value %}selected{% endif %}>
+                {{ st.label }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <form method="post" action="{{ url_for('schedule.cert_update', cert_id=c.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="kind" value="{{ d.kind }}">
+            <input type="hidden" name="alert" value="{{ d.alert }}">
+            <button class="part-del" type="submit" aria-label="인증서 삭제">&#10005;</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <p class="empty-row">
+      등록된 인증서가 없습니다. 오른쪽에서 한 건 넣어 보세요.
+    </p>
+    {% endfor %}
+  </section>
+
+  <aside class="pros-side">
+    <section class="card">
+      <h2 class="card-title">인증서 등록</h2>
+      <p class="card-desc">
+        목록에서 고르면 발급기관·유효기간·준비기간이 채워집니다.
+        <strong>업계 통상값</strong>이라 실제 인증서에 적힌 날짜로 고쳐 주세요.
+      </p>
+      <form method="post" action="{{ url_for('schedule.cert_add') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="kind" value="{{ d.kind if d.kind != 'all' else '' }}">
+
+        <div class="field">
+          <label class="field-label" for="c-key">인증서</label>
+          <select class="select" name="catalog_key" id="c-key" required>
+            <option value="">고르세요</option>
+            {% for k in C.KINDS %}
+            <optgroup label="{{ k.icon }} {{ k.label }}">
+              {% for row in d.catalog %}{% if row.kind == k.key %}
+              <option value="{{ row.key }}">{{ row.name }}</option>
+              {% endif %}{% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select>
+          <p class="field-hint">
+            {% for k in C.KINDS %}<b>{{ k.icon }} {{ k.label }}</b> {{ k.desc }}<br>{% endfor %}
+          </p>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="c-scope">적용 범위</label>
+          <input class="input" type="text" name="scope" id="c-scope" maxlength="160"
+                 placeholder="예: 1공장 (스킨케어 라인) / Vitamin C Serum 30ml">
+          <p class="field-hint">어느 공장, 어느 제품에 걸린 인증인지 적어 두세요.</p>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="c-issued">발급일</label>
+            <input class="input" type="date" name="issued_date" id="c-issued">
+          </div>
+          <div class="field">
+            <label class="field-label" for="c-expiry">만료일</label>
+            <input class="input" type="date" name="expiry_date" id="c-expiry">
+          </div>
+        </div>
+        <p class="field-hint no-top">
+          발급일만 넣으면 통상 유효기간으로 만료일을 잡아 드립니다.
+          <strong>추천값</strong>이니 인증서를 보고 고쳐 주세요.
+          모르면 비워 두세요 — 지어낸 날짜보다 낫습니다.
+        </p>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="c-number">인증번호</label>
+            <input class="input" type="text" name="number" id="c-number" maxlength="80">
+          </div>
+          <div class="field">
+            <label class="field-label" for="c-owner">담당</label>
+            <input class="input" type="text" name="owner" id="c-owner" maxlength="40"
+                   placeholder="품질팀">
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="c-status">상태</label>
+          <select class="select" name="status" id="c-status">
+            {% for st in C.STATUSES %}
+            <option value="{{ st.value }}">{{ st.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="c-note">메모</label>
+          <textarea class="input textarea" name="note" id="c-note" rows="2"
+                    maxlength="500" placeholder="심사 일정, 담당 기관 연락처 등"></textarea>
+        </div>
+
+        <button class="btn btn-primary full" type="submit">인증서 등록</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">기한을 이렇게 봅니다</h2>
+      <ul class="cert-legend">
+        {% for key in ['expired', 'due', 'soon', 'ok', 'nodate', 'perpetual', 'preparing'] %}
+        <li>
+          <span class="cert-alert ca-{{ C.ALERTS[key].css }}">{{ C.ALERTS[key].label }}</span>
+          <span>{{ C.ALERTS[key].desc }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="field-hint">
+        <strong>갱신 착수일 = 만료일 − 준비기간</strong>입니다.
+        만료일이 아니라 이 날짜를 기한으로 봅니다.
+        <br><br>
+        인증서 파일은 올리지 않습니다. 가안이라 이름과 날짜만 다룹니다.
+      </p>
     </section>
   </aside>
 </div>

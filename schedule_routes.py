@@ -10,6 +10,7 @@ import secrets
 from flask import (Blueprint, abort, redirect, render_template, request,
                    session, url_for)
 
+import cert_store as certs
 import schedule_store as store
 
 bp = Blueprint("schedule", __name__)
@@ -19,6 +20,9 @@ VIEWS = [
     {"value": "agenda", "label": "할 일"},
     {"value": "timeline", "label": "타임라인"},
     {"value": "calendar", "label": "캘린더"},
+    # 인증서가 여기 있는 이유는 하나다 - 인증서는 만료된다.
+    # 만료된 걸 선적 직전에 알면 그때는 이미 늦다.
+    {"value": "certs", "label": "인증서"},
 ]
 VIEW_KEYS = {row["value"] for row in VIEWS}
 
@@ -34,6 +38,7 @@ def csrf_token():
 @bp.before_request
 def guard():
     store.init_db()
+    certs.init_db()
     if request.method == "POST":
         sent = request.form.get("csrf_token")
         if not sent or sent != session.get(CSRF_KEY):
@@ -46,6 +51,7 @@ def inject():
     return {
         "csrf_token": csrf_token(),
         "S": store,
+        "C": certs,
         "timezone_label": store.TIMEZONE_LABEL,
         "today": store.today_iso(),
     }
@@ -89,6 +95,17 @@ def board():
         data["agenda"] = store.agenda(days=14)
     elif view == "timeline":
         data["timeline"] = store.timeline(views)
+    elif view == "certs":
+        data["certs"] = {
+            "kind": request.args.get("kind", "all"),
+            "alert": request.args.get("alert", "all"),
+            "rows": certs.list_certs(kind=request.args.get("kind", "all"),
+                                     alert=request.args.get("alert", "all"),
+                                     keyword=keyword),
+            "catalog": certs.catalog_for(),
+            "has_demo": certs.has_demo(),
+            "edit": request.args.get("edit", type=int),
+        }
     else:
         year = request.args.get("year", type=int)
         month = request.args.get("month", type=int)
@@ -102,6 +119,9 @@ def board():
         views=VIEWS,
         projects=views,
         summary=store.summary(),
+        # 인증서 기한은 어느 탭에 있든 위에 뜬다. 놓치면 선적이 멈춘다
+        cert_summary=certs.summary(),
+        cert_alerts=certs.alerts(limit=6),
         data=data,
         selected={"status": status, "owner": owner, "q": keyword},
         flash=_take_flash(),
@@ -283,6 +303,103 @@ def task_delete(task_id):
 # ---------------------------------------------------------------------------
 # 예시 데이터
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# 인증서
+# ---------------------------------------------------------------------------
+
+def _cert_back(**extra):
+    args = {"view": "certs"}
+    for key in ("kind", "alert", "q"):
+        value = request.form.get(key) or request.args.get(key)
+        if value:
+            args[key] = value
+    args.update(extra)
+    return url_for("schedule.board", **args)
+
+
+@bp.route("/schedule/certs", methods=["POST"])
+def cert_add():
+    """인증서 한 건.
+
+    미리 넣어 둔 목록에서 고르면 발급기관·유효기간·준비기간이 채워진다.
+    그 값은 **업계 통상값**이라 실제 인증서에 적힌 날짜로 고쳐 써야 한다.
+    """
+    data = request.form.to_dict()
+    guessed_msg = ""
+    key = (data.get("catalog_key") or "").strip()
+    row = certs.CATALOG_MAP.get(key)
+    if row:
+        data.setdefault("kind", row["kind"])
+        if not (data.get("name") or "").strip():
+            data["name"] = row["name"]
+        if not (data.get("issuer") or "").strip():
+            data["issuer"] = row["issuer"]
+        if not (data.get("country") or "").strip():
+            data["country"] = row.get("country", "")
+        if not str(data.get("lead_days") or "").strip():
+            data["lead_days"] = row["lead_days"]
+        # 발급일만 넣었으면 통상 유효기간으로 만료일을 추천한다.
+        # 추천이라고 안내하고, 담당자가 고칠 수 있게 둔다.
+        issued = certs.parse_date(data.get("issued_date"))
+        if issued and not certs.parse_date(data.get("expiry_date")) and row["valid_months"]:
+            guessed = certs.add_months(issued, row["valid_months"])
+            if guessed:
+                data["expiry_date"] = guessed.isoformat()
+                guessed_msg = ("만료일은 통상 유효기간({}개월)으로 {} 라고 잡아 뒀습니다. "
+                               "추천값이니 실제 인증서에 적힌 날짜로 고쳐 주세요."
+                               .format(row["valid_months"], guessed.isoformat()))
+
+    if not certs.add_cert(data):
+        _flash("인증서 이름을 적어 주세요.", "error")
+    elif guessed_msg:
+        # 추천했다는 사실이 안내보다 중요하다. 덮어쓰지 않고 같이 적는다
+        _flash("등록했습니다. " + guessed_msg, "info")
+    elif not certs.parse_date(data.get("expiry_date")):
+        _flash("등록했습니다. 만료일이 비어 있어 기한을 따질 수 없습니다 — "
+               "인증서에 적힌 날짜를 넣어 주세요.", "info")
+    else:
+        _flash("인증서를 등록했습니다.", "success")
+    return redirect(_cert_back())
+
+
+@bp.route("/schedule/certs/<int:cert_id>", methods=["POST"])
+def cert_update(cert_id):
+    if certs.get_cert(cert_id) is None:
+        abort(404)
+
+    action = request.form.get("action", "update")
+    if action == "delete":
+        certs.delete_cert(cert_id)
+        _flash("인증서를 지웠습니다.", "success")
+    elif action == "status":
+        certs.set_status(cert_id, request.form.get("status", ""))
+        _flash("상태를 바꿨습니다.", "success")
+    elif action == "renew":
+        # 갱신은 날짜를 갈아 끼우는 일이다. 새 만료일이 없으면 하지 않는다
+        if certs.renew(cert_id, request.form.get("issued_date"),
+                       request.form.get("expiry_date")):
+            _flash("갱신한 날짜로 바꿨습니다.", "success")
+        else:
+            _flash("새 만료일을 넣어 주세요. 날짜 없이는 갱신으로 처리하지 않습니다.", "error")
+    elif certs.update_cert(cert_id, request.form.to_dict()):
+        _flash("인증서를 고쳤습니다.", "success")
+    else:
+        _flash("인증서 이름을 적어 주세요.", "error")
+    return redirect(_cert_back())
+
+
+@bp.route("/schedule/certs/demo", methods=["POST"])
+def cert_demo():
+    if request.form.get("action") == "clear":
+        certs.clear_demo()
+        _flash("예시 인증서를 지웠습니다.", "success")
+    else:
+        made = certs.seed_demo(reset=True)
+        _flash("예시 인증서 {}건을 넣었습니다. 실제 인증서가 아니라 화면 확인용입니다."
+               .format(made), "info")
+    return redirect(_cert_back())
+
 
 @bp.route("/schedule/demo", methods=["POST"])
 def demo():
