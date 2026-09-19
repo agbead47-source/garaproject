@@ -64,13 +64,16 @@
   /* -----------------------------------------------------------------------
    * 분석 결과 화면: 추출 값 인라인 수정 (화면에서만 반영)
    * --------------------------------------------------------------------- */
+  /* 분석 결과의 항목 값(.item-value)과 변환 문서의 값(.doc-text)을 같은 방식으로
+     그 자리에서 고친다. 내부 문서는 영업이 손을 대고 나가는 게 보통이다. */
   function initInlineEdit() {
-    var cells = document.querySelectorAll('.item-value');
+    var cells = document.querySelectorAll('.item-value, .doc-text');
     if (!cells.length) { return; }
 
     function render(cell) {
       var value = cell.dataset.value || '';
-      cell.textContent = value || '— 값 없음';
+      var empty = cell.dataset.placeholder || '— 값 없음';
+      cell.textContent = value || empty;
       cell.classList.toggle('empty', !value);
     }
 
@@ -113,6 +116,7 @@
     }
 
     cells.forEach(function (cell) {
+      if (cell.dataset.placeholder && !cell.dataset.value) { render(cell); }
       cell.addEventListener('click', function (e) {
         // 값 수정 중에는 행 하이라이트가 끼어들지 않게 한다
         e.stopPropagation();

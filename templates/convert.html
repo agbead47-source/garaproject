@@ -9,6 +9,60 @@
   </div>
 </div>
 
+{# 받는 쪽은 고객사를 모른다. 해외영업이 설명해 주는 자리. #}
+<section class="doc-section brief-section">
+  <h3 class="doc-heading">
+    고객사 소개
+    {% if doc.brief.known %}
+    <a class="doc-heading-link" href="{{ url_for('customer_detail', customer_id=doc.brief.id) }}"
+       target="_blank">고객사 관리에서 보기 ›</a>
+    {% endif %}
+  </h3>
+
+  {% if doc.brief.known %}
+  <div class="brief-line">
+    <span class="brief-name">{{ doc.brief.name }}</span>
+    <span class="brief-sum">{{ doc.brief.summary }}</span>
+  </div>
+  <div class="cust-tags wrap">
+    {% for t in doc.brief.tags %}<span class="pill soft">{{ t }}</span>{% endfor %}
+  </div>
+
+  {% if doc.brief.notes %}
+  <div class="brief-notes">
+    <div class="brief-notes-head">이 고객사가 매번 요구하는 것</div>
+    {% for n in doc.brief.notes %}
+    <div class="brief-note">
+      <span class="brief-note-icon">{{ n.icon }}</span>
+      <div>
+        <div class="brief-note-title">
+          {{ n.title }}
+          {% if n.priority == 'high' %}<span class="flag-badge check">필수</span>{% endif %}
+        </div>
+        <div class="brief-note-detail">{{ n.detail }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="card-desc no-margin">
+    <strong>{{ doc.brief.name }}</strong> — 고객사 관리에 등록되지 않은 곳이라 소개를 채우지 못했습니다.
+    <a href="{{ url_for('customers') }}" target="_blank">고객사로 등록</a>하면 이 자리에 자동으로 들어갑니다.
+  </p>
+  {% endif %}
+
+  <dl class="doc-rows">
+    <div class="doc-row">
+      <dt class="doc-label">영업 담당자 코멘트</dt>
+      <dd class="doc-value">
+        <span class="doc-text" data-value=""
+              data-placeholder="이 건에서 특히 알아둘 점을 적어 주세요 (클릭해서 입력)"></span>
+      </dd>
+    </div>
+  </dl>
+</section>
+
 {% for section in doc.sections %}
 <section class="doc-section">
   <h3 class="doc-heading">{{ section.heading }}</h3>
@@ -21,7 +75,7 @@
         {% if row.flag == 'missing' %}<span class="flag-badge missing">누락</span>{% endif %}
       </dt>
       <dd class="doc-value">
-        {{ row.value }}
+        <span class="doc-text" data-value="{{ row.value }}">{{ row.value }}</span>
         {% if row.source %}
         <div class="doc-source" hidden>원문: {{ row.source }}</div>
         {% endif %}
@@ -41,6 +95,7 @@
   </div>
 
   <div class="convert-tools">
+    <span class="convert-hint">값을 클릭하면 고칠 수 있습니다</span>
     <label class="toggle">
       <input type="checkbox" id="source-toggle"> 원문 대비 보기
     </label>
@@ -80,7 +135,7 @@
         {% if row.flag == 'check' %}<span class="flag-badge check">확인 필요</span>{% endif %}
         {% if row.flag == 'missing' %}<span class="flag-badge missing">누락</span>{% endif %}
       </dt>
-      <dd class="doc-value">{{ row.value }}</dd>
+      <dd class="doc-value"><span class="doc-text" data-value="{{ row.value }}">{{ row.value }}</span></dd>
     </div>
     {% endfor %}
     {% endfor %}
@@ -185,10 +240,31 @@
     lines.push(panel.querySelector('.doc-meta').textContent.trim(), '');
 
     panel.querySelectorAll('.doc-section').forEach(function (section) {
-      lines.push('[' + section.querySelector('.doc-heading').textContent.trim() + ']');
+      // 제목에 '고객사 관리에서 보기' 링크가 붙어 있어 첫 텍스트 노드만 쓴다
+      var heading = section.querySelector('.doc-heading');
+      lines.push('[' + heading.childNodes[0].textContent.trim() + ']');
+
+      // 고객사 소개는 항목(dl) 밖에 있어서 따로 담는다
+      var brief = section.querySelector('.brief-line');
+      if (brief) {
+        lines.push(section.querySelector('.brief-name').textContent.trim() +
+                   ' — ' + section.querySelector('.brief-sum').textContent.trim());
+        var tags = [];
+        section.querySelectorAll('.cust-tags .pill').forEach(function (t) {
+          tags.push(t.textContent.trim());
+        });
+        if (tags.length) { lines.push('특징: ' + tags.join(', ')); }
+
+        section.querySelectorAll('.brief-note').forEach(function (note) {
+          lines.push('- ' + note.querySelector('.brief-note-title').childNodes[0].textContent.trim() +
+                     ': ' + note.querySelector('.brief-note-detail').textContent.trim());
+        });
+      }
+
       section.querySelectorAll('.doc-row').forEach(function (row) {
         var label = row.querySelector('.doc-label').childNodes[0].textContent.trim();
-        var value = row.querySelector('.doc-value').childNodes[0].textContent.trim();
+        var valueEl = row.querySelector('.doc-text') || row.querySelector('.doc-value');
+        var value = valueEl.textContent.trim();
         lines.push('- ' + label + ': ' + value);
       });
       lines.push('');

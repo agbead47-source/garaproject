@@ -780,15 +780,79 @@ def _build_document(structure, doc_kind, result, lang, overrides=None):
 
     result = result or {}
     titles = _DOC_TITLES[doc_kind]
+    customer = overrides.get("_requester") or result.get("customer", "Glowtree Beauty")
     return {
         "kind": doc_kind,
         "lang": lang,
         "title": titles.get(lang) or titles["en"],
-        "customer": overrides.get("_requester") or result.get("customer", "Glowtree Beauty"),
+        "customer": customer,
+        # 받는 쪽은 고객사를 모른다. 문서 맨 앞에 소개를 붙인다.
+        "brief": customer_brief(customer, doc_kind),
         "origin": overrides.get("_origin", ""),
         "background": overrides.get("background", ""),
         "file_name": result.get("file_name", ""),
         "sections": sections,
+    }
+
+
+# 문서를 받는 쪽이 알아야 할 고객사 요청 타입.
+#   연구소는 단가·납기를 몰라도 되고, 공장은 처방 요구를 몰라도 된다.
+_BRIEF_REQUEST_TYPES = {
+    "lab": ("formula", "doc"),
+    "factory": ("package", "delivery", "doc"),
+}
+
+
+def customer_brief(customer_name, doc_kind="lab"):
+    """연구소·공장에 붙이는 고객사 소개.
+
+    문서를 받는 쪽은 고객사를 모른다. 왜 무향을 고집하는지, 인증서를 왜 매번
+    원본으로 요구하는지 모르면 같은 질문이 영업으로 다시 돌아온다.
+    해외영업이 고객사를 설명해 주는 자리다.
+
+    고객사 관리(12-4)에 등록된 곳이면 그 값을 끌어오고,
+    등록되지 않은 곳이면 이름만 넣은 빈 소개를 돌려준다.
+    """
+    name = (customer_name or "").strip()
+    profile = next((row for row in _CUSTOMER_PROFILES
+                    if row["name"].lower() == name.lower()), None)
+
+    if profile is None:
+        return {
+            "name": name or "(고객사 미지정)",
+            "known": False,
+            "summary": "",
+            "tags": [],
+            "notes": [],
+        }
+
+    grade = CUSTOMER_GRADE_META.get(profile["grade"], {}).get("label", "")
+    summary = "{} {} · {} 등급 · {} 거래 시작 · 누적 발주 {}건({})".format(
+        profile["flag"], profile["city"], grade, profile["since"],
+        profile["stats"]["orders"], profile["stats"]["amount"])
+
+    # 받는 쪽이 알아야 할 반복 요청만. 중요한 것부터.
+    wanted = _BRIEF_REQUEST_TYPES.get(doc_kind, ())
+    order = {"high": 0, "mid": 1, "low": 2}
+    picked = sorted([r for r in profile["requests"] if r["type"] in wanted],
+                    key=lambda r: order.get(r["priority"], 9))[:3]
+
+    return {
+        "name": profile["name"],
+        "known": True,
+        "id": profile["id"],
+        "country": profile["country"],
+        "flag": profile["flag"],
+        "grade": grade,
+        "summary": summary,
+        "channel": profile["channel"],
+        "manager": profile["manager"],
+        "tags": list(profile["tags"]),
+        "notes": [{"title": r["title"], "detail": r["detail"],
+                   "type": REQUEST_TYPE_META.get(r["type"], {}).get("label", ""),
+                   "icon": REQUEST_TYPE_META.get(r["type"], {}).get("icon", ""),
+                   "priority": r["priority"]}
+                  for r in picked],
     }
 
 
