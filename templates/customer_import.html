@@ -4,6 +4,8 @@
 <div class="bottom-actions top-bar">
   <a class="btn" href="{{ url_for('customers') }}">← 고객사 관리</a>
   <div class="action-group">
+    <a class="btn" href="#export">⬇️ 받기</a>
+    <a class="btn" href="#import">📗 올리기</a>
     <a class="btn" href="{{ url_for('customers_template') }}">📄 빈 양식 받기</a>
   </div>
 </div>
@@ -152,7 +154,7 @@
   </form>
 </section>
 
-<section class="card">
+<section class="card" id="import">
   <h2 class="card-title">엑셀로 한 번에 등록</h2>
   <p class="card-desc">
     전시회에서 받아온 명함 정리표, 전임자에게 넘겨받은 목록을 그대로 올리면 됩니다.

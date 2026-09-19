@@ -3,14 +3,18 @@
 {% block content %}
 <div class="bottom-actions top-bar">
   <p class="card-desc no-margin">
-    명단을 엑셀로 들고 계시면 한 번에 올릴 수 있습니다.
-    {% if summary.imported %}
+    명단을 엑셀로 주고받을 수 있습니다.
+    {% if selected.q or selected.grade != 'all' %}
+    <span class="pill soft">지금 검색 조건을 그대로 가져갑니다</span>
+    {% elif summary.imported %}
     <span class="pill soft">엑셀로 등록 {{ summary.imported }}곳</span>
     {% endif %}
   </p>
   <div class="action-group">
-    <a class="btn" href="{{ url_for('customers_export') }}">⬇️ 엑셀로 받기</a>
-    <a class="btn btn-primary" href="{{ url_for('customers_import') }}">📗 엑셀로 올리기</a>
+    {# 받을 값을 고르는 화면으로 보낸다. 누르자마자 전부 내려받으면 고를 자리가 없다 #}
+    <a class="btn" href="{{ url_for('customers_import', q=selected.q,
+                                    grade=selected.grade, _anchor='export') }}">⬇️ 엑셀로 받기</a>
+    <a class="btn btn-primary" href="{{ url_for('customers_import', _anchor='import') }}">📗 엑셀로 올리기</a>
   </div>
 </div>
 
