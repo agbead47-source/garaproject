@@ -61,17 +61,33 @@ CONTACT_KEYS = {"name", "title", "role", "email", "phone", "timezone",
                 "language", "is_primary", "note"}
 COMPANY_KEYS = {"customer_id", "company", "country", "city", "grade", "manager"}
 
-# 받는 쪽에서 자주 쓰는 조합. 매번 체크박스를 다 누르게 하지 않는다.
+# 받는 쪽에서 자주 쓰는 조합. 열뿐 아니라 "누구를 받을지"까지 같이 정해 둔다.
 PRESETS = [
-    {"key": "all", "label": "전부", "desc": "지금 화면에 있는 값 전부",
-     "cols": [c["key"] for c in COLUMNS]},
-    {"key": "contact", "label": "연락처만",
-     "desc": "회사 · 담당자 · 직급 · 이메일 · 전화",
-     "cols": ["company", "country", "name", "title", "email", "phone"]},
+    {"key": "all", "label": "전부", "desc": "모든 담당자 · 모든 열",
+     "cols": [c["key"] for c in COLUMNS], "filters": {}},
+    {"key": "mailing", "label": "메일 발송용",
+     "desc": "이메일이 있는 담당자만 · 이름 · 이메일 · 언어",
+     "cols": ["company", "name", "email", "language"],
+     "filters": {"email": "1", "empty": "0"}},
+    {"key": "buyer", "label": "구매 담당",
+     "desc": "발주·단가 창구만 · 연락처",
+     "cols": ["company", "country", "name", "title", "email", "phone"],
+     "filters": {"role": ["buyer"], "empty": "0"}},
+    {"key": "qa", "label": "품질·인증 담당",
+     "desc": "성분표·인증서를 요구하는 담당만",
+     "cols": ["company", "country", "name", "title", "email", "phone"],
+     "filters": {"role": ["qa"], "empty": "0"}},
+    {"key": "logistics", "label": "물류 담당",
+     "desc": "선적 일정·서류 담당만",
+     "cols": ["company", "country", "name", "title", "email", "phone"],
+     "filters": {"role": ["logistics"], "empty": "0"}},
+    {"key": "primary", "label": "대표 담당자만",
+     "desc": "회사마다 한 명 · 연락처",
+     "cols": ["company", "country", "name", "title", "role", "email", "phone"],
+     "filters": {"primary": "1", "empty": "0"}},
     {"key": "company", "label": "회사만", "desc": "담당자 없이 회사 목록만",
-     "cols": ["customer_id", "company", "country", "city", "grade", "manager"]},
-    {"key": "mailing", "label": "메일 발송용", "desc": "이름 · 이메일 · 언어",
-     "cols": ["company", "name", "email", "language"]},
+     "cols": ["customer_id", "company", "country", "city", "grade", "manager"],
+     "filters": {}},
 ]
 PRESET_MAP = {p["key"]: p for p in PRESETS}
 
@@ -173,14 +189,55 @@ def _guide(wb, columns):
     return ws
 
 
-def export_rows(profiles, grouped, include_empty=True, active_only=False):
+def filter_contacts(contacts, opt):
+    """받을 담당자만 고른다.
+
+    직무(역할)가 이 필터의 핵심이다. 인증서 재발급 공지를 구매 담당에게 보내면
+    품질 담당에게 다시 돌아오고, 선적 지연 안내를 품질 담당이 받으면 아무 일도
+    일어나지 않는다. 명단은 보낼 사람 단위로 뽑아야 쓸모가 있다.
+    """
+    out = []
+    for row in contacts:
+        if opt.get("active_only") and not row["is_active"]:
+            continue
+        if opt.get("roles") and row["role"] not in opt["roles"]:
+            continue
+        if opt.get("has_email") and not (row["email"] or "").strip():
+            continue
+        if opt.get("has_phone") and not (row["phone"] or "").strip():
+            continue
+        if opt.get("primary_only") and not row["is_primary"]:
+            continue
+        if opt.get("language") and opt["language"].lower() not in (
+                row["language"] or "").lower():
+            continue
+        out.append(row)
+    return out
+
+
+def narrows_contacts(opt):
+    """담당자를 좁히는 조건이 하나라도 걸려 있는가."""
+    return any(opt.get(key) for key in
+               ("roles", "has_email", "has_phone", "primary_only",
+                "active_only", "language"))
+
+
+def export_rows(profiles, grouped, opt=None):
     """고객사 카드 + 담당자를 엑셀 한 줄씩으로 편다."""
+    opt = opt or {}
+    include_empty = opt.get("include_empty", True)
+    narrowed = narrows_contacts(opt)
+
     rows = []
     for profile in profiles:
-        contacts = grouped.get(profile["id"], [])
-        if active_only:
-            contacts = [c for c in contacts if c["is_active"]]
-        if not contacts and not include_empty:
+        if opt.get("country") and profile.get("country", "") != opt["country"]:
+            continue
+
+        contacts = filter_contacts(grouped.get(profile["id"], []), opt)
+
+        # 담당자를 좁혀 놓고 한 명도 안 걸린 회사를 빈 줄로 내보내면,
+        # "이 회사엔 품질 담당이 있다"는 착각을 준다. 아예 뺀다.
+        if not contacts and (narrowed or not include_empty):
             continue
         base = {
             "customer_id": profile["id"],

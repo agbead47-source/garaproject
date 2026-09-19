@@ -12,52 +12,84 @@
 <section class="card" id="export">
   <h2 class="card-title">엑셀로 받기</h2>
   <p class="card-desc">
-    받을 값을 골라서 내려받습니다. 메일 발송용 명단에 거래 등급까지 들어갈 이유는 없고,
-    공장에 넘길 회사 목록에 개인 휴대폰이 섞이면 곤란합니다.
-    <strong>회사명은 늘 들어갑니다</strong> — 고쳐서 다시 올릴 수 있어야 하기 때문입니다.
+    <strong>누구를</strong> 받을지와 <strong>어떤 값을</strong> 받을지를 따로 고릅니다.
+    인증서 재발급 공지를 구매 담당에게 보내면 품질 담당에게 다시 돌아오고,
+    선적 지연 안내를 품질 담당이 받으면 아무 일도 일어나지 않습니다.
   </p>
 
-  <form class="export-form" method="get" action="{{ url_for('customers_export') }}" id="export-form">
-    <div class="export-presets">
-      <span class="export-label">자주 쓰는 조합</span>
-      {% for p in presets %}
-      <button type="button" class="btn btn-mini preset-btn"
-              data-cols="{{ p.cols|join(',') }}" title="{{ p.desc }}">{{ p.label }}</button>
-      {% endfor %}
-    </div>
+  <div class="export-presets">
+    <span class="export-label">자주 쓰는 조합</span>
+    {% for p in presets %}
+    <a class="btn btn-mini {% if export.preset == p.key %}btn-ghost{% endif %}"
+       href="{{ url_for('customers_import', preset=p.key) }}#export"
+       title="{{ p.desc }}">{{ p.label }}</a>
+    {% endfor %}
+  </div>
 
+  <form class="export-form" method="get" action="{{ url_for('customers_export') }}" id="export-form">
     <div class="export-cols">
       <div class="export-group">
-        <div class="export-group-head">회사 정보</div>
-        {% for col in columns if col.key not in contact_keys %}
-        <label class="export-check {% if col.key == 'company' %}fixed{% endif %}">
-          <input type="checkbox" name="cols" value="{{ col.key }}"
-                 {% if col.key in export.cols %}checked{% endif %}
-                 {% if col.key == 'company' %}disabled{% endif %}>
-          <span>{{ col.header }}{% if col.key == 'company' %} <span class="text-gray">(고정)</span>{% endif %}</span>
-        </label>
-        {% endfor %}
-      </div>
-
-      <div class="export-group">
-        <div class="export-group-head">담당자 정보</div>
-        {% for col in columns if col.key in contact_keys %}
+        <div class="export-group-head">
+          누구를 — 직무
+          <span class="export-hint">안 고르면 전부</span>
+        </div>
+        {% for r in facets.roles %}
         <label class="export-check">
-          <input type="checkbox" name="cols" value="{{ col.key }}"
-                 {% if col.key in export.cols %}checked{% endif %}>
-          <span>{{ col.header }}</span>
+          <input type="checkbox" name="role" value="{{ r.value }}"
+                 {% if r.value in export.roles %}checked{% endif %}>
+          <span>{{ r.icon }} {{ r.label }}</span>
+          <span class="export-num">{{ r.count }}</span>
         </label>
         {% endfor %}
+
+        <div class="export-sep"></div>
+        <label class="export-check">
+          <input type="checkbox" name="email" value="1" {% if export.has_email %}checked{% endif %}>
+          <span>이메일 있는 사람만</span>
+          <span class="export-num">{{ facets.with_email }}</span>
+        </label>
+        <label class="export-check">
+          <input type="checkbox" name="phone" value="1" {% if export.has_phone %}checked{% endif %}>
+          <span>전화번호 있는 사람만</span>
+        </label>
+        <label class="export-check">
+          <input type="checkbox" name="primary" value="1" {% if export.primary_only %}checked{% endif %}>
+          <span>대표 담당자만</span>
+        </label>
+        <label class="export-check">
+          <input type="checkbox" name="active" value="1" {% if export.active_only %}checked{% endif %}>
+          <span>그만둔 담당자는 빼기</span>
+        </label>
+        {% if facets.languages %}
+        <label class="export-field spaced">
+          <span class="field-label">사용 언어</span>
+          <select class="select select-inline" name="lang">
+            <option value="">전체</option>
+            {% for l in facets.languages %}
+            <option value="{{ l }}" {% if export.language == l %}selected{% endif %}>{{ l }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% endif %}
       </div>
 
       <div class="export-group">
-        <div class="export-group-head">범위</div>
+        <div class="export-group-head">어느 회사</div>
         <label class="export-field">
           <span class="field-label">등급</span>
           <select class="select select-inline" name="grade">
             <option value="all" {% if export.grade == 'all' %}selected{% endif %}>전체 등급</option>
             {% for key, meta in grade_meta.items() %}
             <option value="{{ key }}" {% if export.grade == key %}selected{% endif %}>{{ meta.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="export-field">
+          <span class="field-label">국가</span>
+          <select class="select select-inline" name="country">
+            <option value="">전체 국가</option>
+            {% for c in facets.countries %}
+            <option value="{{ c }}" {% if export.country == c %}selected{% endif %}>{{ c }}</option>
             {% endfor %}
           </select>
         </label>
@@ -71,30 +103,54 @@
           <span>담당자 없는 회사는 빼기</span>
         </label>
         <label class="export-check">
-          <input type="checkbox" name="active" value="1" {% if export.active_only %}checked{% endif %}>
-          <span>그만둔 담당자는 빼기</span>
-        </label>
-        <label class="export-check">
           <input type="checkbox" name="guide" value="0" {% if not export.guide %}checked{% endif %}>
           <span>작성 안내 시트 빼기</span>
         </label>
+      </div>
+
+      <div class="export-group">
+        <div class="export-group-head">
+          어떤 값 — 회사 정보
+        </div>
+        {% for col in columns if col.key not in contact_keys %}
+        <label class="export-check {% if col.key == 'company' %}fixed{% endif %}">
+          <input type="checkbox" name="cols" value="{{ col.key }}"
+                 {% if col.key in export.cols %}checked{% endif %}
+                 {% if col.key == 'company' %}disabled{% endif %}>
+          <span>{{ col.header }}{% if col.key == 'company' %} <span class="text-gray">(고정)</span>{% endif %}</span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <div class="export-group">
+        <div class="export-group-head">어떤 값 — 담당자 정보</div>
+        {% for col in columns if col.key in contact_keys %}
+        <label class="export-check">
+          <input type="checkbox" name="cols" value="{{ col.key }}"
+                 {% if col.key in export.cols %}checked{% endif %}>
+          <span>{{ col.header }}</span>
+        </label>
+        {% endfor %}
       </div>
     </div>
 
     <div class="export-foot">
       <span class="export-count">
+        {% if export.rows %}
         지금 조건이면 <strong>{{ export.companies }}곳 · {{ export.rows }}줄</strong>
         <span class="text-gray">(열 <span id="col-count">{{ export.cols|length }}</span>개)</span>
+        {% else %}
+        <span class="text-orange">조건에 걸리는 담당자가 없습니다 — 머리글만 있는 파일이 됩니다</span>
+        <span class="text-gray">(열 <span id="col-count">{{ export.cols|length }}</span>개)</span>
+        {% endif %}
       </span>
       <span class="action-group">
-        <button type="submit" class="btn" formaction="{{ url_for('customers_import') }}"
-                formtarget="_self">조건만 다시 세기</button>
+        <button type="submit" class="btn" formaction="{{ url_for('customers_import') }}">조건만 다시 세기</button>
         <button type="submit" class="btn btn-primary">⬇️ 이 조건으로 받기</button>
       </span>
     </div>
   </form>
 </section>
-
 
 <section class="card">
   <h2 class="card-title">엑셀로 한 번에 등록</h2>
@@ -253,7 +309,8 @@
     });
   }
 
-  /* 내보내기 열 고르기. 조합 버튼은 체크만 바꾸고, 줄 수는 '다시 세기'로 서버에서 센다 */
+  /* 열 개수만 그 자리에서 센다. 줄 수는 조건이 얽혀 있어 서버에서 센다
+     ('조건만 다시 세기'). 화면에서 대충 센 숫자와 받은 파일이 다르면 안 된다 */
   var form = document.getElementById('export-form');
   if (!form) { return; }
 
@@ -265,14 +322,6 @@
     boxes.forEach(function (b) { if (b.checked || b.disabled) { n += 1; } });
     counter.textContent = n;
   }
-
-  form.querySelectorAll('.preset-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var want = btn.dataset.cols.split(',');
-      boxes.forEach(function (b) { b.checked = want.indexOf(b.value) !== -1; });
-      refresh();
-    });
-  });
 
   boxes.forEach(function (b) { b.addEventListener('change', refresh); });
   refresh();

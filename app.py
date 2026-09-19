@@ -752,32 +752,78 @@ def _xlsx(buf, name):
 
 
 def _export_options(args):
-    """내보내기 조건을 주소에서 읽는다. (아무것도 없으면 전부)"""
+    """내보내기 조건을 주소에서 읽는다.
+
+    두 가지를 따로 고른다.
+      누구를 받을지 - 직무(역할), 이메일 보유, 대표 여부, 국가, 등급
+      어떤 값을 받을지 - 엑셀 열
+    조합(preset)을 고르면 둘 다 한 번에 정해진다.
+    """
     preset = customer_excel.PRESET_MAP.get(args.get("preset", ""))
+    filters = (preset or {}).get("filters", {})
+
+    def pick(key, default=""):
+        """주소에 값이 있으면 그것, 없으면 조합이 정해 둔 값."""
+        return args.get(key) if key in args else filters.get(key, default)
+
     cols = args.getlist("cols") or (preset["cols"] if preset else [])
+    columns = customer_excel.pick_columns(cols)
+    roles = args.getlist("role") or list(filters.get("role", []))
+
     return {
-        "columns": customer_excel.pick_columns(cols),
-        "keys": set(c["key"] for c in customer_excel.pick_columns(cols)),
-        "grade": args.get("grade", "all"),
-        "q": args.get("q", ""),
-        # 담당자가 아직 없는 회사도 넣을지
-        "include_empty": args.get("empty", "1") != "0",
+        "columns": columns,
+        "keys": set(c["key"] for c in columns),
+        # --- 누구를
+        "roles": set(r for r in roles if r in contact_store.ROLE_MAP),
+        "has_email": pick("email", "0") == "1",
+        "has_phone": pick("phone", "0") == "1",
+        "primary_only": pick("primary", "0") == "1",
         # 그만둔 담당자(비활성)를 뺄지
-        "active_only": args.get("active", "0") == "1",
-        "guide": args.get("guide", "1") != "0",
+        "active_only": pick("active", "0") == "1",
+        "language": pick("lang", ""),
+        # --- 어느 회사를
+        "grade": pick("grade", "all"),
+        "country": pick("country", ""),
+        "q": pick("q", ""),
+        # 담당자가 아직 없는 회사도 넣을지
+        "include_empty": pick("empty", "1") != "0",
+        "guide": pick("guide", "1") != "0",
+        "preset": args.get("preset", ""),
     }
 
 
 def _export_rows(opt):
     grouped = contact_store.contacts_by_customer()
     rows = customer_excel.export_rows(
-        _all_profiles(opt["q"], opt["grade"]), grouped,
-        include_empty=opt["include_empty"], active_only=opt["active_only"])
+        _all_profiles(opt["q"], opt["grade"]), grouped, opt)
 
     # 담당자 열을 하나도 안 골랐으면 회사 명단이다. 같은 회사를 여러 줄 내지 않는다
     if not (opt["keys"] & customer_excel.CONTACT_KEYS):
         rows = customer_excel.collapse_companies(rows)
     return rows
+
+
+def _export_facets():
+    """고를 수 있는 값과 각 직무에 몇 명이 있는지. (체크박스 옆에 숫자를 띄운다)"""
+    grouped = contact_store.contacts_by_customer()
+    everyone = [c for rows in grouped.values() for c in rows]
+
+    roles = []
+    for role in contact_store.ROLES:
+        roles.append(dict(role, count=sum(1 for c in everyone
+                                          if c["role"] == role["value"])))
+
+    countries = sorted({p.get("country", "") for p in _all_profiles()
+                        if p.get("country")})
+    languages = sorted({(c["language"] or "").strip() for c in everyone
+                        if (c["language"] or "").strip()})
+    return {
+        "roles": roles,
+        "countries": countries,
+        "languages": languages,
+        "with_email": sum(1 for c in everyone if (c["email"] or "").strip()),
+        "total": len(everyone),
+    }
 
 
 @app.route("/customers/export")
@@ -789,7 +835,16 @@ def customers_export():
     opt = _export_options(request.args)
     rows = _export_rows(opt)
 
-    label = "고객사" if not (opt["keys"] & customer_excel.CONTACT_KEYS) else "고객사_담당자"
+    # 파일명에 무엇을 뽑은 건지 남긴다. 받은 사람이 파일 이름만 보고 알 수 있게
+    if not (opt["keys"] & customer_excel.CONTACT_KEYS):
+        label = "고객사"
+    elif len(opt["roles"]) == 1:
+        role = contact_store.ROLE_MAP[next(iter(opt["roles"]))]["label"]
+        label = "고객사_" + role.replace("·", "")
+    elif opt["primary_only"]:
+        label = "고객사_대표담당자"
+    else:
+        label = "고객사_담당자"
     name = "{}_{}.xlsx".format(label, date.today().strftime("%Y%m%d"))
     return _xlsx(customer_excel.build_workbook(
         rows, with_guide=opt["guide"], columns=opt["columns"]), name)
@@ -879,14 +934,22 @@ def customers_import():
         counts=customer_excel.summarize(planned) if planned else None,
         plan_meta=customer_excel.PLAN_META,
         file_name=session.get("import_name", "") if path else "",
+        facets=_export_facets(),
         export={
             # 'keys' 라고 쓰면 템플릿에서 dict.keys 메서드로 잡힌다
             "cols": opt["keys"],
+            "roles": opt["roles"],
+            "has_email": opt["has_email"],
+            "has_phone": opt["has_phone"],
+            "primary_only": opt["primary_only"],
+            "active_only": opt["active_only"],
+            "language": opt["language"],
             "grade": opt["grade"],
+            "country": opt["country"],
             "q": opt["q"],
             "include_empty": opt["include_empty"],
-            "active_only": opt["active_only"],
             "guide": opt["guide"],
+            "preset": opt["preset"],
             "rows": len(preview),
             "companies": len({r["customer_id"] for r in preview}),
         },
