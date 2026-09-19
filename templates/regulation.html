@@ -152,7 +152,8 @@
           {% if n.is_new %}<span class="status-badge confirmed">신규</span>{% endif %}
         </span>
         <span class="regnews-meta">
-          {{ n.agency }} · 수집 {{ n.first_seen[:10] }} ·
+          {{ n.agency }} ·
+          {% if n.published %}공지 {{ n.published }}{% else %}수집 {{ n.first_seen[:10] }}{% endif %} ·
           <span class="regnews-kw">키워드 “{{ n.keyword }}”</span>
         </span>
       </span>
@@ -175,10 +176,10 @@
 
   <div class="regnews-sources">
     {% for s in news.sources %}
-    <a class="pill soft {% if s.note %}check{% endif %}" href="{{ s.url }}"
+    <a class="pill soft {% if not s.enabled %}off{% elif s.note %}check{% endif %}" href="{{ s.url }}"
        target="_blank" rel="noopener noreferrer"
        title="{{ s.note or s.url }}">
-      {{ s.flag }} {{ s.agency }}{% if s.note %} ⚠{% endif %}
+      {{ s.flag }} {{ s.agency }}{% if not s.enabled %} (중지){% elif s.note %} ⚠{% endif %}
     </a>
     {% endfor %}
   </div>

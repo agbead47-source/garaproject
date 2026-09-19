@@ -269,6 +269,7 @@ def convert():
         composed=bool(overrides),
         lab_doc=dummy_data.convert_for_lab(analysis, lang, overrides),
         factory_doc=dummy_data.convert_for_factory(analysis, lang, overrides),
+        sales_doc=dummy_data.sales_terms(analysis, lang, overrides),
     )
 
 

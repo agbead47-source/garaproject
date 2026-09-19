@@ -24,6 +24,7 @@
 import csv
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -39,24 +40,60 @@ STORE_PATH = os.path.join(DATA_DIR, "regulation_news.json")
 CSV_PATH = os.path.join(DATA_DIR, "regulation_news.csv")
 
 # ── 1. 수집할 사이트 목록 ─────────────────────────────────────
-# URL 은 예시다. 브라우저로 한 번 열어보고 공지 목록이 보이는 페이지로 바꿔 쓰면
-# 결과가 훨씬 깨끗해진다. (지금 URL 은 기관 대문이라 메뉴 링크가 섞인다)
+# 2026-09-19 에 실제로 열어 보고 맞춘 주소다. 기관 대문이 아니라 '공지 목록'
+# 페이지여야 메뉴 링크가 안 섞인다.
+#
+#   list_selector : 목록이 들어 있는 영역. 이 안의 링크만 본다.
+#                   비워 두면 페이지 전체를 훑는다(메뉴가 섞일 수 있다).
+#   min_title     : 제목 최소 길이. 국문은 제목이 짧아 낮춰 잡는다.
+#   enabled       : False 면 수집하지 않는다.
 SOURCES = [
     {
-        "key": "fda",
-        "region": "미국",
-        "flag": "🇺🇸",
-        "agency": "FDA",
-        "url": "https://www.fda.gov/cosmetics",
-        "keywords": ["cosmetic", "mocra", "fragrance allergen", "gmp", "registration"],
+        # 식약처 공지는 식품·의약품·의료기기가 섞여 있어서 키워드가 특히 중요하다.
+        "key": "mfds_notice",
+        "region": "한국",
+        "flag": "🇰🇷",
+        "agency": "식약처 · 입법/행정예고",
+        "url": "https://www.mfds.go.kr/brd/m_209/list.do",
+        "list_selector": "div.bbs_list01",
+        # '기능성'·'원료' 만으로는 건강기능식품 공지가 딸려 온다(실측).
+        # '화장품' 하나면 기능성화장품·맞춤형화장품·화장품법이 전부 걸린다.
+        "keywords": ["화장품"],
+        "min_title": 6,
+        "note": "규제가 바뀌기 전 예고 단계 — 가장 먼저 뜨는 신호",
+    },
+    {
+        "key": "mfds_rule",
+        "region": "한국",
+        "flag": "🇰🇷",
+        "agency": "식약처 · 제·개정 고시",
+        "url": "https://www.mfds.go.kr/brd/m_207/list.do",
+        "list_selector": "div.bbs_list01",
+        "keywords": ["화장품"],
+        "min_title": 6,
+        "note": "확정된 고시 개정",
+    },
+    {
+        # 식약처가 해외 규제 개정을 국문으로 정리해 주는 게시판.
+        # 해외영업 입장에서는 원문을 직접 읽는 것보다 이게 빠르다.
+        "key": "mfds_global",
+        "region": "해외 (식약처 정리)",
+        "flag": "🌏",
+        "agency": "식약처 · 해외 규정 개정 소식",
+        "url": "https://www.mfds.go.kr/brd/m_1147/list.do",
+        "list_selector": "div.bbs_list01",
+        "keywords": ["화장품"],
+        "min_title": 6,
+        "note": "해외 규제 개정을 국문으로 정리 — 원문보다 읽기 빠르다",
     },
     {
         "key": "eu",
         "region": "EU",
         "flag": "🇪🇺",
-        "agency": "European Commission",
-        "url": "https://single-market-economy.ec.europa.eu/sectors/cosmetics_en",
-        "keywords": ["cosmetic", "regulation", "annex", "cmr", "omnibus"],
+        "agency": "European Commission (DG GROW)",
+        "url": "https://single-market-economy.ec.europa.eu/news_en",
+        "list_selector": "",          # article 태그로 잡힌다. 전체를 훑어도 소음이 적다
+        "keywords": ["cosmetic", "annex", "cmr", "omnibus", "fragrance allergen"],
     },
     {
         "key": "bpom",
@@ -65,21 +102,29 @@ SOURCES = [
         "agency": "BPOM",
         "url": "https://www.pom.go.id",
         "keywords": ["kosmetik", "cosmetic", "halal"],
+        # 뉴스 카드의 링크 텍스트에 날짜·조회수가 같이 들어 있다
+        #   "13 Jul 2026 Dilihat 6852 kali BPOM Intensifkan..." → 앞부분을 뗀다
+        "title_strip": [r"^\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?\s*",
+                        r"^\d{1,2}\s+\w{3,9}\s+\d{4}\s*",
+                        r"^Dilihat\s+[\d.,]+\s+kali\s*"],
+        "min_title": 25,   # 'Notifikasi Kosmetik' 같은 메뉴 라벨 제외
     },
     {
-        # 국문 사이트라 키워드도 국문이어야 한다. 제목이 영문 기관보다 짧아
-        # 최소 길이도 낮춰 잡는다 ('화장품법 개정' = 7자).
-        "key": "mfds",
-        "region": "한국",
-        "flag": "🇰🇷",
-        "agency": "식약처 (MFDS)",
-        "url": "https://www.mfds.go.kr/brd/m_99/list.do",
-        "keywords": ["화장품", "기능성", "원료", "고시", "개정", "안전기준",
-                     "입법예고", "행정예고"],
-        "min_title": 6,
-        "note": "주소 확인 필요 — 브라우저로 열어 공지 목록이 보이는 게시판인지 확인하세요",
+        # 2026-09-19 확인: 어떤 주소로 요청해도 abuse-detection 페이지로 보낸다.
+        # 자동 수집을 막아 둔 것이므로 우회하지 않고 꺼 둔다.
+        # FDA 소식은 기관이 제공하는 이메일 구독을 쓰는 게 맞다.
+        "key": "fda",
+        "region": "미국",
+        "flag": "🇺🇸",
+        "agency": "FDA",
+        "url": "https://www.fda.gov/cosmetics",
+        "keywords": ["cosmetic", "mocra", "fragrance allergen", "gmp", "registration"],
+        "enabled": False,
+        "note": "FDA가 자동 수집을 차단합니다(abuse detection). 우회하지 않고 꺼 뒀습니다 — "
+                "FDA 이메일 구독을 쓰세요",
     },
 ]
+
 SOURCE_MAP = {row["key"]: row for row in SOURCES}
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (To-do team student project; trade dashboard)"}
@@ -108,6 +153,37 @@ def is_allowed(url):
 
 
 # ── 3. 한 사이트에서 키워드 링크 뽑기 ─────────────────────────
+_DATE_RE = re.compile(r"(20\d{2})[-./\s]+(\d{1,2})[-./\s]+(\d{1,2})")
+
+
+def _published_date(anchor):
+    """공지가 올라온 날. 목록 한 줄(li/article/tr) 안에서 찾는다.
+
+    목록마다 날짜 위치가 달라서 <time datetime> 을 먼저 보고,
+    없으면 그 줄의 텍스트에서 날짜 모양을 찾는다. 못 찾으면 빈 문자열.
+    """
+    row = anchor.find_parent(["li", "article", "tr"])
+    if row is None:
+        return ""
+
+    tag = row.find("time")
+    if tag and tag.get("datetime"):
+        return tag["datetime"][:10]
+
+    text = row.get_text(" ", strip=True)
+    if len(text) > 400:        # 목록 한 줄이 아니라 큰 덩어리면 엉뚱한 날짜를 집는다
+        return ""
+
+    m = _DATE_RE.search(text)
+    if not m:
+        return ""
+    try:
+        return "{}-{:02d}-{:02d}".format(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        return ""
+
+
+
 def crawl_source(source):
     """한 기관 페이지에서 키워드가 든 링크를 모은다. (항목들, 실패 사유)"""
     url = source["url"]
@@ -135,8 +211,19 @@ def crawl_source(source):
     results, seen_links = [], set()
     min_title = source.get("min_title", MIN_TITLE_LEN)
 
-    for a in soup.find_all("a", href=True):
+    # 목록 영역이 지정돼 있으면 그 안만 본다. 기관 사이트는 메뉴 링크가
+    # 수백 개라, 이걸 안 하면 결과가 전부 메뉴로 덮인다.
+    selector = source.get("list_selector") or ""
+    root = soup.select_one(selector) if selector else None
+    if root is None:
+        root = soup
+
+    strips = [re.compile(pat, re.I) for pat in source.get("title_strip", [])]
+
+    for a in root.find_all("a", href=True):
         title = " ".join(a.get_text().split())       # 공백 정리
+        for pat in strips:                           # 제목 앞 군더더기 제거
+            title = pat.sub("", title).strip()
         if len(title) < min_title:
             continue
 
@@ -158,6 +245,7 @@ def crawl_source(source):
             "title": title,
             "link": link,
             "keyword": hit,                          # 어떤 키워드에 걸렸는지
+            "published": _published_date(a),         # 공지가 올라온 날 (없으면 "")
         })
         if len(results) >= MAX_PER_SOURCE:
             break
@@ -189,9 +277,11 @@ def _save(data):
 def _export_csv(items):
     """엑셀에서 열어볼 수 있게 CSV 로도 떨어뜨린다. (utf-8-sig: 한글 안 깨짐)"""
     with open(CSV_PATH, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=["수집일", "지역", "기관", "제목", "링크"])
+        writer = csv.DictWriter(
+            f, fieldnames=["공지일", "수집일", "지역", "기관", "제목", "링크"])
         writer.writeheader()
         writer.writerows([{
+            "공지일": it.get("published", ""),
             "수집일": it["first_seen"][:10],
             "지역": it["region"],
             "기관": it["agency"],
@@ -206,7 +296,8 @@ def collect(keys=None, verbose=False):
     known = {it["link"] for it in data["items"]}
     stamp = now_iso()
 
-    targets = [s for s in SOURCES if not keys or s["key"] in keys]
+    targets = [s for s in SOURCES
+               if s.get("enabled", True) and (not keys or s["key"] in keys)]
     fresh, failures, checked = [], [], 0
 
     for idx, source in enumerate(targets):
@@ -265,7 +356,8 @@ def get_news(limit=12, region="all"):
         "last_run": last_run,
         "collected": bool(data["items"]),
         "sources": [{"key": s["key"], "region": s["region"], "flag": s["flag"],
-                     "agency": s["agency"], "url": s["url"], "note": s.get("note", "")}
+                     "agency": s["agency"], "url": s["url"], "note": s.get("note", ""),
+                     "enabled": s.get("enabled", True)}
                     for s in SOURCES],
         "store_path": os.path.relpath(STORE_PATH, BASE_DIR),
         "csv_path": os.path.relpath(CSV_PATH, BASE_DIR),
@@ -273,7 +365,21 @@ def get_news(limit=12, region="all"):
 
 
 # ── 5. 실행 ─────────────────────────────────────────────
+def _force_utf8_console():
+    """윈도우 콘솔(cp949)에서 국문·특수문자 출력이 깨지거나 죽는 걸 막는다.
+
+    수집한 제목에는 en dash(–) 같은 글자가 섞여 있어서, 기본 cp949 로는
+    UnicodeEncodeError 로 스크립트가 통째로 멈춘다.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 if __name__ == "__main__":
+    _force_utf8_console()
     dry = "--dry-run" in sys.argv
     print("규제 공지 수집 ({}곳)".format(len(SOURCES)))
 
