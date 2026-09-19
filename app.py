@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from flask import (Flask, jsonify, redirect, render_template, request,
                    send_file, session, url_for)
 
+import chat_bot
 import contact_store
 import customer_excel
 import customer_store
@@ -112,6 +113,10 @@ def inject_globals():
     """모든 템플릿에서 공통으로 쓰는 값."""
     return {
         "current_user": session.get("user", DEFAULT_USER),
+        # 무역 도우미 (모든 화면 우측 하단)
+        "bot_name": chat_bot.BOT_NAME,
+        "bot_kind": chat_bot.BOT_KIND,
+        "bot_greeting": chat_bot.GREETING,
         # 담당자 등록 등 저장 결과 안내 (한 번 보여주고 지운다)
         "flash_msg": session.pop("contact_msg", None),
     }
@@ -220,6 +225,35 @@ def compose():
         reg_status_meta=dummy_data.REG_STATUS_META,
         reg_live=dummy_data.get_reg_source(),
     )
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    """무역 도우미. 규칙 기반이고, 답은 이 프로젝트가 들고 있는 값에서만 꺼낸다.
+
+    TODO: 실제 연동 (LLM 대화)
+    """
+    payload = request.get_json(silent=True) or {}
+    question = (payload.get("q") or "")[:300]
+
+    reply = chat_bot.answer(question)
+
+    # 링크는 서버에서 주소로 바꿔 준다 (화면이 엔드포인트 이름을 알 필요가 없다)
+    links = []
+    for link in reply["links"]:
+        try:
+            links.append({"label": link["label"],
+                          "href": url_for(link["endpoint"], **link.get("args", {}))})
+        except Exception:                              # noqa: BLE001
+            continue
+
+    return jsonify({
+        "text": reply["text"],
+        "chips": reply["chips"],
+        "links": links,
+        "source": reply["source"],
+        "bot": chat_bot.BOT_NAME,
+    })
 
 
 @app.route("/api/judge", methods=["POST"])

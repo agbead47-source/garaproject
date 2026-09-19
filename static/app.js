@@ -155,6 +155,128 @@
   }
 
   /* -----------------------------------------------------------------------
+   * 무역 도우미 - 규칙 기반 챗봇 (가안)
+   * --------------------------------------------------------------------- */
+  /* 대화는 화면에만 남는다. 새로고침하면 사라진다 (가안) */
+  function initChat() {
+    var fab = document.getElementById('chat-fab');
+    var panel = document.getElementById('chat-panel');
+    if (!fab || !panel) { return; }
+
+    var log = document.getElementById('chat-log');
+    var form = document.getElementById('chat-form');
+    var input = document.getElementById('chat-input');
+    var send = document.getElementById('chat-send');
+    var started = false;
+
+    function scroll() { log.scrollTop = log.scrollHeight; }
+
+    function bubble(side, text) {
+      var row = document.createElement('div');
+      row.className = 'chat-row ' + side;
+      var box = document.createElement('div');
+      box.className = 'chat-bubble';
+      box.textContent = text;
+      row.appendChild(box);
+      log.appendChild(row);
+      scroll();
+      return box;
+    }
+
+    function chips(list) {
+      if (!list || !list.length) { return; }
+      var wrap = document.createElement('div');
+      wrap.className = 'chat-chips';
+      list.forEach(function (text) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chat-chip';
+        btn.textContent = text;
+        btn.addEventListener('click', function () { ask(text); });
+        wrap.appendChild(btn);
+      });
+      log.appendChild(wrap);
+      scroll();
+    }
+
+    function extras(data) {
+      if (data.source) {
+        var src = document.createElement('div');
+        src.className = 'chat-source';
+        src.textContent = '출처: ' + data.source;
+        log.appendChild(src);
+      }
+      (data.links || []).forEach(function (link) {
+        var a = document.createElement('a');
+        a.className = 'chat-link';
+        a.href = link.href;
+        a.textContent = link.label + ' →';
+        log.appendChild(a);
+      });
+      chips(data.chips);
+    }
+
+    function ask(question) {
+      if (!question) { return; }
+      bubble('me', question);
+      input.value = '';
+      send.classList.add('is-busy');
+
+      var typing = bubble('bot', '…');
+
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ q: question })
+      }).then(function (res) {
+        return res.ok ? res.json() : Promise.reject(res.status);
+      }).then(function (data) {
+        typing.textContent = data.text;
+        extras(data);
+      }).catch(function () {
+        // 답을 못 받았으면 못 받았다고 한다. 지어내지 않는다
+        typing.textContent = '답을 가져오지 못했습니다. 잠시 뒤 다시 물어봐 주세요.';
+        typing.classList.add('chat-failed');
+      }).then(function () {
+        send.classList.remove('is-busy');
+        scroll();
+      });
+    }
+
+    function open() {
+      panel.hidden = false;
+      fab.classList.add('on');
+      if (!started) {
+        started = true;
+        bubble('bot', log.dataset.greeting || '무엇을 도와드릴까요?');
+        try {
+          chips(JSON.parse(log.dataset.chips || '[]'));
+        } catch (e) { /* 추천 질문이 없어도 대화는 된다 */ }
+      }
+      input.focus();
+    }
+
+    function close() {
+      panel.hidden = true;
+      fab.classList.remove('on');
+    }
+
+    fab.addEventListener('click', function () {
+      if (panel.hidden) { open(); } else { close(); }
+    });
+    document.getElementById('chat-close').addEventListener('click', close);
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      ask(input.value.trim());
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !panel.hidden) { close(); }
+    });
+  }
+
+  /* -----------------------------------------------------------------------
    * 공통 토스트 메시지
    * --------------------------------------------------------------------- */
   var toastTimer = null;
@@ -182,5 +304,6 @@
   document.addEventListener('DOMContentLoaded', function () {
     initHighlight();
     initInlineEdit();
+    initChat();
   });
 })();

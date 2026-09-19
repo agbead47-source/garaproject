@@ -87,6 +87,33 @@
 
   </div>
 
+
+    {% if request.endpoint != 'login' %}
+    <!-- 무역 도우미 - 규칙 기반 챗봇 (가안) -->
+    <button type="button" class="chat-fab" id="chat-fab"
+            aria-label="{{ bot_name }} 열기">💬</button>
+
+    <section class="chat-panel" id="chat-panel" hidden aria-label="{{ bot_name }}">
+      <header class="chat-head">
+        <div>
+          <span class="chat-title">{{ bot_name }}</span>
+          <span class="chat-kind">{{ bot_kind }}</span>
+        </div>
+        <button type="button" class="modal-close" id="chat-close" aria-label="닫기">✕</button>
+      </header>
+
+      <div class="chat-log" id="chat-log"
+           data-greeting="{{ bot_greeting.text }}"
+           data-chips='{{ bot_greeting.chips|tojson }}'></div>
+
+      <form class="chat-form" id="chat-form">
+        <input class="input" type="text" id="chat-input" autocomplete="off"
+               maxlength="300" placeholder="무역 용어, 수출 실적, 규제, 담당자…">
+        <button type="submit" class="btn btn-primary" id="chat-send">보내기</button>
+      </form>
+    </section>
+    {% endif %}
+
   <script src="{{ url_for('static', filename='app.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
