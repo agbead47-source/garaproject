@@ -146,11 +146,17 @@
         <p class="field-hint" id="incoterm-hint"></p>
       </div>
 
+      {# 노선은 건마다 다르다. 내륙 운송이 늘 부산항도, 해상 운임이 늘 LA 도 아니다 #}
       <div class="parts-box">
         {% for row in d.logistics %}
         <div class="part-row" data-logi-row="{{ row.key }}">
           <label class="part-label" for="logi-{{ row.key }}">
-            {{ row.label }}
+            <span class="part-title">
+              {{ row.label }}
+              <input class="part-route" type="text" id="route-{{ row.key }}"
+                     value="{{ row.route }}" maxlength="40" placeholder="구간·메모"
+                     aria-label="{{ row.label }} 구간">
+            </span>
             <span class="part-note">{{ row.from }}부터 포함 · 총액</span>
           </label>
           <input class="input part-input" type="number" id="logi-{{ row.key }}"
@@ -158,6 +164,22 @@
           <span class="part-unit">원</span>
         </div>
         {% endfor %}
+        <div id="logi-extra"></div>
+      </div>
+
+      {# 예상 못 한 부대비용이 늘 생긴다. 어느 조건부터 포함되는지도 같이 고른다 #}
+      <div class="cost-add">
+        <select class="select select-inline" id="logi-preset">
+          {% for row in d.logi_presets %}
+          <option value="{{ row.key }}" data-label="{{ row.label }}"
+                  data-note="{{ row.note }}" data-from="{{ row.from }}"
+                  >{{ row.pick | default(row.label, true) }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-mini" id="logi-add">＋ 물류비 항목 추가</button>
+        <span class="field-hint no-top">
+          견적서에는 물류비가 단가에 녹아 들어갑니다. 항목 이름은 사내에서만 봅니다.
+        </span>
       </div>
 
       <div class="field-row spaced">
@@ -984,7 +1006,7 @@
      원가표에 없던 비용을 영업이 직접 얹는다. 지운 만큼 합계에서도 빠진다 */
   var extraSeq = 0;
 
-  function addCostLine(label, note, amount) {
+  function addCostLine(label, note, amount, onRemove) {
     extraSeq += 1;
     var id = 'cost-extra-' + extraSeq;
 
@@ -1031,6 +1053,9 @@
     del.setAttribute('aria-label', '항목 삭제');
     del.addEventListener('click', function () {
       row.remove();
+      /* 지웠으면 가져온 자리의 버튼도 되살린다.
+         안 그러면 한 번 넣고 지운 행은 다시 넣을 방법이 없다 */
+      if (onRemove) { onRemove(); }
       render();
     });
 
@@ -1048,19 +1073,131 @@
     addCostLine(opt ? opt.dataset.label : '', opt ? opt.dataset.note : '', 0);
   });
 
-  /* 원가표에서 인식하지 못한 행을 한 번에 올린다 */
+  /* ---- 물류비 항목 추가 ----
+     예상 못 한 부대비용이 늘 생긴다. 금액만 받으면 안 되고
+     "어느 조건부터 판매가에 포함되는지" 를 같이 받아야 단가가 맞는다 */
+  var logiSeq = 0;
+
+  function addLogiLine(label, note, from, amount) {
+    logiSeq += 1;
+    var id = 'logi-extra-' + logiSeq;
+
+    var row = document.createElement('div');
+    row.className = 'part-row part-extra';
+
+    var lab = document.createElement('label');
+    lab.className = 'part-label';
+    lab.setAttribute('for', id);
+
+    var name = document.createElement('input');
+    name.className = 'part-name';
+    name.type = 'text';
+    name.value = label || '';
+    name.maxLength = 40;
+    name.placeholder = '항목 이름';
+    lab.appendChild(name);
+
+    var input = document.createElement('input');
+    input.className = 'input part-input';
+    input.type = 'number';
+    input.id = id;
+    input.min = '0';
+    input.step = '10000';
+    input.value = amount || 0;
+    input.setAttribute('data-logi', '');
+    input.dataset.from = from || 'FOB';
+    input.addEventListener('input', render);
+
+    /* 포함 시작 조건. EXW 는 넣지 않는다 - 그건 물류비가 아니라 원가다 */
+    var note_ = document.createElement('span');
+    note_.className = 'part-note';
+
+    var pick = document.createElement('select');
+    pick.className = 'part-from';
+    pick.setAttribute('aria-label', '포함 시작 조건');
+    ORDER.slice(1).forEach(function (code) {
+      var opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = code;
+      pick.appendChild(opt);
+    });
+    pick.value = input.dataset.from;
+    pick.addEventListener('change', function () {
+      input.dataset.from = pick.value;
+      render();
+    });
+
+    note_.appendChild(pick);
+    var tail = document.createElement('span');
+    tail.textContent = '부터 포함 · 총액' + (note ? ' · ' + note : '');
+    note_.appendChild(tail);
+    lab.appendChild(note_);
+
+    var unit = document.createElement('span');
+    unit.className = 'part-unit';
+    unit.textContent = '원';
+
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'part-del';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', '항목 삭제');
+    del.addEventListener('click', function () {
+      row.remove();
+      render();
+    });
+
+    row.appendChild(lab);
+    row.appendChild(input);
+    row.appendChild(unit);
+    row.appendChild(del);
+    el('logi-extra').appendChild(row);
+    name.focus();
+    render();
+  }
+
+  el('logi-add').addEventListener('click', function () {
+    var opt = el('logi-preset').selectedOptions[0];
+    addLogiLine(opt ? opt.dataset.label : '', opt ? opt.dataset.note : '',
+                opt ? opt.dataset.from : 'FOB', 0);
+  });
+
+  /* ---- 원가표에서 인식하지 못한 행 ----
+     한 번 넣었다가 지우면 다시 넣을 수 있어야 한다. 금액을 잘못 적어
+     지우는 일이 흔한데, 버튼이 '추가됨' 으로 굳으면 방법이 없다 */
+  function unmatchedReset(btn) {
+    var box = btn.closest('.unmatched-row');
+    if (box) { box.classList.remove('moved'); }
+    btn.disabled = false;
+    btn.textContent = '계산에 넣기';
+  }
+
   document.querySelectorAll('.unmatched-add').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      addCostLine(btn.dataset.label, '원가표에서 옮김 — 금액을 확인해 주세요', 0);
+      addCostLine(btn.dataset.label, '원가표에서 옮김 — 금액을 확인해 주세요', 0,
+                  function () { unmatchedReset(btn); });
       btn.closest('.unmatched-row').classList.add('moved');
       btn.disabled = true;
       btn.textContent = '추가됨';
     });
   });
 
+  /* 구간 칸은 계산에 쓰이지 않지만 되돌리기 대상이다 */
+  var ROUTES = {};
+  document.querySelectorAll('.part-route').forEach(function (node) {
+    ROUTES[node.id] = node.value;
+  });
+
   el('p-reset').addEventListener('click', function () {
-    /* 직접 넣은 원가 항목도 같이 지운다 */
+    /* 직접 넣은 원가·물류비 항목도 같이 지운다.
+       innerHTML 로 지우면 삭제 버튼의 뒷정리가 안 도니 버튼을 직접 되살린다 */
     el('cost-extra').innerHTML = '';
+    el('logi-extra').innerHTML = '';
+    document.querySelectorAll('.unmatched-add').forEach(unmatchedReset);
+    Object.keys(ROUTES).forEach(function (id) {
+      var node = el(id);
+      if (node) { node.value = ROUTES[id]; }
+    });
     Object.keys(DEFAULTS).forEach(function (key) {
       if (key === 'mode') { return; }
       var node = el(key);

@@ -2063,11 +2063,37 @@ INCOTERMS = [
 ]
 
 # 물류비 - from 에 적힌 조건부터 판매가에 포함된다 (총액, 원)
+#   route 는 화면에서 고칠 수 있다. 내륙 운송이 늘 부산항인 것도 아니고
+#   해상 운임이 늘 LA 로 가는 것도 아니다. 건마다 노선이 다르다.
 _LOGISTICS = [
-    {"key": "inland", "label": "내륙 운송 (공장 → 부산항)", "total": 380000, "from": "FCA"},
-    {"key": "customs", "label": "수출 통관·서류", "total": 120000, "from": "FCA"},
-    {"key": "thc", "label": "THC·터미널 핸들링", "total": 210000, "from": "FOB"},
-    {"key": "freight", "label": "해상 운임 (부산 → LA)", "total": 1050000, "from": "CFR"},
+    {"key": "inland", "label": "내륙 운송", "route": "공장 → 부산항",
+     "total": 380000, "from": "FCA"},
+    {"key": "customs", "label": "수출 통관·서류", "route": "",
+     "total": 120000, "from": "FCA"},
+    {"key": "thc", "label": "THC·터미널 핸들링", "route": "부산항",
+     "total": 210000, "from": "FOB"},
+    {"key": "freight", "label": "해상 운임", "route": "부산 → LA",
+     "total": 1050000, "from": "CFR"},
+]
+
+# 물류비에 덧붙이는 항목. 예상 못 한 부대비용이 늘 생긴다.
+#   from 을 같이 잡는 게 중요하다. 어느 조건부터 판매가에 포함되는지가
+#   안 맞으면 EXW 단가에 해상 운임이 얹히는 식으로 틀어진다.
+LOGI_PRESETS = [
+    {"key": "docs", "label": "서류·인증 발급", "from": "FCA",
+     "note": "원산지증명(C/O)·FTA 증명 발급 수수료"},
+    {"key": "pallet", "label": "팔레트·훈증 처리", "from": "FCA",
+     "note": "목재 포장재는 훈증(IPPC) 대상입니다"},
+    {"key": "storage", "label": "보세창고 보관료", "from": "FOB",
+     "note": "선적이 밀리면 붙습니다"},
+    {"key": "inspect", "label": "검량·검수·컨테이너 검사", "from": "FOB", "note": ""},
+    {"key": "surcharge", "label": "유류·통화 할증료 (BAF·CAF)", "from": "CFR",
+     "note": "운임에 따로 붙는 할증입니다"},
+    {"key": "demurrage", "label": "체선·체화료 (Demurrage)", "from": "CFR",
+     "note": "반출이 늦어지면 붙습니다"},
+    # 이름을 비워 둔다. 골라 넣으면 빈 칸에 바로 커서가 가서 직접 적게 된다
+    {"key": "etc", "label": "", "pick": "기타 (이름을 직접 적습니다)",
+     "from": "FOB", "note": ""},
 ]
 
 # 적하보험 - CIF 에서만 붙는다. 보험금액 = CFR 금액 × 부보율, 보험료 = 보험금액 × 요율
@@ -2129,6 +2155,7 @@ def get_pricing_defaults(file_name=None, handoff=None):
         "quote_port": QUOTE_PORT,
         "quote_contact_en": QUOTE_CONTACT_EN,
         "logistics": [dict(row) for row in _LOGISTICS],
+        "logi_presets": [dict(row) for row in LOGI_PRESETS],
         "insurance": dict(INSURANCE),
         "incoterms": [dict(row) for row in INCOTERMS],
         "incoterm_order": list(INCOTERM_ORDER),
