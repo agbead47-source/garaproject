@@ -315,6 +315,71 @@
   </div>
 </div>
 
+{# 미국을 골랐을 때만. 규제와 매장 기준은 성격이 달라 카드를 따로 둔다 #}
+{% if us_board %}
+<section class="card sell-card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">🛒 미국 판매 관점</h2>
+      <p class="card-desc no-margin">
+        법에 걸리느냐와 <strong>팔 수 있느냐는 다릅니다.</strong>
+        규제를 다 통과해도 OTC 로 갈리면 화장품으로 못 팔고,
+        리테일러 배제 목록에 걸리면 그 매장에 못 들어갑니다.
+      </p>
+    </div>
+  </div>
+
+  <div class="sell-grid">
+    <div class="sell-item otc-{{ us_board.otc.level_meta.css }}">
+      <div class="sell-head">
+        <span class="sell-title">OTC 해당 여부</span>
+        <span class="sell-badge otc-{{ us_board.otc.level_meta.css }}"
+              title="{{ us_board.otc.level_meta.desc }}">
+          {{ us_board.otc.level_meta.label }}
+        </span>
+      </div>
+      <p class="sell-why">{{ us_board.otc.why }}</p>
+      {% if us_board.otc.hits %}
+      <ul class="sell-hits">
+        {% for h in us_board.otc.hits %}
+        <li><b>{{ h.name }}</b> — {{ h.why }} <span class="text-gray">{{ h.rule }}</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      <p class="sell-foot">
+        미국에서 자외선차단·여드름·탈모·미백은 화장품이 아니라 의약품 영역입니다.
+        한국의 기능성화장품이 여기서 갈립니다.
+      </p>
+    </div>
+
+    {% for r in us_board.retail %}
+    <div class="sell-item rs-{{ r.verdict_meta.css }}">
+      <div class="sell-head">
+        <span class="sell-title">{{ r.icon }} {{ r.name }}</span>
+        <span class="sell-badge rs-{{ r.verdict_meta.css }}"
+              title="{{ r.verdict_meta.desc }}">{{ r.verdict_meta.label }}</span>
+      </div>
+      <p class="sell-why">{{ r.why }}</p>
+      {% if r.hits or r.softs %}
+      <ul class="sell-hits">
+        {% for h in r.hits + r.softs %}
+        <li><b>{{ h.name }}</b> — {{ h.group }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      <p class="sell-foot">
+        <strong>법이 아니라 {{ r.org }}가 정한 구매 조건입니다.</strong>
+        어겨도 불법은 아니고 그 매장에 못 들어갑니다.
+        저희가 공개 문서를 보고 정리한 배제 목록 {{ r.group_count }}묶음 기준이며
+        ({{ r.as_of }}), 성분 말고 포장·시험·표시 요건이 따로 있습니다.
+        최종 확인은 리테일러가 준 최신 문서로 하세요.
+      </p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <div class="reg-grid">
   <section class="card" id="reg-list">
     <h2 class="card-title">성분별 규제 판정 <span class="count-chip">{{ pager.total }}</span></h2>
@@ -346,6 +411,14 @@
           <td>
             <div class="reg-name">{{ row.name }}</div>
             <div class="reg-inci">{{ row.inci }}</div>
+            {% if row.badges %}
+            <div class="row-badges">
+              {% for b in row.badges %}
+              <span class="sell-badge {% if b.kind == 'otc' %}otc-{{ b.css }}{% else %}rs-{{ b.css }}{% endif %}"
+                    title="{{ b.why }}">{{ b.label }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
           </td>
           <td class="col-req">{{ row.requested }}</td>
           <td class="col-limit">{{ row.limit }}</td>

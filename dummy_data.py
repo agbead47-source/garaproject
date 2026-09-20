@@ -15,6 +15,7 @@ from datetime import date
 import company_store
 import customer_store
 import reg_store
+import retail_std
 import us_reg_store
 
 # ---------------------------------------------------------------------------
@@ -1345,6 +1346,28 @@ def search_regulations(country="all", keyword="", status="all"):
             if status != "all" and rule["status"] != status:
                 continue
 
+            # 미국은 법 말고도 팔리느냐가 갈린다.
+            #   OTC 로 갈리면 화장품으로 못 팔고,
+            #   리테일러 배제 목록에 걸리면 그 매장에 못 들어간다.
+            badges = []
+            if code == "us":
+                otc = us_reg_store.otc_of(item["name"], item["inci"],
+                                          item["requested"])
+                if otc:
+                    meta = us_reg_store.OTC_LEVELS[otc["level"]]
+                    badges.append({"kind": "otc", "css": meta["css"],
+                                   "label": meta["label"], "why": otc["why"]})
+                for std in retail_std.STANDARDS:
+                    found = retail_std.check_ingredient(
+                        std["key"], item["name"], item["inci"], item["requested"])
+                    if found and not found["unused"]:
+                        badges.append({
+                            "kind": "retail",
+                            "css": "soft" if found["soft"] else "fail",
+                            "label": "{} {}".format(std["icon"], found["group"]),
+                            "why": "{} — {}".format(std["name"], found["why"]),
+                        })
+
             country_row = get_reg_country(code) or {}
             rows.append(
                 {
@@ -1363,10 +1386,22 @@ def search_regulations(country="all", keyword="", status="all"):
                     "note": rule["note"],
                     "live": live,
                     "annex": rule.get("annex", ""),
+                    "badges": badges,
                 }
             )
 
     return rows
+
+
+def us_sales_board():
+    """미국 판매 관점 요약. 규제와 매장 기준은 성격이 달라 따로 적는다."""
+    rows = [{"name": r["name"], "inci": r["inci"], "requested": r["requested"]}
+            for r in _REG_INGREDIENTS]
+    return {
+        "rows": len(rows),
+        "otc": us_reg_store.otc_verdict(rows),
+        "retail": retail_std.all_verdicts(rows),
+    }
 
 
 def get_us_reg_source():

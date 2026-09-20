@@ -117,7 +117,7 @@ RESTRICT_ALIASES = {
 
 # CI 번호 → 미국 색소 조문.
 #   EU·한국은 CI 번호로 적고 미국은 FD&C / D&C 이름으로 적는다.
-#   **참고 매핑이다.** 판정은 반드시 조문 원문으로 확인해야 한다.
+#   참고 매핑이다. 판정은 반드시 조문 원문으로 확인해야 한다.
 #
 #   번호 하나가 조문 둘에 걸리기도 한다 (CI 15850 = D&C Red No. 6 과 No. 7).
 #   그래서 값이 목록이다.
@@ -175,7 +175,7 @@ CI_TO_SECTION = {
     "ci 77266": ["74.2052"],              # D&C Black No. 2 (카본블랙)
 }
 
-# 화장품용 목록에 **일부러 안 넣은** 번호.
+# 화장품용 목록에 일부러 안 넣은 번호.
 #   못 찾은 것과 "미국에서는 못 쓴다" 는 전혀 다른 말이다.
 CI_NOT_LISTED = {
     "ci 45430": "FD&C Red No. 3 — 1990년에 화장품·외용약 용도가 취소됐습니다.",
@@ -201,7 +201,7 @@ SUNSCREEN_ACTIVES = [
     "ensulizole", "octyl methoxycinnamate",
 ]
 
-# 미국에서 화장품과 의약품의 경계는 **성분과 효능 표방**으로 갈린다.
+# 미국에서 화장품과 의약품의 경계는 성분과 효능 표방으로 갈린다.
 #   같은 성분이라도 "각질 관리" 라고 적으면 화장품이고
 #   "여드름 치료" 라고 적으면 OTC 의약품이다. 시설 기준부터 달라진다.
 DRUG_ACTIVES = [
@@ -212,7 +212,7 @@ DRUG_ACTIVES = [
      "text": "탈모 치료 OTC 의약품 성분입니다 (21 CFR 310.527). 화장품이 아닙니다."},
     {"names": ["salicylic acid", "살리실릭"], "level": "claim",
      "text": "여드름 OTC 모노그래프 성분입니다 (21 CFR 333 Subpart D). "
-             "각질 관리로 적으면 화장품이지만 **여드름 효능을 표방하면 의약품**이 됩니다."},
+             "각질 관리로 적으면 화장품이지만 여드름 효능을 표방하면 의약품이 됩니다."},
     {"names": ["benzoyl peroxide", "벤조일퍼옥사이드"], "level": "drug",
      "text": "여드름 OTC 의약품 성분입니다 (21 CFR 333 Subpart D)."},
     {"names": ["resorcinol", "레조르시놀"], "level": "claim",
@@ -513,7 +513,7 @@ def lookup(*names):
 
     두 방향을 다 본다.
       - 성분명이 조문 이름에 들어 있는 경우 ("Red No. 6" ⊂ "D&C Red No. 6 Lake")
-      - **조문 이름이 성분명에 들어 있는 경우** ("mercuric" ⊂ "Mercuric Chloride")
+      - 조문 이름이 성분명에 들어 있는 경우 ("mercuric" ⊂ "Mercuric Chloride")
     뒤쪽을 빼먹으면 Mercuric Chloride 가 수은 조문에 안 걸린다.
     낱말 경계로 맞춰서 "gold" 가 "goldenrod" 에 걸리는 일은 막는다.
     """
@@ -635,7 +635,7 @@ def judge(name, inci=None, cas=None, requested=None):
         if row["scope_text"]:
             notes.append("용도 범위: " + row["scope_text"] + ".")
         if certified:
-            notes.append("**FDA 배치 인증(certification)을 받은 로트만** 쓸 수 있습니다. "
+            notes.append("FDA 배치 인증(certification)을 받은 로트만 쓸 수 있습니다. "
                          "원료사에 해당 로트의 인증서를 요청하세요.")
         else:
             notes.append("배치 인증은 면제되는 색소입니다.")
@@ -685,7 +685,7 @@ def judge(name, inci=None, cas=None, requested=None):
             "status": "warn",
             "limit": "색소 등재 확인 필요",
             "rule": "21 CFR 73 / 74 Subpart C",
-            "note": ("미국은 색소가 **포지티브 리스트**입니다. 21 CFR 73·74 에 등재되지 "
+            "note": ("미국은 색소가 포지티브 리스트입니다. 21 CFR 73·74 에 등재되지 "
                      "않은 색소는 화장품에 쓸 수 없습니다. 받아 둔 조문에서 이 이름을 "
                      "찾지 못했습니다 — 미등재이거나, CI 번호와 미국 명칭(FD&C·D&C)이 "
                      "달라 대조가 안 된 것입니다. 원료사에 미국 명칭과 조문 번호를 "
@@ -717,7 +717,7 @@ def judge(name, inci=None, cas=None, requested=None):
             "status": "warn",
             "limit": "OTC 의약품 성분",
             "rule": "21 CFR 352 · 21 CFR 700.35",
-            "note": ("미국에서 자외선차단제는 화장품이 아니라 **OTC 의약품**입니다. "
+            "note": ("미국에서 자외선차단제는 화장품이 아니라 OTC 의약품입니다. "
                      "한국에서 기능성화장품인 제품이 미국에서는 drug 으로 갈립니다. "
                      "SPF 를 표시해 팔려면 OTC 모노그래프 성분·함량·라벨(Drug Facts)을 "
                      "따라야 하고, 시설도 의약품 기준을 받습니다. "
@@ -729,12 +729,12 @@ def judge(name, inci=None, cas=None, requested=None):
             "kind": "otc",
         }
 
-    # 7) 아무 데도 없다. **적합이 아니다.**
+    # 7) 아무 데도 없다. 적합이 아니다.
     return {
         "status": "ok" if unused else "warn",
         "limit": "개별 금지 규정 없음",
         "rule": "21 CFR 700 / 73 / 74 (미등재)",
-        "note": ("미국에는 **일반 화장품 성분의 사전 허가 목록이 없습니다.** "
+        "note": ("미국에는 일반 화장품 성분의 사전 허가 목록이 없습니다. "
                  "금지·제한 조문(21 CFR 700 등)에 걸리지 않는다는 뜻이지 "
                  "'적합 판정' 이 아닙니다. MoCRA 에 따라 안전성 입증 자료를 "
                  "제조사가 갖추고 보관해야 합니다."),
@@ -743,6 +743,79 @@ def judge(name, inci=None, cas=None, requested=None):
         "matched_name": "",
         "section": "",
         "kind": "none",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 제품 단위 - 이 제품이 미국에서 화장품인가 의약품인가
+# ---------------------------------------------------------------------------
+#   성분 하나씩 보면 놓친다. 자외선차단 성분이 하나라도 들어가고 SPF 를 적으면
+#   그 순간 제품 전체가 OTC 의약품이 된다. 시설 기준부터 라벨까지 다 달라진다.
+#   영업이 바이어에게 "이건 화장품으로 못 팝니다" 를 먼저 말할 수 있어야 한다.
+
+OTC_LEVELS = {
+    "drug": {"label": "OTC 의약품", "css": "drug",
+             "desc": "화장품이 아니라 OTC 의약품으로 갈립니다"},
+    "claim": {"label": "표방하면 의약품", "css": "claim",
+              "desc": "효능을 표방하면 의약품이 됩니다"},
+    "banned": {"label": "화장품 사용 불가", "css": "banned",
+               "desc": "화장품에 쓸 수 없는 성분이 있습니다"},
+    "cosmetic": {"label": "화장품", "css": "cosmetic",
+                 "desc": "OTC 로 갈릴 성분이 보이지 않습니다"},
+}
+
+
+def otc_of(name, inci=None, requested=None):
+    """성분 하나가 화장품·의약품 경계에 걸리는가. 안 걸리면 None."""
+    if _is_unused(requested):
+        return None
+    drug = drug_active(name, inci)
+    if drug:
+        return {"level": drug["level"], "why": drug["text"],
+                "rule": "21 CFR 310 / 333 / 355"}
+    if is_sunscreen_active(name, inci):
+        return {
+            "level": "claim",
+            "why": ("자외선차단 성분입니다. SPF 를 표시해 팔면 화장품이 아니라 "
+                    "OTC 의약품(21 CFR 352)이 됩니다. SPF 표시를 안 하면 "
+                    "이 판정은 해당하지 않습니다."),
+            "rule": "21 CFR 352",
+        }
+    return None
+
+
+def otc_verdict(rows):
+    """제품 단위 OTC 판정. rows: [{name, inci, requested}, …]"""
+    hits = []
+    for row in rows or []:
+        found = otc_of(row.get("name"), row.get("inci"), row.get("requested"))
+        if found:
+            hits.append(dict(found,
+                             name=row.get("name") or row.get("inci") or ""))
+
+    if any(h["level"] == "banned" for h in hits):
+        level = "banned"
+    elif any(h["level"] == "drug" for h in hits):
+        level = "drug"
+    elif hits:
+        level = "claim"
+    else:
+        level = "cosmetic"
+
+    if level == "cosmetic":
+        why = ("성분 {}건에서 OTC 로 갈릴 성분이 보이지 않습니다. "
+               "다만 효능 문구로도 의약품이 됩니다 — 라벨 문안을 같이 보세요."
+               .format(len(rows or [])))
+    else:
+        # 아래에 성분별로 다시 적으므로 여기서는 세기만 한다
+        why = "성분 {}건 중 {}건이 의약품 쪽으로 갈립니다.".format(
+            len(rows or []), len(hits))
+
+    return {
+        "level": level,
+        "level_meta": dict(OTC_LEVELS[level], key=level),
+        "hits": hits,
+        "why": why,
     }
 
 

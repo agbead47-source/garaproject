@@ -567,6 +567,8 @@ def regulation():
         status_meta=dummy_data.REG_STATUS_META,
         reg_source=dummy_data.get_reg_source(),
         us_source=dummy_data.get_us_reg_source(),
+        # 미국을 골랐을 때만. 다른 나라 기준에 미국 매장 기준을 섞지 않는다
+        us_board=dummy_data.us_sales_board() if country == "us" else None,
         selected={"country": country, "q": keyword, "status": status},
         country_detail=dummy_data.get_reg_country(country),
         counts={

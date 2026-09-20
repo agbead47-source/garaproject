@@ -4283,3 +4283,77 @@ fieldset.bare[disabled] { opacity: .55; }
   .form-row { grid-template-columns: 42px minmax(0, 1fr); }
   .form-value { grid-column: 1 / -1; }
 }
+
+/* 미국 판매 관점 - 법에 걸리느냐와 팔 수 있느냐는 다르다 */
+.sell-card { border-left: 3px solid #CFE0F2; }
+.sell-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.sell-item {
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 9px;
+  background: var(--white);
+  min-width: 0;
+}
+.sell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.sell-title { font-size: 13px; font-weight: 700; }
+.sell-why { margin: 0; font-size: 12.5px; line-height: 1.7; color: var(--text); }
+.sell-hits {
+  margin: 7px 0 0;
+  padding-left: 16px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-sub);
+}
+.sell-foot {
+  margin: 8px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid #F1F2F4;
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--gray);
+}
+
+.sell-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #F4F5F7;
+  color: var(--text-sub);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* OTC - 법으로 갈리는 쪽 */
+.sell-badge.otc-cosmetic { background: #E8F5EC; color: #2E7D4F; border-color: #CDE9D6; }
+.sell-badge.otc-claim    { background: #FFF4E5; color: #B26A00; border-color: #F5DDB8; }
+.sell-badge.otc-drug     { background: #FFF1E0; color: #B2560A; border-color: #F5D2AE; }
+.sell-badge.otc-banned   { background: #FBECEC; color: #B03A3A; border-color: #F0D2D2; }
+/* 리테일러 기준 - 법이 아니라 매장 조건. 색을 규제와 다르게 쓴다 */
+.sell-badge.rs-pass  { background: #EFF6F1; color: #4A7C61; border-color: #D8E8DE; }
+.sell-badge.rs-check { background: #F3F0FA; color: #6B5BA3; border-color: #DED6F2; }
+.sell-badge.rs-fail  { background: #F6ECF2; color: #9B3F73; border-color: #EFD2E3; }
+.sell-badge.rs-soft  { background: #F3F0FA; color: #6B5BA3; border-color: #DED6F2; }
+.sell-badge.rs-off   { background: #F4F5F7; color: #8A9099; border-color: #E3E5E9; }
+
+.sell-item.otc-claim, .sell-item.otc-drug { border-left-color: #E0A93B; }
+.sell-item.otc-banned { border-left-color: #C0392B; }
+.sell-item.otc-cosmetic { border-left-color: #4CAF7D; }
+.sell-item.rs-fail { border-left-color: #B8558F; }
+.sell-item.rs-check { border-left-color: #8A7BC8; }
+.sell-item.rs-pass { border-left-color: #7FA98F; }
+
+.row-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
