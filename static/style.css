@@ -502,7 +502,6 @@ a { color: inherit; text-decoration: none; }
 .item-row.selected .col-label { color: var(--point); }
 
 .col-label { width: 108px; font-weight: 600; white-space: nowrap; }
-.col-conf { width: 120px; }
 .col-status { width: 84px; }
 
 .note-mark { color: var(--orange); font-size: 12px; margin-left: 2px; cursor: help; }
@@ -527,7 +526,6 @@ a { color: inherit; text-decoration: none; }
   outline: none;
 }
 
-.conf { display: flex; align-items: center; gap: 7px; }
 
 .conf-bar {
   flex: 1;
@@ -538,10 +536,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .conf-fill { display: block; height: 100%; border-radius: 999px; background: var(--green); }
-.conf-fill.check { background: var(--orange); }
-.conf-fill.missing { background: var(--gray); }
 
-.conf-num { color: var(--text-sub); font-size: 11px; width: 32px; text-align: right; }
 
 .status-badge {
   display: inline-block;
@@ -4222,3 +4217,69 @@ span.cert-dday.ca-prep, span.cert-dday.ca-off {
 /* 못 고치는 카드는 폼을 통째로 잠근다 (disabled 로 값은 보이되 안 바뀐다) */
 fieldset.bare { border: none; margin: 0; padding: 0; min-width: 0; }
 fieldset.bare[disabled] { opacity: .55; }
+
+/* 받은 양식 (엑셀 표) - 줄글이 아니라 표다.
+   .source-box 는 줄글용이라 white-space: pre-wrap 이다. 표에는 그게 걸려서
+   HTML 의 줄바꿈이 그대로 화면 줄바꿈이 됐다. 여기서 되돌린다. */
+.form-box {
+  padding: 12px 14px;
+  font-family: inherit;
+  white-space: normal;
+  line-height: 1.6;
+}
+.form-section {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-sub);
+  letter-spacing: -.2px;
+}
+.form-section:first-child { margin-top: 0; }
+
+.form-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 120px) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 8px;
+  border-bottom: 1px solid #F1F2F4;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  transition: background .12s;
+}
+.form-row:last-child { border-bottom: none; }
+.form-no {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--gray);
+  font-variant-numeric: tabular-nums;
+}
+.form-label { font-weight: 600; color: var(--text-sub); min-width: 0; word-break: break-word; }
+.form-value { color: var(--text); min-width: 0; word-break: break-word; }
+
+/* 목록에 없는 줄. 읽고도 버리면 바이어 요구가 통째로 사라진다 */
+.form-row.extra { background: #FFFDF6; }
+.form-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #FFF4E5;
+  border: 1px solid #F5DDB8;
+  color: #B26A00;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.form-row.blank .form-value { color: var(--gray); }
+.form-row.hl {
+  background: #FFF6CC;
+  box-shadow: inset 3px 0 0 #E8B93B;
+}
+
+.extra-card { border-left: 3px solid #F0C36B; }
+.col-row { width: 78px; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .form-row { grid-template-columns: 42px minmax(0, 1fr); }
+  .form-value { grid-column: 1 / -1; }
+}

@@ -11,43 +11,35 @@
   }
 
   /* -----------------------------------------------------------------------
-   * 분석 결과 화면: 행 클릭 → 원문 형광펜 하이라이트
+   * 분석 결과 화면: 행 클릭 → 양식에서 그 줄을 강조
+   * -----------------------------------------------------------------------
+   * 개발요청서는 대부분 엑셀 양식이라 원문이 줄글이 아니라 표다.
+   * 그래서 문장을 찾아 형광펜을 긋던 걸 **줄 번호로 짚는 방식**으로 바꿨다.
+   * "6쪽 세 번째 문장" 이 아니라 "6-2 Target Unit Price" 라야 사람이 찾는다.
    * --------------------------------------------------------------------- */
   function initHighlight() {
     var sourceBox = document.getElementById('source-box');
     var rows = document.querySelectorAll('.item-row');
     if (!sourceBox || !rows.length) { return; }
 
-    var originalText = sourceBox.textContent;
-
     function clearHighlight() {
-      sourceBox.textContent = originalText;
+      sourceBox.querySelectorAll('.form-row.hl').forEach(function (r) {
+        r.classList.remove('hl');
+      });
       document.querySelectorAll('.item-row.selected').forEach(function (r) {
         r.classList.remove('selected');
       });
     }
 
     function highlight(row) {
-      var sentence = row.dataset.source || '';
-      var start = sentence ? originalText.indexOf(sentence) : -1;
+      var no = row.dataset.row || '';
+      if (!no) { return; }                     // 양식에 해당 칸이 없는 항목
+      var target = document.getElementById('fr-' + no);
+      if (!target) { return; }
 
-      if (start === -1) {
-        // 원문에서 문장을 찾지 못하면 강조 없이 선택 표시만 한다
-        sourceBox.textContent = originalText;
-        return;
-      }
-
-      var end = start + sentence.length;
-      sourceBox.innerHTML =
-        escapeHtml(originalText.slice(0, start)) +
-        '<mark class="hl" id="hl-target">' + escapeHtml(sentence) + '</mark>' +
-        escapeHtml(originalText.slice(end));
-
-      var target = document.getElementById('hl-target');
-      if (target) {
-        // 스크롤 박스 안에서만 위치를 맞춘다 (페이지 전체는 움직이지 않음)
-        sourceBox.scrollTop = target.offsetTop - sourceBox.offsetTop - 60;
-      }
+      target.classList.add('hl');
+      /* 스크롤 박스 안에서만 위치를 맞춘다 (페이지 전체는 움직이지 않음) */
+      sourceBox.scrollTop = target.offsetTop - sourceBox.offsetTop - 60;
     }
 
     rows.forEach(function (row) {

@@ -31,13 +31,47 @@
     <div class="summary-label">규제 주의 성분</div>
     <div class="summary-value text-red">{{ analysis.regulation_count }}</div>
   </div>
+  <div class="summary-card">
+    <div class="summary-label">기타 (목록에 없음)</div>
+    <div class="summary-value">{{ analysis.extra_count }}</div>
+    <div class="summary-sub">버리지 않고 그대로 둡니다</div>
+  </div>
 </section>
 
 <div class="result-grid">
   <section class="card">
-    <h2 class="card-title">원문 미리보기</h2>
-    <p class="card-desc">오른쪽 표의 행을 클릭하면 해당 문장이 강조됩니다.</p>
-    <div id="source-box" class="source-box">{{ analysis.source_text }}</div>
+    <div class="result-head">
+      <div>
+        <h2 class="card-title no-margin">
+          받은 양식 <span class="count-chip">{{ analysis.form_rows }}줄</span>
+        </h2>
+        <p class="card-desc no-margin">
+          개발요청서는 대부분 <strong>엑셀 양식</strong>으로 옵니다.
+          읽어 들인 줄을 그대로 보여 드립니다.
+          오른쪽 표의 행을 누르면 해당 줄이 강조됩니다.
+        </p>
+      </div>
+    </div>
+
+    <div id="source-box" class="source-box form-box">
+      {% for block in analysis.form %}
+      <div class="form-section">{{ block.section }}</div>
+      {% for row in block.rows %}
+      <div class="form-row {% if not row.mapped %}extra{% endif %}
+                  {% if not row.value %}blank{% endif %}" id="fr-{{ row.no }}">
+        <span class="form-no">{{ row.no }}</span>
+        <span class="form-label">{{ row.label }}</span>
+        <span class="form-value">
+          {% if row.value %}{{ row.value }}
+          {% else %}<span class="text-gray">(빈칸)</span>{% endif %}
+        </span>
+        {% if not row.mapped %}
+        <span class="form-tag" title="항목 목록에 없는 줄입니다">기타</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% endfor %}
+    </div>
   </section>
 
   <section class="card">
@@ -48,13 +82,13 @@
         <tr>
           <th class="col-label">항목</th>
           <th>추출 값</th>
-          <th class="col-conf">신뢰도</th>
+          <th class="col-row">양식 위치</th>
           <th class="col-status">상태</th>
         </tr>
       </thead>
       <tbody>
         {% for item in analysis['items'] %}
-        <tr class="item-row" data-key="{{ item.key }}" data-source="{{ item.source }}">
+        <tr class="item-row" data-key="{{ item.key }}" data-row="{{ item.row }}">
           <td class="col-label">
             {{ item.label }}
             {% if item.note %}<span class="note-mark" title="{{ item.note }}">ⓘ</span>{% endif %}
@@ -62,16 +96,9 @@
           <td>
             <span class="item-value {% if not item.value %}empty{% endif %}">{{ item.value or '— 값 없음' }}</span>
           </td>
-          <td class="col-conf">
-            {% if item.confidence %}
-            <div class="conf">
-              <div class="conf-bar"><span class="conf-fill {{ status_meta[item.status].css }}"
-                    style="width: {{ item.confidence }}%"></span></div>
-              <span class="conf-num">{{ item.confidence }}%</span>
-            </div>
-            {% else %}
-            <span class="text-gray">—</span>
-            {% endif %}
+          <td class="col-row">
+            {% if item.row %}<span class="form-no">{{ item.row }}</span>
+            {% else %}<span class="text-gray">없음</span>{% endif %}
           </td>
           <td class="col-status">
             <span class="status-badge {{ status_meta[item.status].css }}">{{ status_meta[item.status].label }}</span>
@@ -82,6 +109,47 @@
     </table>
   </section>
 </div>
+
+{% if analysis.extra %}
+<section class="card extra-card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        기타 사항 <span class="count-chip">{{ analysis.extra_count }}</span>
+      </h2>
+      <p class="card-desc no-margin">
+        양식에는 적혀 있는데 <strong>우리 항목 목록에 없는 줄</strong>입니다.
+        바이어가 적어 보낸 요구라 버리지 않고 그대로 옮겨 둡니다.
+        읽고도 버리면 나중에 "그런 얘기 없었다" 가 됩니다.
+      </p>
+    </div>
+  </div>
+
+  <table class="item-table">
+    <thead>
+      <tr>
+        <th class="col-row">양식 위치</th>
+        <th class="col-label">항목 (양식 표기 그대로)</th>
+        <th>내용</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in analysis.extra %}
+      <tr class="item-row" data-key="extra-{{ loop.index }}" data-row="{{ row.no }}">
+        <td class="col-row"><span class="form-no">{{ row.no }}</span></td>
+        <td class="col-label">{{ row.label }}</td>
+        <td>{{ row.value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="field-hint">
+    번역하거나 항목으로 옮기지 않고 <strong>양식에 적힌 그대로</strong> 둡니다.
+    고쳐 적으면 원문과 달라져서, 나중에 어느 쪽이 맞는지 알 수 없습니다.
+  </p>
+</section>
+{% endif %}
 
 <section class="card">
   <h2 class="card-title">
@@ -110,7 +178,7 @@
     </thead>
     <tbody>
       {% for ing in analysis.ingredients %}
-      <tr class="item-row" data-key="ing-{{ loop.index }}" data-source="{{ ing.source }}">
+      <tr class="item-row" data-key="ing-{{ loop.index }}" data-row="3-1">
         <td class="col-label">{{ ing.name }}</td>
         <td class="col-inci">{{ ing.inci }}</td>
         <td class="col-amount">{{ ing.amount }}</td>

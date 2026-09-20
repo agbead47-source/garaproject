@@ -729,6 +729,22 @@ def apply_analysis(project_id, analysis, profile=None):
                   source=item.get("source") or "요청서 분석")
         moved += 1
 
+    # 양식에 있었지만 항목 목록에 없던 줄(기타)도 같이 옮긴다.
+    #   분석 화면에서만 보이고 프로젝트로 안 넘어가면, 건을 여는 순간 사라진다.
+    #   바이어가 적어 보낸 요구다. 메모에 그대로 붙여 둔다.
+    extra = analysis.get("extra") or []
+    if extra:
+        lines = ["[요청서 기타 — 항목 목록에 없어 그대로 옮김]"]
+        lines += ["  {} {} : {}".format(row["no"], row["label"], row["value"])
+                  for row in extra]
+        row = conn.execute("SELECT note FROM projects WHERE id = ?",
+                           (project_id,)).fetchone()
+        before = (row["note"] or "").strip() if row else ""
+        merged = (before + "\n\n" if before else "") + "\n".join(lines)
+        conn.execute("UPDATE projects SET note = ?, updated_at = ? WHERE id = ?",
+                     (merged[:5000], now_iso(), project_id))
+        conn.commit()
+
     # 원문과 파일명도 프로젝트에 남긴다
     if analysis.get("source_text"):
         conn.execute("UPDATE projects SET source_text = ?, source_file = ?, "

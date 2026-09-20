@@ -52,49 +52,118 @@ def get_languages():
 #   (분석 결과 화면에서 형광펜 하이라이트에 사용)
 # ---------------------------------------------------------------------------
 
-SAMPLE_DOCUMENT = """Glowtree Beauty - Product Development Request
+# ---------------------------------------------------------------------------
+# 개발요청서 양식
+# ---------------------------------------------------------------------------
+#   개발요청서는 대부분 **엑셀 양식**으로 온다. 줄글로 써 보내는 곳은 드물다.
+#   항목(Item) | 내용(Content) 두 칸짜리 표에 구획이 몇 개 나뉜 모양이 표준에 가깝다.
+#   그래서 '원문 미리보기' 도 줄글이 아니라 표로 보여 준다.
+#
+#   key 가 있으면 우리 항목 목록에 대응되는 줄이고,
+#   key 가 비어 있으면 **목록에 없는 줄**이다.
+#   그런 줄이 늘 몇 개씩 있는데, 지금까지는 읽고도 버렸다.
+#   버리면 바이어가 적어 보낸 요구가 통째로 사라진다. 그래서 '기타' 로 모은다.
 
-Date: September 4, 2026
-From: Glowtree Beauty (Los Angeles, USA)
-To: To-do Trade Co., Ltd. / Overseas Sales Team
+SAMPLE_FORM = [
+    {"section": "1. Product Overview", "rows": [
+        {"no": "1-1", "label": "Product Name", "key": "product_name"},
+        {"no": "1-2", "label": "Product Type", "key": "product_type"},
+        {"no": "1-3", "label": "Volume", "key": "volume"},
+        {"no": "1-4", "label": "Primary Container", "key": "container"},
+        {"no": "1-5", "label": "Launch Market", "key": "target_country"},
+        {"no": "1-6", "label": "Launch Season",
+         "value": "2027 Spring (March)"},
+        {"no": "1-7", "label": "Brand Concept",
+         "value": "Clean, dermatologist-tested daily brightening"},
+        {"no": "1-8", "label": "Target Consumer",
+         "value": "Women 25-34, sensitive skin, US West Coast"},
+    ]},
+    {"section": "2. Texture & Sensory", "rows": [
+        {"no": "2-1", "label": "Texture", "key": "texture"},
+        {"no": "2-2", "label": "Fragrance", "key": "fragrance"},
+        {"no": "2-3", "label": "Benchmark Product", "key": "benchmark"},
+    ]},
+    {"section": "3. Formula", "rows": [
+        {"no": "3-1", "label": "Key Actives", "key": "key_ingredients"},
+        {"no": "3-2", "label": "Free-from", "key": "free_from"},
+        {"no": "3-3", "label": "Shelf Life (requested)",
+         "value": "36 months unopened / 12M PAO"},
+        {"no": "3-4", "label": "pH Range (requested)",
+         "value": "5.0 - 6.0"},
+    ]},
+    {"section": "4. Claims & Certification", "rows": [
+        {"no": "4-1", "label": "Claims", "key": "claims"},
+        {"no": "4-2", "label": "Required Documents", "key": "documents"},
+        {"no": "4-3", "label": "Animal Testing Policy",
+         "value": "No animal testing at any stage, including raw materials. "
+                  "Written declaration required."},
+    ]},
+    {"section": "5. Packaging", "rows": [
+        {"no": "5-1", "label": "Container Supply", "key": "container_supply"},
+        {"no": "5-2", "label": "Color / Artwork", "key": "package_design"},
+        {"no": "5-3", "label": "Artwork Due Date",
+         "value": "To be shared by 2026-11-15"},
+    ]},
+    {"section": "6. Commercial Terms", "rows": [
+        {"no": "6-1", "label": "Order Quantity (MOQ)", "key": "moq"},
+        {"no": "6-2", "label": "Target Unit Price", "key": "target_price"},
+        {"no": "6-3", "label": "Incoterms", "key": "trade_terms"},
+        {"no": "6-4", "label": "Delivery", "key": "delivery"},
+        {"no": "6-5", "label": "Target Retail Price (RRP)",
+         "value": "USD 32.00"},
+        {"no": "6-6", "label": "Sample Quantity",
+         "value": "3 pcs per round, DHL collect (acct. 9xxxxx)"},
+    ]},
+    {"section": "7. Contact", "rows": [
+        {"no": "7-1", "label": "Requested By", "key": "responsible_person"},
+        {"no": "7-2", "label": "Remarks",
+         "value": "Please quote filling and secondary packaging only. "
+                  "We will confirm the EU expansion plan after the US launch."},
+    ]},
+]
 
-1. Product Overview
-We would like to request the development of a Vitamin C Brightening Serum for our 2027 spring line.
-The product is a leave-on facial serum filled in a 30ml glass dropper bottle.
-Our first launch market is the United States, and we plan to expand to the EU afterwards.
 
-2. Texture and Sensory
-The texture should be light and watery, absorbing quickly without any sticky finish.
-The formula must be fragrance-free.
-For the overall sensory target, please benchmark Dewy Lab "Glow Drop Serum" (US, 2025) - we like its slip and matte finish.
-Package color and label design will be shared later.
+def _form_rows(items):
+    """양식을 화면에 뿌릴 모양으로 편다.
 
-3. Key Ingredients
-Please include Ascorbyl Glucoside at 2.0%, Niacinamide at 5.0% and Sodium Hyaluronate at 1.0% as the core actives.
-We also want Retinol at 0.5% for the night-care claim.
-Please use Phenoxyethanol at 0.8% as the preservative system.
+    표의 줄 하나가 우리 항목 하나에 대응되면 그 값을 가져다 쓰고,
+    대응되는 항목이 없으면 **그대로 둔 채 '목록에 없음' 으로 표시**한다.
+    """
+    by_key = {row["key"]: row for row in items}
+    sections = []
+    extra = []
+    for block in SAMPLE_FORM:
+        rows = []
+        for raw in block["rows"]:
+            key = raw.get("key", "")
+            item = by_key.get(key) if key else None
+            row = {
+                "no": raw["no"],
+                "label": raw["label"],
+                "key": key,
+                "mapped": bool(item),
+                "value": (item["value"] if item else raw.get("value", "")),
+                "item_label": item["label"] if item else "",
+                "status": item["status"] if item else "extra",
+            }
+            rows.append(row)
+            if not item:
+                extra.append(row)
+        sections.append({"section": block["section"], "rows": rows})
+    return sections, extra
 
-4. Free-from Requirements
-The formula must be free from Parabens, Sulfates, Mineral oil and Synthetic fragrance.
 
-5. Claims and Certification
-We hope to use Vegan and Cruelty-free claims on the outer box.
+def _form_as_text(sections):
+    """표를 글자로. 전달 문서·프로젝트에 원문으로 남길 때 쓴다."""
+    lines = []
+    for block in sections:
+        lines.append(block["section"])
+        for row in block["rows"]:
+            lines.append("  {}  {} : {}".format(
+                row["no"], row["label"], row["value"] or "(빈칸)"))
+        lines.append("")
+    return "\n".join(lines).strip()
 
-6. Packaging Supply
-The glass dropper bottle and the outer box will be supplied by us, so please quote filling and secondary packaging only.
-
-7. Commercial Terms
-MOQ is 5,000 units for the first order.
-Our target unit price is 2.8 per piece.
-Payment will follow our standard terms as usual.
-Please send the first sample within 4 weeks, and mass production shipment is expected in January 2027.
-
-8. Documents
-Please prepare CoA, MSDS and a non-animal testing statement together with the first shipment.
-
-Thank you,
-Emily Park / Product Director, Glowtree Beauty
-"""
 
 # ---------------------------------------------------------------------------
 # 요청 성분 (행 단위)
@@ -201,7 +270,6 @@ _EXTRACTED_ITEMS = [
         "key": "product_name",
         "label": "제품명",
         "value": "Vitamin C Brightening Serum (비타민C 브라이트닝 세럼)",
-        "confidence": 98,
         "status": "confirmed",
         "source": "We would like to request the development of a Vitamin C Brightening Serum for our 2027 spring line.",
         "note": "",
@@ -210,7 +278,6 @@ _EXTRACTED_ITEMS = [
         "key": "product_type",
         "label": "제품 유형",
         "value": "리브온 페이셜 세럼",
-        "confidence": 95,
         "status": "confirmed",
         "source": "The product is a leave-on facial serum filled in a 30ml glass dropper bottle.",
         "note": "",
@@ -219,7 +286,6 @@ _EXTRACTED_ITEMS = [
         "key": "volume",
         "label": "용량",
         "value": "30ml",
-        "confidence": 97,
         "status": "confirmed",
         "source": "The product is a leave-on facial serum filled in a 30ml glass dropper bottle.",
         "note": "",
@@ -228,7 +294,6 @@ _EXTRACTED_ITEMS = [
         "key": "container",
         "label": "용기",
         "value": "유리 스포이드 병",
-        "confidence": 93,
         "status": "confirmed",
         "source": "The product is a leave-on facial serum filled in a 30ml glass dropper bottle.",
         "note": "",
@@ -237,7 +302,6 @@ _EXTRACTED_ITEMS = [
         "key": "moq",
         "label": "MOQ",
         "value": "5,000개 (초도 물량)",
-        "confidence": 96,
         "status": "confirmed",
         "source": "MOQ is 5,000 units for the first order.",
         "note": "",
@@ -246,7 +310,6 @@ _EXTRACTED_ITEMS = [
         "key": "target_price",
         "label": "목표 단가",
         "value": "2.8 / 개",
-        "confidence": 61,
         "status": "check",
         "source": "Our target unit price is 2.8 per piece.",
         "note": "통화 표기가 없고 FOB/CIF 등 거래 조건도 불명확 — 고객사 확인 필요",
@@ -255,7 +318,6 @@ _EXTRACTED_ITEMS = [
         "key": "texture",
         "label": "텍스처",
         "value": "가벼운 워터리, 빠른 흡수 / 끈적임 없음",
-        "confidence": 92,
         "status": "confirmed",
         "source": "The texture should be light and watery, absorbing quickly without any sticky finish.",
         "note": "",
@@ -264,7 +326,6 @@ _EXTRACTED_ITEMS = [
         "key": "fragrance",
         "label": "향",
         "value": "무향 (fragrance-free)",
-        "confidence": 99,
         "status": "confirmed",
         "source": "The formula must be fragrance-free.",
         "note": "",
@@ -273,7 +334,6 @@ _EXTRACTED_ITEMS = [
         "key": "key_ingredients",
         "label": "핵심 성분",
         "value": "Ascorbyl Glucoside 2.0%, Niacinamide 5.0%, Sodium Hyaluronate 1.0%, Retinol 0.5%, Phenoxyethanol 0.8%",
-        "confidence": 88,
         "status": "check",
         "source": _CORE_ACTIVES_SOURCE,
         "note": "성분별 판정은 아래 '성분별 규제 판정' 표를 확인하세요.",
@@ -282,7 +342,6 @@ _EXTRACTED_ITEMS = [
         "key": "benchmark",
         "label": "벤치마크 제품",
         "value": 'Dewy Lab "Glow Drop Serum" (미국, 2025) — 슬립감·매트 마무리',
-        "confidence": 91,
         "status": "confirmed",
         "source": 'For the overall sensory target, please benchmark Dewy Lab "Glow Drop Serum" (US, 2025) - we like its slip and matte finish.',
         "note": "",
@@ -291,7 +350,6 @@ _EXTRACTED_ITEMS = [
         "key": "free_from",
         "label": "배제 성분",
         "value": "Parabens, Sulfates, Mineral oil, Synthetic fragrance",
-        "confidence": 97,
         "status": "confirmed",
         "source": "The formula must be free from Parabens, Sulfates, Mineral oil and Synthetic fragrance.",
         "note": "",
@@ -300,7 +358,6 @@ _EXTRACTED_ITEMS = [
         "key": "claims",
         "label": "인증·클레임",
         "value": "Vegan, Cruelty-free (외박스 표기)",
-        "confidence": 90,
         "status": "confirmed",
         "source": "We hope to use Vegan and Cruelty-free claims on the outer box.",
         "note": "",
@@ -309,7 +366,6 @@ _EXTRACTED_ITEMS = [
         "key": "target_country",
         "label": "판매 국가",
         "value": "미국(1차) → EU(확장 예정)",
-        "confidence": 94,
         "status": "confirmed",
         "source": "Our first launch market is the United States, and we plan to expand to the EU afterwards.",
         "note": "",
@@ -318,7 +374,6 @@ _EXTRACTED_ITEMS = [
         "key": "delivery",
         "label": "납기",
         "value": "샘플 4주 이내 / 본생산 선적 2027년 1월",
-        "confidence": 68,
         "status": "check",
         "source": "Please send the first sample within 4 weeks, and mass production shipment is expected in January 2027.",
         "note": "선적 조건(FOB/CIF)과 도착 항구가 명시되지 않음 — 확인 필요",
@@ -327,7 +382,6 @@ _EXTRACTED_ITEMS = [
         "key": "package_design",
         "label": "패키지 디자인",
         "value": "",
-        "confidence": 0,
         "status": "missing",
         "source": "Package color and label design will be shared later.",
         "note": "원문에 '추후 전달'로만 적혀 있어 값 없음",
@@ -336,7 +390,6 @@ _EXTRACTED_ITEMS = [
         "key": "container_supply",
         "label": "용기 사급/자급",
         "value": "사급 — 유리 스포이드 병·단상자를 고객사가 지급",
-        "confidence": 95,
         "status": "confirmed",
         "source": "The glass dropper bottle and the outer box will be supplied by us, so please quote filling and secondary packaging only.",
         "note": "견적 범위가 충전·2차 포장으로 한정됩니다.",
@@ -345,7 +398,6 @@ _EXTRACTED_ITEMS = [
         "key": "trade_terms",
         "label": "거래조건",
         "value": "결제 조건 '기존과 동일' / 통화·Incoterms 미기재",
-        "confidence": 42,
         "status": "check",
         "source": "Payment will follow our standard terms as usual.",
         "note": "통화(USD 추정), Incoterms(FOB/CIF), 결제 조건을 문서로 확정해야 합니다.",
@@ -354,7 +406,6 @@ _EXTRACTED_ITEMS = [
         "key": "documents",
         "label": "필요 서류",
         "value": "CoA, MSDS, 비동물실험 확인서 (초도 선적 시)",
-        "confidence": 87,
         "status": "check",
         "source": "Please prepare CoA, MSDS and a non-animal testing statement together with the first shipment.",
         "note": "EU 확장 시 CPSR·PIF, 국가별 Free Sale Certificate가 추가로 필요합니다.",
@@ -363,7 +414,6 @@ _EXTRACTED_ITEMS = [
         "key": "responsible_person",
         "label": "책임자 지정",
         "value": "",
-        "confidence": 0,
         "status": "missing",
         "source": "",
         "note": "EU 역내 책임자(RP)와 미국 MoCRA 책임자 지정 여부가 원문에 없습니다. 미지정 시 판매 불가.",
@@ -385,15 +435,32 @@ def analyze_document(file=None):
     TODO: 실제 연동 (OCR + LLM 항목 추출)
     """
     items = [dict(item) for item in _EXTRACTED_ITEMS]
+    sections, extra = _form_rows(items)
+
+    # 어느 줄에서 읽었는지를 양식 기준으로 다시 붙인다.
+    # "6쪽 3번째 문장" 이 아니라 "6-2 Target Unit Price" 라고 말해야 찾는다.
+    where = {row["key"]: row for block in sections for row in block["rows"]
+             if row["key"]}
+    for item in items:
+        row = where.get(item["key"])
+        item["row"] = row["no"] if row else ""
+        item["source"] = ("{} · {}".format(row["no"], row["label"]) if row
+                          else "양식에 해당 칸이 없습니다")
+
     ingredients = analyze_ingredients()
     flagged = [i for i in ingredients if i["status"] in ("warn", "ban")]
 
     return {
-        "file_name": file or "Glowtree_Beauty_Development_Request.pdf",
+        "file_name": file or "Glowtree_Beauty_개발의뢰서.xlsx",
         "customer": "Glowtree Beauty",
         "customer_country": "미국",
         "detected_language": "English",
-        "source_text": SAMPLE_DOCUMENT,
+        "form": sections,
+        "form_rows": sum(len(b["rows"]) for b in sections),
+        # 읽었지만 항목 목록에 없는 줄. 버리지 않고 여기 모은다
+        "extra": extra,
+        "extra_count": len(extra),
+        "source_text": _form_as_text(sections),
         "items": items,
         "item_count": len(items),
         "check_count": sum(1 for i in items if i["status"] == "check"),
@@ -893,7 +960,7 @@ _HISTORY = [
         "id": 1,
         "date": "2026-09-16",
         "customer": "Glowtree Beauty",
-        "file_name": "Glowtree_Beauty_Development_Request.pdf",
+        "file_name": "Glowtree_Beauty_개발의뢰서.xlsx",
         "source_lang": "English",
         "targets": ["연구소", "공장"],
         "status": "check",
@@ -1686,7 +1753,7 @@ def generate_samples(file_name=None):
     TODO: 실제 연동 (LLM 처방 제안 + 사내 처방 DB 매칭)
     """
     return {
-        "file_name": file_name or "Glowtree_Beauty_Development_Request.pdf",
+        "file_name": file_name or "Glowtree_Beauty_개발의뢰서.xlsx",
         "customer": "Glowtree Beauty",
         "product": "Vitamin C Brightening Serum",
         "volume": "30ml",
@@ -1778,7 +1845,7 @@ _CUSTOMER_PROFILES = [
             {"date": "2026-09-16", "direction": "in", "sender": "Emily Park", "status": "확인 필요",
              "subject": "Re: Vitamin C Serum - development request",
              "summary": "레티놀 농도를 EU 기준에 맞출 수 있는지 문의. 단가 조정 폭도 함께 요청.",
-             "attachments": ["Glowtree_Beauty_Development_Request.pdf"],
+             "attachments": ["Glowtree_Beauty_개발의뢰서.xlsx"],
              "body": "Hi, thank you for the quick review.\n\nOur legal team flagged the Retinol 0.5% for the EU expansion.\nCould you propose an alternative that works for both US and EU?\nAlso, please share how much the unit price would change.\n\nBest,\nEmily"},
             {"date": "2026-09-05", "direction": "out", "sender": "홍길동", "status": "회신 완료",
              "subject": "Sample schedule for Vitamin C Serum",
@@ -1788,7 +1855,7 @@ _CUSTOMER_PROFILES = [
             {"date": "2026-09-04", "direction": "in", "sender": "Emily Park", "status": "처리 완료",
              "subject": "Product Development Request - Vitamin C Brightening Serum",
              "summary": "2027 봄 라인 비타민C 세럼 개발요청서 전달. 30ml, MOQ 5,000개.",
-             "attachments": ["Glowtree_Beauty_Development_Request.pdf", "Reference_Texture.jpg"],
+             "attachments": ["Glowtree_Beauty_개발의뢰서.xlsx", "Reference_Texture.jpg"],
              "body": "Hello,\n\nPlease find attached our development request for the 2027 spring line.\nThe key points are a light watery texture and a fragrance-free formula.\n\nThanks,\nEmily"},
             {"date": "2026-08-28", "direction": "in", "sender": "Daniel Cho", "status": "처리 완료",
              "subject": "Toner revision v2 - approved",
@@ -2183,7 +2250,7 @@ def get_pricing_defaults(file_name=None, handoff=None):
         "customer": customer or "Glowtree Beauty",
         "handoff_product": product or None,
         "handoff": bool(customer or product),
-        "source_doc": "Glowtree_Beauty_Development_Request.pdf",
+        "source_doc": "Glowtree_Beauty_개발의뢰서.xlsx",
         "cost_sheet": parse_cost_sheet(file_name),
         "target_price": 2.8,
         "currency": DEFAULT_CURRENCY,
