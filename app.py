@@ -27,6 +27,7 @@ import mail_ai
 import mix_store
 import packaging_store
 import project_store
+import risk_tags
 import schedule_store
 import reg_export
 import reg_timeline
@@ -412,8 +413,16 @@ def convert():
     factory_doc = _edited(dummy_data.convert_for_factory(analysis, lang, overrides), "factory")
     sales_doc = _edited(dummy_data.sales_terms(analysis, lang, overrides), "sales")
 
+    # 연구소에 넘기기 전에 영업이 알아야 할 것.
+    #   넘기고 나서 "안정도가 안 나옵니다" 를 들으면 이미 바이어에게
+    #   일정과 단가를 말해 버린 뒤다.
+    risks = risk_tags.scan(
+        analysis["ingredients"],
+        extras=" ".join(item["value"] for item in analysis["items"]))
+
     return render_template(
         "convert.html",
+        risks=risks,
         handoff=handoff,
         page_title="내부 전달 문서 변환",
         active_menu="analyze",
@@ -1557,6 +1566,8 @@ def project_samples(project_id):
         status_order=project_store.SAMPLE_STATUS_ORDER,
         sides=project_store.FEEDBACK_SIDES,
         verdicts=project_store.FEEDBACK_VERDICTS,
+        channels=[dict(project_store.FEEDBACK_CHANNELS[k], value=k)
+                  for k in project_store.FEEDBACK_CHANNEL_ORDER],
         progress=project_store.progress(project_id),
         flash_msg=session.pop("project_msg", None),
     )

@@ -87,18 +87,38 @@
     </div>
   </form>
 
-  <!-- 피드백 -->
-  <h3 class="sub-title">피드백 <span class="count-chip">{{ s.notes|length }}</span></h3>
-  <div class="fb-list">
-    {% for n in s.notes %}
-    <div class="fb-row fb-{{ n.side_meta.css }}">
-      <span class="fb-side">{{ n.side_meta.icon }} {{ n.side_meta.label }}</span>
-      <span class="fill-badge {{ n.verdict_meta.css }}">{{ n.verdict_meta.label }}</span>
-      <span class="fb-body">{{ n.body }}</span>
-      <span class="fb-at">{{ n.at[:10] }}</span>
+  <!-- 이 샘플에 있었던 일 -->
+  <h3 class="sub-title">
+    진행 기록 <span class="count-chip">{{ s.timeline.events|length }}</span>
+    {% if s.timeline.reply_days is not none %}
+    <span class="tlm-gap">발송 → 첫 회신 {{ s.timeline.reply_days }}일</span>
+    {% elif s.timeline.waiting %}
+    <span class="tlm-gap waiting">발송 후 회신 대기</span>
+    {% endif %}
+  </h3>
+  <p class="card-desc">
+    제작·발송과 주고받은 얘기를 한 줄로 엮습니다.
+    갈라 놓으면 <strong>언제 보냈고 며칠 만에 회신이 왔는지</strong>를 눈으로 못 셉니다.
+  </p>
+
+  <div class="tlm">
+    {% for e in s.timeline.events %}
+    <div class="tlm-row tlm-{{ e.kind }}{% if e.meta %} fb-{{ e.meta.side_meta.css }}{% endif %}">
+      <span class="tlm-dot">{{ e.icon }}</span>
+      <span class="tlm-at">{{ e.at[:10] }}</span>
+      <div class="tlm-main">
+        <div class="tlm-head">
+          <span class="tlm-label">{{ e.label }}</span>
+          {% if e.meta %}
+          <span class="tlm-ch">{{ e.meta.channel_meta.label }}</span>
+          <span class="fill-badge {{ e.meta.verdict_meta.css }}">{{ e.meta.verdict_meta.label }}</span>
+          {% endif %}
+        </div>
+        {% if e.body %}<div class="tlm-body">{{ e.body }}</div>{% endif %}
+      </div>
     </div>
     {% else %}
-    <p class="card-desc no-margin">아직 피드백이 없습니다.</p>
+    <p class="card-desc no-margin">아직 기록이 없습니다.</p>
     {% endfor %}
   </div>
 
@@ -110,15 +130,26 @@
       <option value="{{ key }}">{{ meta.icon }} {{ meta.label }}</option>
       {% endfor %}
     </select>
+    <select class="select select-inline" name="channel" aria-label="받은 경로">
+      {% for ch in channels %}
+      <option value="{{ ch.value }}">{{ ch.icon }} {{ ch.label }}</option>
+      {% endfor %}
+    </select>
     <select class="select select-inline" name="verdict">
       {% for key, meta in verdicts.items() %}
       <option value="{{ key }}">{{ meta.label }}</option>
       {% endfor %}
     </select>
     <input class="input grow" type="text" name="body" maxlength="2000"
-           placeholder="받은 피드백을 그대로 적으세요">
-    <button type="submit" class="btn">피드백 남기기</button>
+           placeholder="받은 내용을 그대로 적으세요 (메일 본문 요지도 좋습니다)">
+    <button type="submit" class="btn">기록 남기기</button>
   </form>
+  <p class="field-hint no-top">
+    <strong>고쳐 적지 말고 그대로 옮기세요.</strong>
+    "향이 강하다" 를 "향 조정 요청" 으로 바꿔 적으면 나중에 무엇을 요구받았는지
+    알 수 없습니다. 받은 경로도 같이 남깁니다 — 메일로 온 것과 통화로 들은 것은
+    나중에 근거가 될 때 무게가 다릅니다.
+  </p>
 </section>
 {% else %}
 <section class="card">

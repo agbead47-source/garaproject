@@ -12,6 +12,7 @@ import json
 import zlib
 from datetime import date
 
+import alt_store
 import company_store
 import customer_store
 import mix_store
@@ -1393,6 +1394,19 @@ def search_regulations(country="all", keyword="", status="all"):
                 item["name"], item["inci"],
                 region=TIMELINE_REGION.get(code)) if code in TIMELINE_REGION else []
 
+            # '사용 불가' 만 띄우면 영업은 "안 됩니다" 밖에 못 한다.
+            #   그 자리에서 역제안을 할 수 있어야 협상이 이어진다.
+            #   **후보를 같은 시장 기준으로 다시 판정**해서 붙인다 -
+            #   대안이랍시고 그 나라에서 또 걸리는 걸 내놓으면 같은 실수다.
+            alts = None
+            if rule["status"] in ("warn", "ban"):
+                judge = None
+                if code == "eu" and eu_live:
+                    judge = lambda n, i: reg_store.judge(n, i, None, "")
+                elif code == "us" and us_live:
+                    judge = lambda n, i: us_reg_store.judge(n, i, None, "")
+                alts = alt_store.suggest(item["name"], item["inci"], code, judge)
+
             country_row = get_reg_country(code) or {}
             rows.append(
                 {
@@ -1416,6 +1430,7 @@ def search_regulations(country="all", keyword="", status="all"):
                     "annex": rule.get("annex", ""),
                     "badges": badges,
                     "timeline": timeline,
+                    "alts": alts,
                     # 복합 원료를 쪼개 넣은 줄이면 어디서 왔는지 적는다
                     "from_mix": item.get("from_mix", ""),
                     "mix_ratio": item.get("mix_ratio", ""),

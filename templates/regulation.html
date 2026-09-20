@@ -559,6 +559,51 @@
               {% if row.note %}
               <p class="reg-detail-note">{{ row.note }}</p>
               {% endif %}
+
+              {# 안 된다는 말 다음에 할 말. 역제안 거리를 같이 준다 #}
+              {% if row.alts %}
+              <div class="alt-box">
+                <div class="alt-head">
+                  💡 같은 목적으로 쓰는 원료 — {{ row.alts.label }}
+                  <span class="alt-count">
+                    {{ row.alts.clean_count }}/{{ row.alts.alts|length }}개가
+                    {{ row.country_name }} 금지 조문에 걸리지 않습니다
+                  </span>
+                </div>
+                <p class="alt-why">{{ row.alts.why }}</p>
+
+                <div class="alt-list">
+                  {% for a in row.alts.alts %}
+                  <div class="alt-row {% if a.blocked %}blocked{% endif %}">
+                    <div class="alt-name">
+                      {{ a.name }}
+                      <span class="alt-inci">{{ a.inci }}</span>
+                    </div>
+                    <div class="alt-verdict">
+                      {% if a.verdict %}
+                      <span class="status-badge {{ status_meta[a.status].css }}">
+                        {{ status_meta[a.status].label }}
+                      </span>
+                      <span class="alt-limit">{{ a.verdict.limit }}</span>
+                      {% else %}
+                      <span class="text-gray">이 나라 기준으로는 아직 대조하지 못했습니다</span>
+                      {% endif %}
+                    </div>
+                    <div class="alt-note">{{ a.note }}</div>
+                  </div>
+                  {% endfor %}
+                </div>
+
+                <p class="alt-foot">
+                  <strong>처방 대체안이 아닙니다.</strong>
+                  효능 세기·배합 안정도·pH·용해도·단가가 전부 다릅니다.
+                  여기서 할 수 있는 말은 "같은 목적으로 업계에서 쓰는 원료이고,
+                  이 중 몇 개는 {{ row.country_name }} 금지 조문에 걸리지 않는다" 까지입니다.
+                  <strong>바꿀 수 있는지는 연구소가 봅니다.</strong>
+                  이 표는 수기로 정리했고 마지막 대조는 {{ row.alts.reviewed_on }} 입니다.
+                </p>
+              </div>
+              {% endif %}
             </div>
           </td>
         </tr>

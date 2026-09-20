@@ -119,6 +119,53 @@
   </div>
 </div>
 
+{# 연구소에 넘기기 전에 영업이 알아야 할 것.
+   넘기고 나서 "안정도가 안 나옵니다" 를 들으면 이미 바이어에게
+   일정과 단가를 말해 버린 뒤다 #}
+{% if risks and risks.tags %}
+<section class="card risk-card {% if risks.high %}high{% endif %}">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        ⚠️ 넘기기 전에 확인 <span class="count-chip">{{ risks.count }}</span>
+      </h2>
+      <p class="card-desc no-margin">
+        이 요청서대로 가면 <strong>단가·안정도·일정</strong>에서 걸릴 만한 지점입니다.
+        연구소에 넘기고 나서 들으면 이미 바이어에게 말해 버린 뒤입니다.
+      </p>
+    </div>
+  </div>
+
+  <div class="risk-list">
+    {% for t in risks.tags %}
+    <div class="risk-row rk-{{ t.level_meta.css }}">
+      <span class="risk-tag rk-{{ t.level_meta.css }}">
+        {{ t.kind_meta.icon }} {{ t.kind_meta.label }}
+      </span>
+      <div class="risk-main">
+        <div class="risk-title">
+          {{ t.title }}
+          <span class="risk-level rk-{{ t.level_meta.css }}">{{ t.level_meta.label }}</span>
+        </div>
+        <div class="risk-why">{{ t.why }}</div>
+        <div class="risk-todo">→ {{ t.todo }}</div>
+        {% for d in t.details %}
+        <div class="risk-detail">· {{ d }}</div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="field-hint">
+    <strong>경고이지 판정이 아닙니다.</strong>
+    실제 단가는 구매팀이, 안정도는 연구소가 냅니다.
+    여기서는 "이 지점을 미리 물어보라" 고 짚어 줄 뿐입니다.
+    판정 기준은 수기로 정리했고 마지막 대조는 {{ risks.reviewed_on }} 입니다.
+  </p>
+</section>
+{% endif %}
+
 <section class="card doc-card" id="panel-lab" {% if tab == 'factory' %}hidden{% endif %}>
   {{ doc_body(lab_doc) }}
 </section>

@@ -336,6 +336,20 @@ CONTACT_DIRECTIONS = {
     "out": {"label": "보냄", "css": "out"},
 }
 
+# 샘플 피드백이 어떤 경로로 왔나.
+#   "메일로 왔다" 와 "통화로 들었다" 는 나중에 근거가 될 때 무게가 다르다.
+#   프로젝트의 바이어 연락과 같은 낱말을 쓴다.
+FEEDBACK_CHANNELS = {
+    "email": {"label": "이메일", "icon": "📧"},
+    "call": {"label": "전화", "icon": "📞"},
+    "meeting": {"label": "미팅·화상", "icon": "👥"},
+    "message": {"label": "메신저", "icon": "💬"},
+    "lab": {"label": "자체 시험", "icon": "🔬"},
+    "other": {"label": "기타", "icon": "•"},
+}
+FEEDBACK_CHANNEL_ORDER = ["email", "call", "meeting", "message", "lab", "other"]
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -413,6 +427,7 @@ CREATE TABLE IF NOT EXISTS sample_notes (
     sample_id INTEGER NOT NULL,
     side      TEXT NOT NULL DEFAULT 'buyer',
     verdict   TEXT NOT NULL DEFAULT 'note',
+    channel   TEXT NOT NULL DEFAULT 'email',
     body      TEXT NOT NULL,
     at        TEXT NOT NULL
 );
@@ -493,6 +508,7 @@ LATE_COLUMNS = [
     ("projects", "closed_reason", "TEXT NOT NULL DEFAULT ''"),
     ("projects", "closed_note", "TEXT NOT NULL DEFAULT ''"),
     ("projects", "closed_at", "TEXT NOT NULL DEFAULT ''"),
+    ("sample_notes", "channel", "TEXT NOT NULL DEFAULT 'email'"),
 ]
 
 
@@ -1068,9 +1084,12 @@ def add_feedback(sample_id, data):
 
     side = data.get("side") if data.get("side") in FEEDBACK_SIDES else "buyer"
     verdict = data.get("verdict") if data.get("verdict") in FEEDBACK_VERDICTS else "note"
-    conn.execute("INSERT INTO sample_notes (sample_id, side, verdict, body, at) "
-                 "VALUES (?,?,?,?,?)",
-                 (sample_id, side, verdict, body, now_iso()))
+    channel = (data.get("channel") if data.get("channel") in FEEDBACK_CHANNELS
+               else "email")
+    conn.execute(
+        "INSERT INTO sample_notes (sample_id, side, verdict, channel, body, at) "
+        "VALUES (?,?,?,?,?,?)",
+        (sample_id, side, verdict, channel, body, now_iso()))
 
     # 피드백이 들어오면 샘플 상태도 따라 움직인다 (손으로 또 바꾸지 않게)
     row = conn.execute("SELECT * FROM samples WHERE id = ?", (sample_id,)).fetchone()
@@ -1090,6 +1109,52 @@ def delete_sample(sample_id):
     conn.execute("DELETE FROM samples WHERE id = ?", (sample_id,))
     conn.commit()
     return True
+
+
+def sample_timeline(sample):
+    """한 샘플에 있었던 일을 시간순으로.
+
+    제작·발송은 날짜 칸에, 주고받은 얘기는 피드백에 따로 들어 있다.
+    갈라 놓으면 "언제 보냈고 며칠 만에 회신이 왔나" 를 눈으로 못 센다.
+    그래서 하나로 엮는다. 이게 중요 고객사일수록 자산이 되는 기록이다.
+    """
+    events = []
+    if sample.get("made_at"):
+        events.append({"at": sample["made_at"], "kind": "made",
+                       "icon": "🧪", "label": "제작", "body": "", "meta": None})
+    if sample.get("sent_at"):
+        events.append({"at": sample["sent_at"], "kind": "sent",
+                       "icon": "📦", "label": "발송", "body": "", "meta": None})
+
+    for note in sample.get("notes", []):
+        events.append({
+            "at": note["at"],
+            "kind": "note",
+            "icon": (FEEDBACK_CHANNELS.get(note.get("channel") or "email")
+                     or FEEDBACK_CHANNELS["other"])["icon"],
+            "label": note["side_meta"]["label"],
+            "body": note["body"],
+            "meta": note,
+        })
+
+    events.sort(key=lambda e: e["at"])
+
+    # 발송에서 첫 회신까지 며칠 걸렸나. 중요 고객사일수록 이 숫자가 곧 대응력이다
+    sent = next((e for e in events if e["kind"] == "sent"), None)
+    reply = next((e for e in events
+                  if e["kind"] == "note"
+                  and (e["meta"] or {}).get("side") == "buyer"
+                  and sent and e["at"][:10] >= sent["at"][:10]), None)
+    gap = None
+    if sent and reply:
+        try:
+            gap = (datetime.strptime(reply["at"][:10], "%Y-%m-%d")
+                   - datetime.strptime(sent["at"][:10], "%Y-%m-%d")).days
+        except ValueError:
+            gap = None
+
+    return {"events": events, "reply_days": gap,
+            "waiting": bool(sent and not reply)}
 
 
 def samples_of(project_id):
@@ -1114,7 +1179,12 @@ def samples_of(project_id):
                          for r in conn.execute(
                              "SELECT * FROM sample_notes WHERE sample_id = ? ORDER BY id DESC",
                              (item["id"],))]
+        for note in item["notes"]:
+            note["channel_meta"] = FEEDBACK_CHANNELS.get(
+                note.get("channel") or "email", FEEDBACK_CHANNELS["other"])
         item["buyer_notes"] = [n for n in item["notes"] if n["side"] == "buyer"]
+        # 제작·발송·피드백을 한 줄로 엮어 둔다
+        item["timeline"] = sample_timeline(item)
         rows.append(item)
     return rows
 
