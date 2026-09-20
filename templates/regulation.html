@@ -300,6 +300,22 @@
   </div>
 </form>
 
+{# 이 화면을 보는 최종 목적은 바이어 회신이나 연구소 전달이다.
+   화면을 캡처해 붙이면 근거가 같이 안 따라간다 #}
+<div class="bottom-actions top-bar">
+  <p class="card-desc no-margin">
+    판정만 옮기면 연구소가 조문을 다시 찾습니다.
+    <strong>근거 규정·허용 기준·기준일을 같이 담아</strong> 내보냅니다.
+  </p>
+  <div class="action-group">
+    <a class="btn btn-primary" href="{{ url_for('regulation_export',
+       country=selected.country, q=selected.q, status=selected.status) }}">
+      ⬇️ 엑셀로 내보내기
+    </a>
+    <button type="button" class="btn" id="reg-print">🖨 인쇄 · PDF 저장</button>
+  </div>
+</div>
+
 <div class="summary-grid summary-grid-3">
   <div class="summary-card">
     <div class="summary-label">대조 결과</div>
@@ -380,6 +396,51 @@
 </section>
 {% endif %}
 
+{% if timeline and timeline.pending %}
+<section class="card tl-card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        ⏳ 시행일이 남은 규정 <span class="count-chip">{{ timeline.pending|length }}</span>
+      </h2>
+      <p class="card-desc no-margin">
+        <strong>지금 적합해도 안심할 수 없습니다.</strong>
+        화장품은 개발부터 출시까지 6개월~1년이 걸려서,
+        지금 잡는 처방이 출시 시점에는 못 팔릴 수 있습니다.
+      </p>
+    </div>
+  </div>
+
+  <div class="tl-list">
+    {% for c in timeline.pending %}
+    <div class="tl-row tl-{{ c.state_meta.css }}">
+      <span class="tl-state tl-{{ c.state_meta.css }}">
+        {{ c.state_meta.icon }} {{ c.state_meta.label }}
+      </span>
+      <div class="tl-main">
+        <div class="tl-title">{{ c.flag }} {{ c.title }}</div>
+        <div class="tl-what">{{ c.what }}</div>
+        <div class="tl-why">{{ c.why }}</div>
+        <div class="tl-dates">
+          {% if c.new_ban %}<span>신규 출시 금지 <b>{{ c.new_ban }}</b></span>{% endif %}
+          {% if c.pull %}<span>시장 철수 <b>{{ c.pull }}</b></span>{% endif %}
+          <a href="{{ c.url }}" target="_blank" rel="noopener">{{ c.rule }} 원문</a>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p class="live-caveat">
+    <strong>이 표는 사람이 원문을 보고 수기로 정리한 것입니다.</strong>
+    공보를 자동으로 긁어 오지 않습니다 — 시행일은 기계가 읽기 어려운 자리에 적혀 있고,
+    잘못 읽으면 "안 된다" 가 "된다" 로 바뀝니다.
+    마지막 대조: <b>{{ timeline.reviewed_on }}</b> · {{ timeline.reviewed_by }}.
+    생산·납기를 걸기 전에 <strong>반드시 원문으로 확인하세요.</strong>
+  </p>
+</section>
+{% endif %}
+
 <div class="reg-grid">
   <section class="card" id="reg-list">
     <h2 class="card-title">성분별 규제 판정 <span class="count-chip">{{ pager.total }}</span></h2>
@@ -409,8 +470,32 @@
             <span class="data-badge {% if row.live %}live{% endif %}">{{ '실데이터' if row.live else '더미' }}</span>
           </td>
           <td>
-            <div class="reg-name">{{ row.name }}</div>
+            <div class="reg-name">
+              {{ row.name }}
+              {% if row.from_mix %}
+              <span class="mix-tag"
+                    title="{{ row.from_mix }} {{ row.mix_dose }} 안의 {{ row.mix_ratio }} — 수동으로 쪼갠 값입니다">
+                쪼갬
+              </span>
+              {% endif %}
+            </div>
             <div class="reg-inci">{{ row.inci }}</div>
+            {% if row.from_mix %}
+            <div class="reg-inci">{{ row.from_mix }} {{ row.mix_dose }} × {{ row.mix_ratio or '?' }}</div>
+            {% endif %}
+            {% if row.timeline %}
+            <div class="row-badges">
+              {% for t in row.timeline %}
+              <span class="tl-state tl-{{ t.state_meta.css }}"
+                    title="{{ t.rule }} — {{ t.why }}">
+                {{ t.state_meta.icon }}
+                {%- if t.state == 'in_force' %} 시행 중
+                {%- elif t.state == 'new_banned' %} {{ t.pull or t.new_ban }}까지
+                {%- else %} {{ t.new_ban }}부터{% endif %}
+              </span>
+              {% endfor %}
+            </div>
+            {% endif %}
             {% if row.badges %}
             <div class="row-badges">
               {% for b in row.badges %}
@@ -421,7 +506,12 @@
             {% endif %}
           </td>
           <td class="col-req">{{ row.requested }}</td>
-          <td class="col-limit">{{ row.limit }}</td>
+          <td class="col-limit {% if row.unused %}limit-none{% endif %}">
+            {{ row.limit }}
+            {% if row.unused %}
+            <div class="limit-sub">배합하지 않아 기준이 걸리지 않습니다</div>
+            {% endif %}
+          </td>
           <td class="col-status">
             <span class="status-badge {{ status_meta[row.status].css }}">{{ status_meta[row.status].label }}</span>
           </td>
@@ -433,6 +523,22 @@
                 <span class="reg-detail-label">근거 규정</span>
                 <span>{{ row.rule }}</span>
               </div>
+              {% for t in row.timeline %}
+              <div class="reg-detail-item">
+                <span class="reg-detail-label">시행 예정</span>
+                <span>
+                  <b>{{ t.title }}</b> — {{ t.what }} {{ t.why }}
+                  <a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.rule }}</a>
+                  <span class="text-gray">(수기 정리 · {{ timeline.reviewed_on }} 대조)</span>
+                </span>
+              </div>
+              {% endfor %}
+              {% if row.unused and row.limit_if_used %}
+              <div class="reg-detail-item">
+                <span class="reg-detail-label">넣는다면</span>
+                <span>{{ row.limit_if_used }}</span>
+              </div>
+              {% endif %}
               <div class="reg-detail-item">
                 <span class="reg-detail-label">성분 분류</span>
                 <span>{{ row.category }}</span>
@@ -517,27 +623,310 @@
     {% endif %}
 
     <section class="card">
-      <h2 class="card-title">매칭하지 못한 행 <span class="count-chip">{{ parsed.unmatched|length }}</span></h2>
-      <p class="card-desc">INCI 명을 찾지 못해 판정에서 빠진 성분입니다. 사람이 확인해야 합니다.</p>
+      <h2 class="card-title">
+        매칭하지 못한 행 <span class="count-chip">{{ parsed.open_unmatched }}</span>
+      </h2>
+      <p class="card-desc">
+        INCI 명이 없어 판정에서 빠진 줄입니다. 자사 혼합물·추출물 블렌드는
+        성분표에 한 줄로 오는 일이 흔합니다.
+        <strong>쪼개지 않으면 그 원료 몫이 대조에서 통째로 빠집니다</strong> —
+        안에 레티놀이 들어 있어도 모른 채 지나갑니다.
+      </p>
+
       {% for item in parsed.unmatched %}
-      <div class="link-card">
-        <div class="link-card-main">{{ item.name }}</div>
+      <div class="link-card mix-card {% if item.resolved %}done{% endif %}">
+        <div class="link-card-main">
+          {{ item.name }}
+          {% if item.resolved %}<span class="mix-done">쪼갬</span>{% endif %}
+        </div>
         <div class="link-card-sub">원문 표기: {{ item.raw }}</div>
+
+        {% if item.resolved %}
+        <div class="mix-parts">
+          {% for p in item.mix.parts %}
+          <div class="mix-part">
+            <span class="mix-inci">{{ p.inci }}</span>
+            <span class="mix-ratio">원료 내 {{ p.ratio or '—' }}</span>
+            <span class="mix-actual">
+              {% if p.actual %}처방 내 <b>{{ p.actual }}</b>
+              {% else %}<span class="text-gray">함량 계산 못 함</span>{% endif %}
+            </span>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="link-card-sub">{{ item.mix.ratio_note }}</div>
+        {% if item.mix.dose_note %}
+        <div class="link-card-sub text-orange">{{ item.mix.dose_note }}</div>
+        {% endif %}
+        <div class="mix-actions">
+          <button type="button" class="btn btn-mini js-mix"
+                  data-name="{{ item.name }}" data-raw="{{ item.raw }}"
+                  data-dose="{{ item.mix.dose }}"
+                  data-parts="{{ item.mix.parts | map(attribute='inci') | join('|') }}"
+                  data-names="{{ item.mix.parts | map(attribute='name') | join('|') }}"
+                  data-ratios="{{ item.mix.parts | map(attribute='ratio') | join('|') }}">
+            고치기
+          </button>
+          <form method="post" action="{{ url_for('regulation_mix') }}">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="mix_id" value="{{ item.mix.id }}">
+            <input type="hidden" name="country" value="{{ selected.country }}">
+            <button type="submit" class="btn btn-mini">되돌리기</button>
+          </form>
+        </div>
+        {% else %}
         <div class="link-card-sub">{{ item.note }}</div>
+        <button type="button" class="btn btn-mini js-mix"
+                data-name="{{ item.name }}" data-raw="{{ item.raw }}"
+                data-dose="{{ item.raw }}">
+          하위 성분으로 쪼개기
+        </button>
+        {% endif %}
       </div>
       {% else %}
       <p class="card-desc no-margin">모든 행을 성분으로 인식했습니다.</p>
       {% endfor %}
+
+      {% if parsed.split_count %}
+      <p class="field-hint">
+        수동으로 쪼개 넣은 성분 <strong>{{ parsed.split_count }}건</strong>이
+        왼쪽 판정 표에 같이 들어가 있습니다.
+      </p>
+      {% endif %}
       <a class="btn btn-ghost full" href="{{ url_for('regulation') }}">다른 성분표 올리기</a>
     </section>
   </aside>
 </div>
+<!-- 복합 원료 쪼개기 -->
+<div class="modal-backdrop" id="mix-modal" hidden>
+  <div class="modal modal-wide" role="dialog" aria-modal="true"
+       aria-labelledby="mix-modal-title">
+    <div class="modal-head">
+      <h3 class="modal-title" id="mix-modal-title">하위 성분으로 쪼개기</h3>
+      <button type="button" class="modal-close" id="mix-close" aria-label="닫기">✕</button>
+    </div>
+    <form method="post" action="{{ url_for('regulation_mix') }}">
+      <input type="hidden" name="name" id="mix-name">
+      <input type="hidden" name="raw" id="mix-raw">
+      <input type="hidden" name="country" value="{{ selected.country }}">
+      <div class="modal-body">
+        <p class="modal-desc">
+          원료사 사양서(Spec sheet)를 보고 적어 주세요.
+          <strong>처방 내 실제 함량 = 처방 투입량 × 원료 내 비율</strong> 로
+          계산해 규제 대조에 넣습니다.
+        </p>
+
+        <div class="field">
+          <label class="field-label" for="mix-dose">
+            처방 투입량 <span class="req">*</span>
+          </label>
+          <input class="input" type="text" name="dose" id="mix-dose"
+                 placeholder="3.0%" maxlength="24">
+          <p class="field-hint">이 원료를 처방에 몇 % 넣는지입니다.</p>
+        </div>
+
+        <div class="mix-rows" id="mix-rows"></div>
+        <button type="button" class="btn btn-mini" id="mix-add">＋ 성분 추가</button>
+
+        <p class="field-hint">
+          <strong>비율을 모르면 비워 두세요.</strong> 0을 적으면 "안 들어 있다" 가 됩니다.
+          비워 두면 그 성분은 처방 내 함량을 계산하지 않고, 화면에 그렇게 적습니다.<br>
+          비율 합계가 100%가 아니어도 <strong>임의로 맞추지 않습니다.</strong>
+          사양서에 기타 성분이 빠져 있으면 100%가 아닌 게 정상입니다.
+        </p>
+
+        <div class="mix-preview" id="mix-preview"></div>
+
+        <div class="field">
+          <label class="field-label" for="mix-note">메모</label>
+          <input class="input" type="text" name="note" id="mix-note" maxlength="500"
+                 placeholder="예: 2026-09 원료사 사양서 rev.3 기준">
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" id="mix-cancel">취소</button>
+        <button type="submit" class="btn btn-primary">쪼개서 대조에 넣기</button>
+      </div>
+    </form>
+  </div>
+</div>
+<datalist id="inci-list"></datalist>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
+  /* ---- 복합 원료 쪼개기 ----
+     자사 혼합물은 INCI 사전에 없다. 사람이 사양서를 보고 넣는 수밖에 없다.
+     대신 곱셈(투입량 × 원료 내 비율)은 기계가 한다. 암산하면 자리 수를 틀린다. */
+  var mixModal = document.getElementById('mix-modal');
+  if (mixModal) {
+    var rowsBox = document.getElementById('mix-rows');
+    var preview = document.getElementById('mix-preview');
+    var seq = 0;
+
+    function pct(text) {
+      var m = String(text || '').match(/(\d+(?:[.,]\d+)?)\s*%/);
+      return m ? parseFloat(m[1].replace(',', '.')) : null;
+    }
+
+    function fmt(v) { return (Math.round(v * 10000) / 10000).toString(); }
+
+    function redraw() {
+      var dose = pct(document.getElementById('mix-dose').value);
+      var sum = 0, unknown = 0, lines = [];
+
+      rowsBox.querySelectorAll('.mix-row').forEach(function (row) {
+        var inci = row.querySelector('.mix-in-inci').value.trim();
+        var ratio = pct(row.querySelector('.mix-in-ratio').value);
+        var out = row.querySelector('.mix-out');
+        if (!inci) { out.textContent = ''; return; }
+        if (ratio === null) {
+          unknown += 1;
+          out.textContent = '비율 미기재';
+          out.className = 'mix-out text-gray';
+          return;
+        }
+        sum += ratio;
+        if (dose === null) {
+          out.textContent = '투입량 필요';
+          out.className = 'mix-out text-gray';
+          return;
+        }
+        var actual = dose * ratio / 100;
+        out.textContent = '→ ' + fmt(actual) + '%';
+        out.className = 'mix-out';
+        lines.push(inci + ' ' + fmt(actual) + '%');
+      });
+
+      var msg = [];
+      if (dose === null) {
+        msg.push('처방 투입량을 % 로 적어 주세요 (예: 3.0%).');
+      }
+      if (unknown) {
+        msg.push('비율을 안 적은 성분 ' + unknown + '건은 함량을 계산하지 않습니다.');
+      }
+      if (sum > 0) {
+        msg.push('원료 내 비율 합계 ' + fmt(sum) + '%.'
+                 + (Math.abs(sum - 100) < 0.01 ? '' :
+                    ' 100%가 아니어도 임의로 맞추지 않습니다.'));
+      }
+      if (lines.length) {
+        msg.push('대조에 들어갈 값: ' + lines.join(' · '));
+      }
+      preview.textContent = msg.join(' ');
+    }
+
+    function addRow(inci, name, ratio) {
+      seq += 1;
+      var row = document.createElement('div');
+      row.className = 'mix-row';
+      row.innerHTML =
+        '<input class="input mix-in-inci" type="text" name="part_inci" ' +
+        'placeholder="INCI 명 (예: Ascorbyl Glucoside)" maxlength="160" ' +
+        'list="inci-list" autocomplete="off">' +
+        '<input class="input mix-in-name" type="text" name="part_name" ' +
+        'placeholder="국문 (선택)" maxlength="120">' +
+        '<input class="input mix-in-ratio" type="text" name="part_ratio" ' +
+        'placeholder="원료 내 %" maxlength="24">' +
+        '<span class="mix-out"></span>' +
+        '<button type="button" class="part-del" aria-label="줄 삭제">&#10005;</button>';
+      rowsBox.appendChild(row);
+
+      row.querySelector('.mix-in-inci').value = inci || '';
+      row.querySelector('.mix-in-name').value = name || '';
+      row.querySelector('.mix-in-ratio').value = ratio || '';
+      row.querySelector('.part-del').addEventListener('click', function () {
+        row.remove();
+        redraw();
+      });
+      row.querySelectorAll('input').forEach(function (input) {
+        input.addEventListener('input', redraw);
+      });
+      row.querySelector('.mix-in-inci').addEventListener('input', suggest);
+      return row;
+    }
+
+    /* INCI 이름 찾기. 부속서에 있는 이름만 나오지만, 없다고 못 쓰는 건 아니라서
+       고르지 않고 직접 적어도 되게 둔다 */
+    var listEl = document.getElementById('inci-list');
+    var timer = null;
+
+    function suggest(e) {
+      var term = e.target.value.trim();
+      if (timer) { clearTimeout(timer); }
+      if (term.length < 2) { return; }
+      timer = setTimeout(function () {
+        fetch('/api/inci?q=' + encodeURIComponent(term))
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            listEl.innerHTML = '';
+            (d.rows || []).forEach(function (row) {
+              var opt = document.createElement('option');
+              opt.value = row.inci;
+              opt.label = row.flag === 'ban' ? 'EU 금지 성분'
+                        : (row.flag ? 'EU 제한 성분 (Annex ' + row.annex + ')' : '');
+              listEl.appendChild(opt);
+            });
+          })
+          .catch(function () { /* 제안일 뿐이라 실패해도 그냥 둔다 */ });
+      }, 250);
+    }
+
+    function openMix(btn) {
+      document.getElementById('mix-name').value = btn.dataset.name || '';
+      document.getElementById('mix-raw').value = btn.dataset.raw || '';
+      document.getElementById('mix-modal-title').textContent =
+        (btn.dataset.name || '복합 원료') + ' 쪼개기';
+
+      var dose = btn.dataset.dose || '';
+      var m = dose.match(/(\d+(?:[.,]\d+)?)\s*%/);
+      document.getElementById('mix-dose').value = m ? m[0] : '';
+
+      rowsBox.innerHTML = '';
+      var incis = (btn.dataset.parts || '').split('|').filter(Boolean);
+      var names = (btn.dataset.names || '').split('|');
+      var ratios = (btn.dataset.ratios || '').split('|');
+      if (incis.length) {
+        incis.forEach(function (inci, i) { addRow(inci, names[i], ratios[i]); });
+      } else {
+        addRow(); addRow(); addRow();
+      }
+      redraw();
+      mixModal.hidden = false;
+      rowsBox.querySelector('.mix-in-inci').focus();
+    }
+
+    function closeMix() { mixModal.hidden = true; }
+
+    document.querySelectorAll('.js-mix').forEach(function (btn) {
+      btn.addEventListener('click', function () { openMix(btn); });
+    });
+    document.getElementById('mix-add').addEventListener('click', function () {
+      addRow().querySelector('.mix-in-inci').focus();
+    });
+    document.getElementById('mix-close').addEventListener('click', closeMix);
+    document.getElementById('mix-cancel').addEventListener('click', closeMix);
+    document.getElementById('mix-dose').addEventListener('input', redraw);
+    mixModal.addEventListener('click', function (e) {
+      if (e.target === mixModal) { closeMix(); }
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !mixModal.hidden) { closeMix(); }
+    });
+  }
+
+  /* PDF 는 따로 만들지 않는다. 브라우저 인쇄에서 'PDF로 저장' 을 고르면
+     같은 결과가 나오고, 우리가 만든 가짜 PDF 보다 정확하다 */
+  var printBtn = document.getElementById('reg-print');
+  if (printBtn) {
+    printBtn.addEventListener('click', function () {
+      window.showToast('인쇄 창에서 대상을 "PDF로 저장" 으로 고르세요.');
+      window.setTimeout(function () { window.print(); }, 400);
+    });
+  }
+
   var form = document.getElementById('reg-form');
 
   /* 규제 공지 수집 - 사이트 3곳을 도느라 십여 초 걸린다. 눌린 걸 알려 준다 */

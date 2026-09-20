@@ -223,6 +223,9 @@ DRUG_ACTIVES = [
 
 # 성분표에 "미사용" 으로 적힌 것은 판정 대상이 아니다 (EU 쪽과 같은 규칙)
 UNUSED_WORDS = ("미사용", "free-from", "free from", "미배합", "불검출")
+
+# 안 넣은 성분의 허용 기준 칸
+NONE_LIMIT = "해당 없음"
 PERCENT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
 
 
@@ -614,7 +617,8 @@ def judge(name, inci=None, cas=None, requested=None):
         row = restrict[0]
         return {
             "status": "ok" if unused else "ban",
-            "limit": "사용 금지·제한",
+            "unused": unused,
+            "limit": NONE_LIMIT if unused else "사용 금지·제한",
             "rule": "21 CFR {} · {}".format(row["section"], row["subject"][:60]),
             "note": (("성분표에 미사용으로 표기돼 있어 해당 없음. (금지·제한 조문 등재) "
                       if unused else
@@ -653,7 +657,10 @@ def judge(name, inci=None, cas=None, requested=None):
 
         return {
             "status": status,
-            "limit": row["scope_text"] or "등재 색소 (용도 조건 있음)",
+            "unused": unused,
+            "limit": (NONE_LIMIT if unused else
+                      (row["scope_text"] or "등재 색소 (용도 조건 있음)")),
+            "limit_if_used": row["scope_text"] or "",
             "rule": "21 CFR {} · {}".format(row["section"], row["subject"][:60]),
             "note": " ".join(notes),
             "annex": row["section"],
@@ -670,7 +677,8 @@ def judge(name, inci=None, cas=None, requested=None):
         if known:
             return {
                 "status": "ok" if unused else "ban",
-                "limit": "화장품 사용 불가",
+                "unused": unused,
+                "limit": NONE_LIMIT if unused else "화장품 사용 불가",
                 "rule": "21 CFR 73 / 74 Subpart C (미등재)",
                 "note": (("성분표에 미사용으로 표기돼 있어 해당 없음. " if unused else "")
                          + known + " 미국은 색소가 포지티브 리스트라 "
@@ -732,7 +740,8 @@ def judge(name, inci=None, cas=None, requested=None):
     # 7) 아무 데도 없다. 적합이 아니다.
     return {
         "status": "ok" if unused else "warn",
-        "limit": "개별 금지 규정 없음",
+        "unused": unused,
+        "limit": NONE_LIMIT if unused else "개별 금지 규정 없음",
         "rule": "21 CFR 700 / 73 / 74 (미등재)",
         "note": ("미국에는 일반 화장품 성분의 사전 허가 목록이 없습니다. "
                  "금지·제한 조문(21 CFR 700 등)에 걸리지 않는다는 뜻이지 "

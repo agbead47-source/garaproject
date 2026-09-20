@@ -4357,3 +4357,111 @@ fieldset.bare[disabled] { opacity: .55; }
 .sell-item.rs-pass { border-left-color: #7FA98F; }
 
 .row-badges { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+
+/* 안 넣은 성분의 허용 기준 칸.
+   '미사용' 인데 옆에 0.4% 가 남아 있으면 안 넣은 건지 0.4%까지 되는 건지 헷갈린다 */
+.col-limit.limit-none { color: var(--gray); }
+.limit-sub { margin-top: 2px; font-size: 10.5px; color: var(--gray); }
+
+/* 시행일이 남은 규정 - 지금 적합해도 출시 시점엔 못 팔 수 있다 */
+.tl-card { border-left: 3px solid #E8B93B; }
+.tl-list { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.tl-row {
+  display: flex;
+  gap: 11px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: 9px;
+  background: var(--white);
+  min-width: 0;
+}
+.tl-row.tl-soon { border-left-color: #C0392B; background: #FFFAFA; }
+.tl-row.tl-partial { border-left-color: #E08A2B; background: #FFFDF8; }
+.tl-row.tl-upcoming { border-left-color: #E8B93B; }
+.tl-row.tl-inforce { border-left-color: #9AA0A8; }
+
+.tl-state {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #F4F5F7;
+  color: var(--text-sub);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex: none;
+  align-self: flex-start;
+}
+.tl-state.tl-soon { background: #FBECEC; color: #B03A3A; border-color: #F0D2D2; }
+.tl-state.tl-partial { background: #FFF1E0; color: #B2560A; border-color: #F5D2AE; }
+.tl-state.tl-upcoming { background: #FFF9E8; color: #96741B; border-color: #F0E3B8; }
+.tl-state.tl-inforce { background: #F4F5F7; color: #8A9099; border-color: #E3E5E9; }
+
+.tl-main { flex: 1 1 auto; min-width: 0; }
+.tl-title { font-size: 13px; font-weight: 700; }
+.tl-what { margin-top: 3px; font-size: 12.5px; color: var(--text); line-height: 1.65; }
+.tl-why { margin-top: 4px; font-size: 12px; color: var(--text-sub); line-height: 1.65; }
+.tl-dates {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--gray);
+}
+.tl-dates b { color: var(--text-sub); }
+
+/* 복합 원료 쪼개기 */
+.mix-card.done { border-color: #CDE9D6; background: #F8FCFA; }
+.mix-done {
+  margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+  background: #E8F5EC; border: 1px solid #CDE9D6; color: #2E7D4F;
+  font-size: 10px; font-weight: 700;
+}
+.mix-parts { margin: 7px 0 5px; display: flex; flex-direction: column; gap: 3px; }
+.mix-part {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 104px;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-sub);
+}
+.mix-inci { font-weight: 600; color: var(--text); word-break: break-word; }
+.mix-ratio, .mix-actual { white-space: nowrap; }
+.mix-actions { display: flex; gap: 6px; margin-top: 6px; }
+
+.mix-tag {
+  margin-left: 5px; padding: 1px 6px; border-radius: 999px;
+  background: #EAF2FB; border: 1px solid #CFE0F2; color: #2E6DA8;
+  font-size: 9.5px; font-weight: 700; vertical-align: middle;
+}
+
+.mix-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.mix-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) 104px 86px 26px;
+  gap: 6px;
+  align-items: center;
+}
+.mix-row .input { min-width: 0; }
+.mix-out { font-size: 11.5px; font-weight: 700; color: var(--green, #2E7D4F); }
+
+.mix-preview {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #FAFBFC;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-sub);
+  min-height: 20px;
+}
+.mix-preview:empty { display: none; }
+
+@media (max-width: 760px) {
+  .mix-row { grid-template-columns: minmax(0, 1fr) 26px; }
+  .mix-out { grid-column: 1 / -1; }
+}

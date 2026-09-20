@@ -14,7 +14,9 @@ from datetime import date
 
 import company_store
 import customer_store
+import mix_store
 import reg_store
+import reg_timeline
 import retail_std
 import us_reg_store
 
@@ -1290,6 +1292,10 @@ _REG_INGREDIENTS = [
 ]
 
 
+# 규정 변경 표는 지역 이름으로 적혀 있다 (EU / 미국)
+TIMELINE_REGION = {"eu": "EU", "us": "미국"}
+
+
 def get_reg_countries():
     """규제 검색 대상 국가 목록."""
     return [dict(row) for row in _REG_COUNTRIES]
@@ -1301,6 +1307,19 @@ def get_reg_country(code):
         if row["code"] == code:
             return dict(row)
     return None
+
+
+def reg_ingredient_rows():
+    """규제 대조에 올릴 성분 줄.
+
+    성분표에서 바로 읽은 것 + **복합 원료를 쪼개 넣은 것**.
+    쪼개지 않으면 그 원료 몫(3%)이 대조에서 통째로 빠진다.
+    안에 레티놀이 들어 있어도 모른 채 지나간다.
+    """
+    rows = [dict(item) for item in _REG_INGREDIENTS]
+    for raw in _REG_UNMATCHED:
+        rows.extend(mix_store.as_ingredients(raw["name"]))
+    return rows
 
 
 def search_regulations(country="all", keyword="", status="all"):
@@ -1319,7 +1338,7 @@ def search_regulations(country="all", keyword="", status="all"):
     us_version = (us_reg_store.get_meta() or {}).get("cfr_date", "") if us_live else ""
 
     rows = []
-    for item in _REG_INGREDIENTS:
+    for item in reg_ingredient_rows():
         haystack = " ".join([item["name"], item["inci"], item["category"]]).lower()
         if keyword and keyword not in haystack:
             continue
@@ -1368,6 +1387,12 @@ def search_regulations(country="all", keyword="", status="all"):
                             "why": "{} — {}".format(std["name"], found["why"]),
                         })
 
+            # 지금 적합해도 시행일이 남아 있으면 개발 기간 안에 걸린다.
+            #   화장품은 개발~출시가 6개월~1년이라 그 사이에 시행일이 들어온다.
+            timeline = reg_timeline.for_ingredient(
+                item["name"], item["inci"],
+                region=TIMELINE_REGION.get(code)) if code in TIMELINE_REGION else []
+
             country_row = get_reg_country(code) or {}
             rows.append(
                 {
@@ -1382,11 +1407,19 @@ def search_regulations(country="all", keyword="", status="all"):
                     "country_flag": country_row.get("flag", ""),
                     "status": rule["status"],
                     "limit": rule["limit"],
+                    # 안 넣은 성분이면 화면에서 기준 칸을 흐리게 둔다
+                    "unused": bool(rule.get("unused")),
+                    "limit_if_used": rule.get("limit_if_used", ""),
                     "rule": rule["rule"],
                     "note": rule["note"],
                     "live": live,
                     "annex": rule.get("annex", ""),
                     "badges": badges,
+                    "timeline": timeline,
+                    # 복합 원료를 쪼개 넣은 줄이면 어디서 왔는지 적는다
+                    "from_mix": item.get("from_mix", ""),
+                    "mix_ratio": item.get("mix_ratio", ""),
+                    "mix_dose": item.get("mix_dose", ""),
                 }
             )
 
@@ -1396,7 +1429,7 @@ def search_regulations(country="all", keyword="", status="all"):
 def us_sales_board():
     """미국 판매 관점 요약. 규제와 매장 기준은 성격이 달라 따로 적는다."""
     rows = [{"name": r["name"], "inci": r["inci"], "requested": r["requested"]}
-            for r in _REG_INGREDIENTS]
+            for r in reg_ingredient_rows()]
     return {
         "rows": len(rows),
         "otc": us_reg_store.otc_verdict(rows),
@@ -1473,7 +1506,17 @@ def analyze_ingredient_file(file_name=None):
         for item in _REG_INGREDIENTS
     ]
 
-    unmatched = [dict(row) for row in _REG_UNMATCHED]
+    # 복합 원료를 쪼개 뒀으면 '해결됨' 으로 넘긴다. 목록에서 지우지는 않는다 -
+    # 뭘 어떻게 쪼갰는지 다시 볼 수 있어야 한다.
+    unmatched = []
+    for row in _REG_UNMATCHED:
+        item = dict(row)
+        item["mix"] = mix_store.get(row["name"])
+        item["resolved"] = bool(item["mix"])
+        unmatched.append(item)
+
+    split = [r for row in _REG_UNMATCHED
+             for r in mix_store.as_ingredients(row["name"])]
 
     return {
         "file_name": file_name or REG_SAMPLE_FILE,
@@ -1483,6 +1526,10 @@ def analyze_ingredient_file(file_name=None):
         "rows_read": len(ingredients) + len(unmatched),
         "matched": len(ingredients),
         "unmatched": unmatched,
+        "open_unmatched": sum(1 for r in unmatched if not r["resolved"]),
+        # 수동으로 쪼개 넣은 성분
+        "split": split,
+        "split_count": len(split),
         "ingredients": ingredients,
     }
 

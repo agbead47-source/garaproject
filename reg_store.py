@@ -29,6 +29,9 @@ CAS_PATTERN = re.compile(r"\d{2,7}-\d{2}-\d")
 PERCENT_PATTERN = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
 UNUSED_WORDS = ("미사용", "free-from", "free from", "미배합", "불검출")
 
+# 안 들어간 성분의 허용 기준 칸. 숫자를 남겨 두면 인지 부조화가 생긴다.
+NONE_LIMIT = "해당 없음"
+
 _local = threading.local()
 
 
@@ -124,6 +127,43 @@ def _is_unused(requested):
     return any(word in low for word in UNUSED_WORDS)
 
 
+def search(term, limit=12):
+    """INCI 이름 찾기. 복합 원료를 쪼갤 때 이름을 골라 넣으려고 쓴다.
+
+    EU 부속서에 등재된 이름만 나온다. **여기 없다고 못 쓰는 성분이 아니다** -
+    부속서는 금지·제한 목록이라 일반 성분은 애초에 실려 있지 않다.
+    그래서 목록에 없으면 직접 적어 넣을 수 있게 둔다.
+    """
+    term = (term or "").strip()
+    if not is_available() or len(term) < 2:
+        return []
+
+    like = "%" + term.lower() + "%"
+    rows = _connect().execute(
+        "SELECT DISTINCT inci_name, chemical_name, annex, ref_no, cas "
+        "FROM eu_substance "
+        "WHERE LOWER(IFNULL(inci_name,'')) LIKE ? "
+        "   OR LOWER(IFNULL(chemical_name,'')) LIKE ? "
+        "ORDER BY LENGTH(IFNULL(inci_name, chemical_name)) LIMIT ?",
+        (like, like, limit)).fetchall()
+
+    out = []
+    for row in rows:
+        name = (row["inci_name"] or row["chemical_name"] or "").strip()
+        if not name:
+            continue
+        out.append({
+            "inci": name,
+            "chemical": (row["chemical_name"] or "").strip(),
+            "cas": (row["cas"] or "").strip(),
+            "annex": row["annex"],
+            "ref_no": row["ref_no"],
+            # 부속서에 있다는 건 금지·제한 대상이라는 뜻이다. 그걸 알려 준다
+            "flag": ANNEX_KIND.get(row["annex"], ""),
+        })
+    return out
+
+
 def judge(name, inci=None, cas=None, requested=None):
     """성분 한 건의 EU 판정을 만든다.
 
@@ -139,7 +179,9 @@ def judge(name, inci=None, cas=None, requested=None):
     if not hits:
         return {
             "status": "ok",
-            "limit": "개별 제한 없음 (Annex 미등재)",
+            "unused": _is_unused(requested),
+            "limit": (NONE_LIMIT if _is_unused(requested)
+                      else "개별 제한 없음 (Annex 미등재)"),
             "rule": "Regulation (EC) No 1223/2009",
             "note": "부속서 II~VI 어디에도 없는 성분입니다. 일반 성분으로 사용할 수 있으나 안전성 평가는 별도입니다.",
             "annex": "",
@@ -163,7 +205,9 @@ def judge(name, inci=None, cas=None, requested=None):
     if banned and not limited:
         detail.update({
             "status": "ok" if _is_unused(requested) else "ban",
-            "limit": "사용 금지",
+            # 안 들어간 성분에 허용 기준을 적어 두면 헷갈린다
+            "limit": NONE_LIMIT if _is_unused(requested) else "사용 금지",
+            "unused": _is_unused(requested),
             "note": ("성분표에 미사용으로 표기돼 있어 해당 없음. (금지 목록 등재 성분)"
                      if _is_unused(requested)
                      else "Annex II 등재 — EU에서는 화장품에 사용할 수 없습니다."),
@@ -179,7 +223,12 @@ def judge(name, inci=None, cas=None, requested=None):
     allowed = _limits(limit_text)
     asked = _percent(requested)
 
-    detail["limit"] = limit_text or (conditions and "용도 제한 있음") or "조건부 사용 가능"
+    detail["unused"] = _is_unused(requested)
+    detail["limit"] = (NONE_LIMIT if detail["unused"] else
+                       (limit_text or (conditions and "용도 제한 있음")
+                        or "조건부 사용 가능"))
+    # 원래 기준은 버리지 않는다. 상세에서 "안 넣었을 때의 기준" 으로 보여 준다
+    detail["limit_if_used"] = limit_text or conditions or ""
 
     extra = []
     if banned:

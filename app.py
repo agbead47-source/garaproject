@@ -4,6 +4,7 @@
 3단계: 업로드 화면(6-1) + 로딩 연출까지.
 """
 
+import io
 import os
 import re
 import uuid
@@ -23,9 +24,12 @@ import doc_edit_store
 import dummy_data
 import fx_store
 import mail_ai
+import mix_store
 import packaging_store
 import project_store
 import schedule_store
+import reg_export
+import reg_timeline
 import regnews_store
 import trade_store
 import trend_store
@@ -54,6 +58,9 @@ contact_log_store.init_db()
 
 # 자사 정보 (SQLite. 서류가 여기서 읽어 간다)
 company_store.init_db()
+
+# 복합 원료 수동 매핑 (SQLite. 쪼개 넣은 하위 성분이 규제 대조에 합류한다)
+mix_store.init_db()
 
 # 포장재 가격 동향 (SQLite. 화면은 받아 둔 값만 읽는다)
 packaging_store.init_db()
@@ -426,6 +433,109 @@ def convert():
     )
 
 
+@app.route("/api/inci")
+def api_inci():
+    """INCI 이름 찾기. 복합 원료를 쪼갤 때 쓴다.
+
+    EU 부속서에 등재된 이름만 나온다. 부속서는 금지·제한 목록이라
+    일반 성분은 애초에 없다. 그래서 목록에 없어도 직접 적어 넣을 수 있다.
+    """
+    term = request.args.get("q", "")
+    return jsonify({
+        "rows": dummy_data.reg_store.search(term),
+        "live": dummy_data.reg_store.is_available(),
+    })
+
+
+@app.route("/regulation/export.xlsx")
+def regulation_export():
+    """대조 결과를 엑셀로. 바이어 회신·연구소 전달에 그대로 붙인다.
+
+    판정만 적고 근거를 빼지 않는다. 조문 번호·허용 기준·기준일을 같이 담는다.
+    """
+    if not session.get("reg_file") and request.args.get("ready") != "1":
+        pass                                # 예시 성분표로도 내보낼 수 있다
+
+    country = request.args.get("country", "all")
+    keyword = request.args.get("q", "")
+    status = request.args.get("status", "all")
+
+    parsed = dummy_data.analyze_ingredient_file(session.get("reg_file") or None)
+    rows = dummy_data.search_regulations(country, keyword, status)
+    detail = dummy_data.get_reg_country(country) or {}
+
+    data = {
+        "parsed": parsed,
+        "rows": rows,
+        "country_label": detail.get("name", "전체"),
+        "counts": {
+            "total": len(rows),
+            "warn": sum(1 for r in rows if r["status"] == "warn"),
+            "ban": sum(1 for r in rows if r["status"] == "ban"),
+        },
+        "eu_source": dummy_data.get_reg_source(),
+        "us_source": dummy_data.get_us_reg_source(),
+        "us_board": dummy_data.us_sales_board() if country == "us" else None,
+        "timeline": reg_timeline.board(
+            dummy_data.TIMELINE_REGION.get(country) if country != "all" else None),
+        "exported_at": reg_timeline.datetime.now(
+            reg_timeline.SEOUL).strftime("%Y-%m-%d %H:%M"),
+    }
+
+    return send_file(
+        io.BytesIO(reg_export.build(data)), as_attachment=True,
+        download_name=reg_export.filename(data["country_label"],
+                                          reg_timeline._today().isoformat()),
+        mimetype="application/vnd.openxmlformats-officedocument."
+                 "spreadsheetml.sheet")
+
+
+@app.route("/regulation/mix", methods=["POST"])
+def regulation_mix():
+    """복합 원료를 하위 성분으로 쪼개 저장한다."""
+    back = url_for("regulation", ready="1",
+                   country=request.form.get("country", "all"))
+
+    if request.form.get("action") == "delete":
+        mix_store.remove(request.form.get("mix_id", type=int))
+        session["contact_msg"] = ("ok", "수동 매핑을 지웠습니다. "
+                                        "그 원료는 다시 '매칭하지 못한 행' 이 됩니다.")
+        return redirect(back)
+
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        session["contact_msg"] = ("error", "원료 이름이 없습니다.")
+        return redirect(back)
+
+    # 줄 단위로 넘어온 값을 묶는다
+    parts = []
+    incis = request.form.getlist("part_inci")
+    names = request.form.getlist("part_name")
+    ratios = request.form.getlist("part_ratio")
+    for index, inci in enumerate(incis):
+        parts.append({
+            "inci": inci,
+            "name": names[index] if index < len(names) else "",
+            "ratio": ratios[index] if index < len(ratios) else "",
+        })
+
+    saved = mix_store.save(
+        name, raw=request.form.get("raw", ""), dose=request.form.get("dose", ""),
+        parts=parts, note=request.form.get("note", ""),
+        author=session.get("user", DEFAULT_USER))
+
+    if saved:
+        mix = mix_store.get_by_id(saved)
+        counted = sum(1 for p in mix["parts"] if p["actual"])
+        session["contact_msg"] = (
+            "ok", "{} 을(를) 하위 성분 {}개로 쪼갰습니다. "
+                  "{}개는 처방 내 함량까지 계산해 규제 대조에 넣었습니다."
+                  .format(mix["name"], len(mix["parts"]), counted))
+    else:
+        session["contact_msg"] = ("error", "하위 성분을 한 줄 이상 넣어 주세요.")
+    return redirect(back)
+
+
 @app.route("/api/fx")
 def api_fx():
     """견적환율 조회. (담당자가 '환율 불러오기'를 누를 때만 외부로 나간다)
@@ -569,6 +679,9 @@ def regulation():
         us_source=dummy_data.get_us_reg_source(),
         # 미국을 골랐을 때만. 다른 나라 기준에 미국 매장 기준을 섞지 않는다
         us_board=dummy_data.us_sales_board() if country == "us" else None,
+        # 시행일이 남은 규정. 국가를 고르면 그 나라 것만
+        timeline=reg_timeline.board(
+            dummy_data.TIMELINE_REGION.get(country) if country != "all" else None),
         selected={"country": country, "q": keyword, "status": status},
         country_detail=dummy_data.get_reg_country(country),
         counts={
