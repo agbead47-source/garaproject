@@ -14,6 +14,9 @@ from flask import (Flask, jsonify, redirect, render_template, request,
                    send_file, session, url_for)
 
 import beauty_rank_store
+import clock_store
+import doc_rev_store
+import shipment_store
 import chat_bot
 import company_store
 import contact_log_store
@@ -62,6 +65,13 @@ company_store.init_db()
 
 # 복합 원료 수동 매핑 (SQLite. 쪼개 넣은 하위 성분이 규제 대조에 합류한다)
 mix_store.init_db()
+
+# 선적·서류 트래킹과 서류 리비전 (SQLite)
+shipment_store.init_db()
+doc_rev_store.init_db()
+
+# 바이어 현지 시간·공휴일 (SQLite. 공휴일만 받아 두고 시간은 그때그때 계산한다)
+clock_store.init_db()
 
 # 포장재 가격 동향 (SQLite. 화면은 받아 둔 값만 읽는다)
 packaging_store.init_db()
@@ -1194,6 +1204,7 @@ def customer_detail(customer_id):
         page_title=profile["name"],
         active_menu="customers",
         c=profile,
+        clock=clock_store.now_for(profile.get("country"), fetch=True),
         kinds=customer_store.kinds(),
         log_channels=contact_log_store.channels(),
         today=contact_log_store.today_iso(),
@@ -1380,6 +1391,10 @@ def project_hub(project_id):
         page_title=project["title"],
         active_menu="projects",
         d=data,
+        # 바이어 현지 시각. 새벽 3시에 보낸 메일은 아침 더미 맨 밑에 깔린다
+        clock=clock_store.now_for(project["country"]),
+        shipments=shipment_store.of_project(project_id),
+        revs=doc_rev_store.board(project_id),
         # 이 고객사와 지금까지 어땠는지. 한 건만 보면 안 보인다
         signals=project_store.customer_signals(
             project["customer_id"], project["customer_name"] or "",
@@ -1623,6 +1638,72 @@ def _project_people(project):
         return []
     return [row for row in contact_store.list_contacts(project["customer_id"])
             if row["is_active"]]
+
+
+@app.route("/projects/<int:project_id>/trade", methods=["GET", "POST"])
+def project_trade(project_id):
+    """선적·서류.
+
+    바이어가 제일 자주 묻는 "언제 출발해?" 와 "B/L 사본 언제 줘?" 가
+    포워더 메일함에 흩어져 있다. 물어볼 때마다 메일을 뒤지지 않게 모아 둔다.
+    발행한 서류의 리비전도 같이 본다 - 같은 단계에서 벌어지는 일이다.
+    """
+    project = _project_or_404(project_id)
+    if project is None:
+        return redirect(url_for("projects"))
+
+    back = url_for("project_trade", project_id=project_id)
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        form = request.form.to_dict()
+
+        if action == "ship_add":
+            shipment_store.add(project_id, form)
+            session["project_msg"] = ("ok", "선적 건을 만들었습니다.")
+        elif action == "ship_update":
+            shipment_store.update(request.form.get("shipment_id", type=int), form)
+            session["project_msg"] = ("ok", "선적 정보를 고쳤습니다.")
+        elif action == "ship_delete":
+            shipment_store.remove(request.form.get("shipment_id", type=int))
+            session["project_msg"] = ("ok", "선적 건을 지웠습니다.")
+        elif action == "doc":
+            shipment_store.set_doc(
+                request.form.get("shipment_id", type=int),
+                request.form.get("key", ""), request.form.get("state", ""),
+                request.form.get("at", ""))
+            session["project_msg"] = ("ok", "서류 상태를 바꿨습니다.")
+        elif action == "rev_add":
+            form["author"] = session.get("user", DEFAULT_USER)
+            doc_rev_store.add(project_id, request.form.get("kind", "quote"), form)
+            session["project_msg"] = ("ok", "새 리비전을 남겼습니다.")
+        elif action == "rev_state":
+            ok, message = doc_rev_store.set_state(
+                request.form.get("rev_id", type=int), request.form.get("state", ""))
+            session["project_msg"] = (("ok" if ok else "error"), message)
+        elif action == "rev_delete":
+            ok, message = doc_rev_store.remove(request.form.get("rev_id", type=int))
+            session["project_msg"] = (("ok" if ok else "error"), message)
+        return redirect(back)
+
+    return render_template(
+        "project_trade.html",
+        page_title="선적 · 서류",
+        active_menu="projects",
+        p=project,
+        progress=project_store.progress(project_id),
+        ships=shipment_store.of_project(project_id),
+        incoterms=shipment_store.incoterms(),
+        modes=shipment_store.modes(),
+        ship_states=shipment_store.statuses(),
+        doc_states=shipment_store.doc_states(),
+        revs=doc_rev_store.board(project_id),
+        rev_kinds=doc_rev_store.kinds(),
+        rev_states=doc_rev_store.states(),
+        clock=clock_store.now_for(project["country"], fetch=True),
+        today=shipment_store.today_iso(),
+        msg=session.pop("project_msg", None),
+    )
 
 
 @app.route("/projects/<int:project_id>/contacts", methods=["GET", "POST"])

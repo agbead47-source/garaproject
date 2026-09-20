@@ -1,0 +1,48 @@
+{# 바이어 현지 시각.
+   새벽 3시에 보낸 메일은 아침에 받은 메일 더미 맨 밑에 깔린다.
+   서머타임은 zoneinfo 가 알아서 본다 - 우리가 세지 않는다. #}
+<section class="card clock-card ck-{{ clock.state_meta.css }}">
+  <div class="clock-main">
+    <div class="clock-now">
+      <span class="clock-icon">{{ clock.state_meta.icon }}</span>
+      <span class="clock-time">{{ clock.time }}</span>
+      <span class="clock-day">{{ clock.date }} ({{ clock.weekday }})</span>
+    </div>
+    <div class="clock-where">
+      {{ clock.country }} · {{ clock.city }} 기준 · {{ clock.gap_label }}
+    </div>
+  </div>
+
+  <div class="clock-side">
+    <div class="clock-state ck-{{ clock.state_meta.css }}">{{ clock.state_meta.label }}</div>
+    <div class="clock-advice">{{ clock.advice }}</div>
+    {% if clock.best_window %}
+    <div class="clock-window">보내기 좋은 때 · {{ clock.best_window }}</div>
+    {% endif %}
+  </div>
+
+  {% if clock.today_local_only or clock.upcoming or clock.note %}
+  <div class="clock-foot">
+    {% if clock.today_local_only %}
+    {# 지역만 쉬는 날을 '전국 휴일' 이라고 말하면 헛소리가 된다 #}
+    <span class="clock-note">
+      오늘 <b>{{ clock.today_local_only[0].local_name }}</b> —
+      {{ clock.today_local_only[0].counties }} 지역만 쉽니다 (전국 휴일 아님)
+    </span>
+    {% endif %}
+    {% if clock.upcoming %}
+    <span class="clock-note">
+      다음 휴일
+      {% for h in clock.upcoming %}
+      <b>{{ h.day }}</b> {{ h.local_name or h.name }}{% if not h.nationwide %}(일부 지역){% endif %}{% if not loop.last %} · {% endif %}
+      {% endfor %}
+    </span>
+    {% endif %}
+    {% if clock.note %}<span class="clock-note">{{ clock.note }}</span>{% endif %}
+    <span class="clock-note">
+      업무시간은 통상값(9~18시)입니다. 그 회사 실제 근무시간이 아닙니다.
+      공휴일 출처 Nager.Date.
+    </span>
+  </div>
+  {% endif %}
+</section>

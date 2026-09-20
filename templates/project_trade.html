@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% from "_state.html" import project_head %}
+
+{% block content %}
+{{ project_head(p, progress) }}
+
+{% if msg %}
+<p class="flash {{ 'error' if msg[0] == 'error' else 'ok' }}">{{ msg[1] }}</p>
+{% endif %}
+
+{% if clock %}
+{% include "_clock.html" %}
+{% endif %}
+
+<!-- ================= 선적 ================= -->
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">선적 <span class="count-chip">{{ ships|length }}</span></h2>
+      <p class="card-desc no-margin">
+        바이어가 제일 자주 묻는 두 가지입니다 — <strong>"언제 출발해?"</strong> 와
+        <strong>"B/L 사본 언제 줘?"</strong>.
+        포워더 메일함을 뒤지지 않게 여기 모읍니다.
+      </p>
+    </div>
+  </div>
+
+  <form class="log-form" method="post">
+    <input type="hidden" name="action" value="ship_add">
+    <div class="log-form-row">
+      <input class="input" type="text" name="label" maxlength="80"
+             placeholder="건 이름 (예: 초도 5,000개)">
+      <select class="select select-inline" name="incoterm" aria-label="거래조건">
+        {% for t in incoterms %}<option value="{{ t.code }}"
+          {% if t.code == 'FOB' %}selected{% endif %}>{{ t.label }}</option>{% endfor %}
+      </select>
+      <select class="select select-inline" name="mode" aria-label="운송 수단">
+        {% for m in modes %}<option value="{{ m.value }}">{{ m.icon }} {{ m.label }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary">선적 건 추가</button>
+    </div>
+    <p class="field-hint no-top">
+      거래조건을 고르면 <strong>우리가 내야 할 서류 목록이 그에 맞게 바뀝니다.</strong>
+      EXW 로 팔면 B/L 을 줄 일이 없고, CIF 면 보험증권까지 우리 몫입니다.
+    </p>
+  </form>
+</section>
+
+{% for s in ships %}
+<section class="card ship-card st-{{ s.status_meta.css }}">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        {{ s.mode_meta.icon }} {{ s.label or '이름 없는 선적' }}
+        <span class="fill-badge {{ s.status_meta.css }}">{{ s.status_meta.label }}</span>
+        <span class="ship-term">{{ s.incoterm }}</span>
+      </h2>
+      <p class="card-desc no-margin">
+        {{ s.incoterm_meta.desc }}
+        {% if s.port_from or s.port_to %}
+        · {{ s.port_from or '?' }} → {{ s.port_to or '?' }}
+        {% endif %}
+      </p>
+    </div>
+    <form method="post" onsubmit="return confirm('이 선적 건을 지울까요?');">
+      <input type="hidden" name="action" value="ship_delete">
+      <input type="hidden" name="shipment_id" value="{{ s.id }}">
+      <button type="submit" class="btn btn-mini">삭제</button>
+    </form>
+  </div>
+
+  {# 예정과 실제를 같은 칸에 넣지 않는다. 섞이면 '출발했다' 와 '출발할 예정' 이 구분이 안 된다 #}
+  <div class="eta-grid">
+    <div class="eta-cell">
+      <div class="eta-label">출항 예정 (ETD)</div>
+      <div class="eta-value">
+        {% if s.etd %}{{ s.etd }} <span class="eta-dd">{{ s.etd_label }}</span>
+        {% else %}<span class="text-orange">미정</span>{% endif %}
+      </div>
+    </div>
+    <div class="eta-cell {% if s.departed %}done{% endif %}">
+      <div class="eta-label">실제 출항 (ATD)</div>
+      <div class="eta-value">
+        {% if s.atd %}{{ s.atd }}
+          {% if s.etd_late and s.etd_late > 0 %}
+          <span class="eta-late">{{ s.etd_late }}일 지연</span>
+          {% endif %}
+        {% else %}<span class="text-gray">아직</span>{% endif %}
+      </div>
+    </div>
+    <div class="eta-cell">
+      <div class="eta-label">도착 예정 (ETA)</div>
+      <div class="eta-value">
+        {% if s.eta %}{{ s.eta }} <span class="eta-dd">{{ s.eta_label }}</span>
+        {% else %}<span class="text-gray">미정</span>{% endif %}
+      </div>
+    </div>
+    <div class="eta-cell {% if s.arrived %}done{% endif %}">
+      <div class="eta-label">실제 도착 (ATA)</div>
+      <div class="eta-value">
+        {% if s.ata %}{{ s.ata }}
+          {% if s.eta_late and s.eta_late > 0 %}
+          <span class="eta-late">{{ s.eta_late }}일 지연</span>
+          {% endif %}
+        {% else %}<span class="text-gray">아직</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <p class="ship-next">→ {{ s.next }}</p>
+  {% if s.date_source %}
+  <p class="field-hint no-top">날짜 출처: {{ s.date_source }}</p>
+  {% else %}
+  <p class="field-hint no-top">
+    <strong>날짜 출처를 적어 두세요.</strong> 포워더가 준 날짜인지 우리가 잡은 날짜인지
+    구분되지 않으면 나중에 누구에게 물어야 할지 모릅니다.
+  </p>
+  {% endif %}
+
+  <!-- 서류 -->
+  <h3 class="sub-title">
+    서류 <span class="count-chip">{{ s.docs_done }}/{{ s.docs_total }}</span>
+    <span class="text-gray">{{ s.incoterm }} 기준 우리 몫</span>
+  </h3>
+  <div class="doc-grid">
+    {% for d in s.docs %}
+    <div class="doc-row ds-{{ d.state_meta.css }} {% if not d.ours %}off{% endif %}">
+      <span class="doc-icon">{{ d.icon }}</span>
+      <div class="doc-main">
+        <div class="doc-name">{{ d.label }}</div>
+        <div class="doc-when">{{ d.when }} · {{ d.note }}</div>
+        {% if d.at %}<div class="doc-at">{{ d.at }}</div>{% endif %}
+      </div>
+      {% if d.ours %}
+      <form method="post" class="doc-form">
+        <input type="hidden" name="action" value="doc">
+        <input type="hidden" name="shipment_id" value="{{ s.id }}">
+        <input type="hidden" name="key" value="{{ d.key }}">
+        <select class="select select-inline" name="state" onchange="this.form.submit()"
+                aria-label="{{ d.label }} 상태">
+          {% for st in doc_states %}
+          <option value="{{ st.value }}" {% if st.value == d.state %}selected{% endif %}>
+            {{ st.label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% else %}
+      <span class="doc-na">{{ s.incoterm }}에서는 바이어 몫</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="field-hint">
+    <strong>발급 · 사본 송부 · 원본 발송은 다 다른 단계입니다.</strong>
+    B/L 은 원본이 있어야 화물을 찾습니다. "보냈다" 가 사본인지 원본인지 헷갈리면
+    바이어가 항구에서 물건을 못 찾습니다.
+  </p>
+
+  <!-- 고치기 -->
+  <details class="ship-edit">
+    <summary>선적 정보 고치기</summary>
+    <form method="post">
+      <input type="hidden" name="action" value="ship_update">
+      <input type="hidden" name="shipment_id" value="{{ s.id }}">
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">건 이름</label>
+          <input class="input" type="text" name="label" value="{{ s.label }}" maxlength="80">
+        </div>
+        <div class="field">
+          <label class="field-label">거래조건</label>
+          <select class="select" name="incoterm">
+            {% for t in incoterms %}<option value="{{ t.code }}"
+              {% if t.code == s.incoterm %}selected{% endif %}>{{ t.label }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">운송</label>
+          <select class="select" name="mode">
+            {% for m in modes %}<option value="{{ m.value }}"
+              {% if m.value == s.mode %}selected{% endif %}>{{ m.icon }} {{ m.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">상태</label>
+          <select class="select" name="status">
+            {% for st in ship_states %}<option value="{{ st.value }}"
+              {% if st.value == s.status %}selected{% endif %}>{{ st.label }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">선적항</label>
+          <input class="input" type="text" name="port_from" value="{{ s.port_from }}"
+                 maxlength="60" placeholder="Busan">
+        </div>
+        <div class="field">
+          <label class="field-label">도착항</label>
+          <input class="input" type="text" name="port_to" value="{{ s.port_to }}"
+                 maxlength="60" placeholder="Los Angeles">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">ETD (출항 예정)</label>
+          <input class="input" type="date" name="etd" value="{{ s.etd }}">
+        </div>
+        <div class="field">
+          <label class="field-label">ATD (실제 출항)</label>
+          <input class="input" type="date" name="atd" value="{{ s.atd }}">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">ETA (도착 예정)</label>
+          <input class="input" type="date" name="eta" value="{{ s.eta }}">
+        </div>
+        <div class="field">
+          <label class="field-label">ATA (실제 도착)</label>
+          <input class="input" type="date" name="ata" value="{{ s.ata }}">
+        </div>
+      </div>
+      <p class="field-hint no-top">
+        모르는 날짜는 <strong>비워 두세요.</strong> ETD 를 지어내면
+        바이어가 그 날짜로 창고와 통관을 잡습니다.
+      </p>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">포워더</label>
+          <input class="input" type="text" name="forwarder" value="{{ s.forwarder }}" maxlength="80">
+        </div>
+        <div class="field">
+          <label class="field-label">부킹 번호</label>
+          <input class="input" type="text" name="booking_no" value="{{ s.booking_no }}" maxlength="40">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">{{ s.mode_meta.doc }} 번호</label>
+          <input class="input" type="text" name="bl_no" value="{{ s.bl_no }}" maxlength="40">
+        </div>
+        <div class="field">
+          <label class="field-label">컨테이너</label>
+          <input class="input" type="text" name="container" value="{{ s.container }}" maxlength="80">
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">날짜 출처</label>
+        <input class="input" type="text" name="date_source" value="{{ s.date_source }}"
+               maxlength="80" placeholder="예: 포워더 부킹 확정서 (2026-09-10)">
+      </div>
+      <div class="field">
+        <label class="field-label">메모</label>
+        <input class="input" type="text" name="note" value="{{ s.note }}" maxlength="500">
+      </div>
+      <button type="submit" class="btn btn-primary">저장</button>
+    </form>
+  </details>
+</section>
+{% else %}
+<section class="card">
+  <p class="card-desc no-margin">
+    아직 선적 건이 없습니다. 위에서 하나 만들어 보세요.
+    발주가 확정되면 그때부터 ETD·서류를 여기서 챙깁니다.
+  </p>
+</section>
+{% endfor %}
+
+<!-- ================= 서류 리비전 ================= -->
+<section class="card">
+  <div class="result-head">
+    <div>
+      <h2 class="card-title no-margin">
+        서류 리비전 <span class="count-chip">{{ revs.total }}</span>
+      </h2>
+      <p class="card-desc no-margin">
+        견적·PI·CI 는 수량과 단가가 바뀌며 여러 판이 오갑니다.
+        파일 이름이 <code>최종</code> → <code>최종_수정</code> → <code>진짜최종</code> 이 되는 자리입니다.
+        <strong>바이어는 Rev 2 로 발주했는데 공장에 Rev 1 이 가 있으면 그대로 잘못 만듭니다.</strong>
+      </p>
+    </div>
+  </div>
+
+  {% if revs.drifted %}
+  <p class="live-caveat">
+    <strong>최신 판과 확정판이 다릅니다</strong> —
+    {% for g in revs.drifted %}{{ g.meta.label }}(확정 Rev {{ g.final.rev }} · 최신 Rev {{ g.latest.rev }}){% if not loop.last %}, {% endif %}{% endfor %}.
+    새로 만든 판을 아직 확정 안 했거나, 확정 뒤에 또 고친 것입니다. 어느 쪽이 맞는지 정리하세요.
+  </p>
+  {% endif %}
+
+  <form class="log-form" method="post">
+    <input type="hidden" name="action" value="rev_add">
+    <div class="log-form-row">
+      <select class="select select-inline" name="kind" aria-label="서류 종류">
+        {% for k in rev_kinds %}<option value="{{ k.value }}">{{ k.icon }} {{ k.label }}</option>{% endfor %}
+      </select>
+      <input class="input" type="text" name="amount" maxlength="60" placeholder="금액 (USD 2.80/ea)">
+      <input class="input" type="text" name="qty" maxlength="40" placeholder="수량 (5,000)">
+      <select class="select select-inline" name="state" aria-label="상태">
+        {% for st in rev_states %}<option value="{{ st.value }}">{{ st.label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="log-form-row">
+      <input class="input" type="text" name="summary" maxlength="500"
+             placeholder="이번 판에서 바뀐 것 (예: 수량 10,000개로 올려 단가 인하)">
+      <button type="submit" class="btn btn-primary">새 판 남기기</button>
+    </div>
+    <p class="field-hint no-top">
+      <strong>무엇이 바뀌었는지 꼭 적으세요.</strong> 안 적으면 나중에 아무도 모릅니다.
+      앞 판을 고치지 않고 번호를 올립니다 — 틀린 판도 남겨야 어디서 갈렸는지 찾습니다.
+    </p>
+  </form>
+
+  {% for g in revs.groups %}
+  <h3 class="sub-title">
+    {{ g.meta.icon }} {{ g.meta.label }}
+    {% if g.final %}<span class="rev-final-chip">확정 Rev {{ g.final.rev }}</span>
+    {% else %}<span class="text-orange">확정판 없음</span>{% endif %}
+  </h3>
+  {% if g.meta.note %}<p class="card-desc">{{ g.meta.note }}</p>{% endif %}
+
+  <div class="rev-list">
+    {% for r in g.rows %}
+    <div class="rev-row rv-{{ r.state_meta.css }}">
+      <span class="rev-no">Rev {{ r.rev }}</span>
+      <div class="rev-main">
+        <div class="rev-head">
+          <span class="rev-state rv-{{ r.state_meta.css }}"
+                title="{{ r.state_meta.desc }}">{{ r.state_meta.label }}</span>
+          {% if r.locked %}<span class="rev-lock" title="잠겨 있어 고칠 수 없습니다">🔒</span>{% endif %}
+          <span class="rev-nums">
+            {% if r.amount %}{{ r.amount }}{% endif %}
+            {% if r.qty %} · {{ r.qty }}{% endif %}
+            {% if r.terms %} · {{ r.terms }}{% endif %}
+          </span>
+          <span class="rev-at">{{ r.at }}{% if r.author %} · {{ r.author }}{% endif %}</span>
+        </div>
+        {% if r.summary %}<div class="rev-summary">{{ r.summary }}</div>
+        {% else %}<div class="rev-summary text-gray">바뀐 내용이 적혀 있지 않습니다</div>{% endif %}
+      </div>
+      <div class="rev-actions">
+        <form method="post">
+          <input type="hidden" name="action" value="rev_state">
+          <input type="hidden" name="rev_id" value="{{ r.id }}">
+          <select class="select select-inline" name="state" onchange="this.form.submit()"
+                  aria-label="Rev {{ r.rev }} 상태">
+            {% for st in rev_states %}
+            <option value="{{ st.value }}" {% if st.value == r.state %}selected{% endif %}>
+              {{ st.label }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% if not r.locked %}
+        <form method="post">
+          <input type="hidden" name="action" value="rev_delete">
+          <input type="hidden" name="rev_id" value="{{ r.id }}">
+          <button type="submit" class="part-del" aria-label="지우기">&#10005;</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-row">아직 남긴 판이 없습니다.</p>
+  {% endfor %}
+</section>
+{% endblock %}

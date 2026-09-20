@@ -3,6 +3,10 @@
 {% block content %}
 <a class="back-link" href="{{ url_for('customers') }}">‹ 거래처 목록</a>
 
+{% if clock %}
+{% include "_clock.html" %}
+{% endif %}
+
 <section class="card profile-card">
   <div class="profile-head">
     <span class="profile-flag">{{ c.flag }}</span>

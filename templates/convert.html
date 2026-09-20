@@ -216,6 +216,9 @@
   <div class="action-group">
     <a class="btn" href="{{ url_for('schedule.new', title=handoff.product, account=handoff.account, country=handoff.country, origin='compose') }}">🗓 일정 등록</a>
     <button type="button" class="btn" id="copy-btn">📋 복사하기</button>
+    {# 새 프로그램이 꺼려지는 이유는 "아웃룩에 또 입력" 이다.
+       여기서 만든 글을 기본 메일 앱으로 그대로 넘긴다 #}
+    <button type="button" class="btn" id="mail-btn">✉️ 메일 앱으로 열기</button>
     <button type="button" class="btn btn-primary" id="pdf-btn">⬇️ PDF 다운로드</button>
   </div>
 </div>
@@ -367,6 +370,34 @@
       done(fallbackCopy(text));
     }
   });
+
+  /* 기본 메일 앱으로 넘기기.
+     IMAP/SMTP 로 직접 보내지 않는다 - 비밀번호를 받아 두게 되고, 보낸 메일이
+     사용자 메일함에 안 남아 오히려 이중 관리가 된다. mailto: 로 넘기면
+     아웃룩이든 지메일이든 늘 쓰던 앱이 열리고 보낸편지함에도 정상으로 남는다.
+     본문은 복사하기와 같은 documentText() 를 쓴다 - 두 벌로 만들면 갈라진다. */
+  var mailBtn = document.getElementById('mail-btn');
+  if (mailBtn) {
+    mailBtn.addEventListener('click', function () {
+      var panel = panels[currentTab()];
+      var subject = panel.querySelector('.doc-title').textContent.trim();
+      var body = documentText();
+
+      /* mailto 는 길이 제한이 있다(브라우저·메일앱마다 다르다).
+         조용히 잘리면 반쪽짜리 메일이 나간다. 잘린다고 말하고 복사를 권한다 */
+      var url = 'mailto:?subject=' + encodeURIComponent(subject) +
+                '&body=' + encodeURIComponent(body);
+      if (url.length > 1800) {
+        body = body.slice(0, 1200) +
+               '\n\n(...길어서 잘렸습니다. 📋 복사하기로 전체를 붙여 넣으세요)';
+        url = 'mailto:?subject=' + encodeURIComponent(subject) +
+              '&body=' + encodeURIComponent(body);
+        showToast('내용이 길어 일부만 넘겼습니다. 📋 복사하기로 전체를 붙여 넣으세요.',
+                  'warn');
+      }
+      window.location.href = url;
+    });
+  }
 
   document.getElementById('pdf-btn').addEventListener('click', function () {
     showToast('⬇️ PDF 다운로드는 가안에서는 지원하지 않습니다.', 'warn');

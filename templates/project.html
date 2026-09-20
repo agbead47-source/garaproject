@@ -110,6 +110,10 @@
 </section>
 {% endif %}
 
+{% if clock %}
+{% include "_clock.html" %}
+{% endif %}
+
 <div class="proj-grid">
   <!-- ============ 왼쪽 ============ -->
   <div class="proj-main">
@@ -368,6 +372,40 @@
         <input type="hidden" name="action" value="schedule">
         <button type="submit" class="btn btn-primary full">🗓 기본 일정 만들기</button>
       </form>
+      {% endif %}
+    </section>
+
+    <!-- 선적·서류 -->
+    <section class="card">
+      <div class="result-head">
+        <div><h2 class="card-title no-margin">선적 · 서류</h2></div>
+        <a class="btn btn-mini"
+           href="{{ url_for('project_trade', project_id=p.id) }}">전체 보기</a>
+      </div>
+      {% for s in shipments[:2] %}
+      <div class="ship-mini">
+        <div class="ship-mini-head">
+          {{ s.mode_meta.icon }} {{ s.label or '선적' }}
+          <span class="fill-badge {{ s.status_meta.css }}">{{ s.status_meta.label }}</span>
+          <span class="ship-term">{{ s.incoterm }}</span>
+        </div>
+        <div class="ship-mini-row">
+          ETD {{ s.etd or '미정' }}{% if s.etd %} <b>{{ s.etd_label }}</b>{% endif %}
+          · ETA {{ s.eta or '미정' }}
+        </div>
+        <div class="ship-mini-row">서류 {{ s.docs_done }}/{{ s.docs_total }}</div>
+      </div>
+      {% else %}
+      <p class="card-desc no-margin">
+        아직 선적 건이 없습니다. 발주가 확정되면 여기서 ETD·B/L 을 챙깁니다.
+      </p>
+      {% endfor %}
+      {% if revs.drifted %}
+      <p class="field-hint text-orange">
+        서류 리비전에서 <strong>최신 판과 확정판이 다릅니다.</strong> 정리해 주세요.
+      </p>
+      {% elif revs.final_count %}
+      <p class="field-hint">확정된 서류 {{ revs.final_count }}판 (잠금)</p>
       {% endif %}
     </section>
 
